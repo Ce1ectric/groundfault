@@ -14,13 +14,16 @@ What [`evaluate`](../reference/evaluation.md) does, in short:
 3. divide the steady-state interval into 200-ms windows and compute, for all channels and from the same window, the
    true RMS value and the RMS phasors of the orders 1…40 (DC removed per window by the median, Hann window, DFT at
    m·f1);
-4. take the window with the **largest residual earth-fault current** – the *max window* – and derive the assessment
-   quantities from it: angle method (active and reactive component Iw, Iv), polarity check, harmonic content,
+4. leave out disturbed states – an active residual current increase or a network change (a section trips) inside the
+   steady-state interval – and take, of the undisturbed windows, the one with the **largest residual earth-fault
+   current** – the *max window* – and derive the assessment quantities from it: angle method (active and reactive component Iw, Iv), polarity check, harmonic content,
    measurement uncertainty and, optionally, the scaling to the 95 % quantile of a power-quality measurement;
 5. analyse the voltages before, during and after the fault (sequence components per order, THD);
 6. at a station: earth potential rise, touch voltage, shield and PEN currents, per frequency
-   ([Stations and the LV network](station.md)); with line currents: the transformer power;
-7. plausibility checks and statistics over all windows of the steady-state interval.
+   ([Stations and the LV network](station.md)); with the line currents of the transformer: the transformer node –
+   power, apparent and upstream impedance per order before, during and after the fault
+   ([Transformer node](../methods/transformer-node.md));
+7. plausibility checks and statistics over the undisturbed windows of the steady-state interval.
 
 The signal processing itself is described in [Signal processing](../methods/signal-processing.md).
 
@@ -154,14 +157,16 @@ per finding (⚠):
 
 ## Choosing the analysis intervals
 
-The analysis intervals are read off **by hand** from the RMS trend – nothing is automatic, because only the person who
-knows the test sequence can tell a steady fault from an active residual current increase or a coil adjustment. In the
-notebook, section 3 shows the moving true RMS value of all channels (20-ms windows, DC removed per window) with zoom
-and range slider; in Python it is `interactive.rms_values(rec, roles, intervals=…)` (a Plotly figure).
+The analysis intervals are read off from the RMS trend by the person who knows the test sequence. groundfault helps:
+it searches the whole fault for disturbed states and proposes the undisturbed part as the steady-state interval, and
+it leaves disturbed states inside the steady-state interval out of the assessment ([Disturbed states](#disturbed-states)).
+In the notebook, section 3 shows the moving true RMS value of all channels (20-ms windows, DC removed per window) with
+zoom and range slider, the disturbed states shaded and the proposal; in Python it is
+`interactive.rms_values(rec, roles, intervals=…, disturbances=…)` (a Plotly figure).
 
 | Interval | Choose it … | Used for |
 |---|---|---|
-| `steady_state` | after the transient and the decay of the DC component (often 0.5 s or more after the fault inception, longer without additional impedance) and **before** an active residual current increase, a coil adjustment or the fault clearance | all assessment quantities: the max window lies in it; statistics over all its windows |
+| `steady_state` | after the transient and the decay of the DC component (often 0.5 s or more after the fault inception, longer without additional impedance) and before the fault clearance; an active residual current increase, a network change or windows after the clearance inside are left out automatically | all assessment quantities: the max window lies in its undisturbed part; statistics over the undisturbed windows |
 | `pre_fault` | in the operation without fault before the fault, a few seconds | voltage levels and harmonics without fault; background at a station; equivalent-source method |
 | `post_fault` | in the operation without fault after the fault, once the neutral displacement voltage has decayed | as `pre_fault` |
 
@@ -197,6 +202,100 @@ Interval steady_state=(2.6, 9.5) is not within 0 … 9.000 s or t0 ≥ t1.
 interval that ends after the start of the steady-state interval (or a post-fault interval that starts before its end)
 only gives a hint.
 
+### Disturbed states
+
+While the staged fault persists, the network can leave its normal state. Neither of the following is the state the
+assessment refers to:
+
+* **Active residual current increase** – for locating the faulted feeder a resistor is switched to the auxiliary
+  winding of a coil for a few seconds: the active component Iw of the fault current rises abruptly by several amperes
+  and falls back when the resistor is switched off.
+* **Network change** – a network section trips or is switched: the capacitive earth-fault current changes, and with
+  it the detuning Iv, the fundamental component and the RMS value of the residual current. The new state persists.
+
+[`groundfault.disturbances`](../reference/disturbances.md) finds both in the 200-ms windows: an **abrupt step** of Iw
+or Iv (angle method, relative to U0) of at least 5 % of |I_H1| (`Settings.disturbance_threshold`, at least 0.5 A),
+with flat levels before and after it – a ramp such as a motor-driven coil adjustment is no step. With measured coil
+currents a step of Iv that the coil currents follow is a **coil change** and stays part of the reference (it is
+reported); if the coil currents stay the same, it is a network change. Without coil currents the cause of a step of Iv
+remains open (`reactive step`), and it is treated as a network change. Without U0 – at a station without voltage
+measurement – only steps of |I_H1| can be found, and their cause remains open. If the interval reaches beyond the
+clearance or begins before the inception, its windows without fault current (RMS value below 10 % of the largest)
+are left out as well, with the state `no fault current`.
+
+Before the intervals are chosen, [`disturbances.scan`](../reference/disturbances.md) searches the whole fault – from
+the settled fault current after inception to the clearance – and proposes the first undisturbed range as the
+steady-state interval:
+
+```python
+from groundfault import disturbances
+
+found = disturbances.scan(rec, roles)
+print(found.text())
+```
+
+```text
+Fault 2.0–6.0 s, scanned 2.6–5.9 s (threshold 1.60 A). Suggestion: STEADY_STATE = (2.7, 4.6)
+Disturbed: active residual current increase 4.6–5.4 s (ΔIw +15.0 A)
+```
+
+A **transformer recording** without a fault-current channel is searched as well: the fault follows from the
+zero-sequence voltage, and the fault current is estimated from the change of the negative-sequence current of the
+transformer against the pre-fault state – its steps are reliable, its level is an estimate. The scan starts once the
+estimate has settled, at least 1.5 s after the inception; for `evaluate` give a pre-fault interval, which the estimate
+needs as its reference ([Transformer node](../methods/transformer-node.md#fault-current-estimated-from-the-transformer-currents)).
+
+Inside the steady-state interval, [`evaluate`](../reference/evaluation.md) leaves the disturbed windows out of the
+search for the max window, the statistics and the checks over the interval (stationarity, coil-current balance, the
+least-squares superposition of a station). The reference is the state at the start of the interval, so the interval
+should start in the undisturbed state after the transient. A recording of the demo with a network change at 3.8 s
+(Iv +12 A, coil currents unchanged) and the active residual current increase from 4.6 to 5.4 s, evaluated with an
+interval that contains both:
+
+```python
+path = os.path.join(base, "SUB_network_10_000kHz.cfg")
+truth = demo.make_substation_recording(path, 0.0, duration=9.0, network_step=(3.8, 12.0))
+rec_n = gf.open_recording(path)
+res_n = gf.evaluate(rec_n, gf.Intervals((2.6, 5.9), (0.2, 1.8), (7.0, 8.8)))
+print(res_n.hints[0])
+print(res_n.table("steady_state_segments")[["from_s", "to_s", "state", "windows", "used", "Iw_A", "Iv_A",
+                                             "IRES_A"]].round(1).to_string(index=False))
+print("IRES %.2f A at %.1f s (undisturbed state: %.2f A)" % (res_n.values["IRES"], res_n.t_max_window, truth["IRES"]))
+```
+
+```text
+Disturbed states excluded: network change from 3.8 s (ΔIv +12.0 A); active residual current increase 4.6–5.4 s (ΔIw +15.0 A). Max window, statistics and checks use the undisturbed state (2.6–3.8 s).
+ from_s  to_s                            state  windows  used  Iw_A  Iv_A  IRES_A
+    2.6   3.8                        reference        6  True  20.0  25.0    56.5
+    3.8   4.6                   network change        4 False  20.0  37.0    62.8
+    4.6   5.4 active increase + network change        4 False  35.0  37.0    69.0
+    5.4   5.8                   network change        2 False  20.0  37.0    62.8
+IRES 56.53 A at 2.7 s (undisturbed state: 56.52 A)
+```
+
+The table `steady_state_segments` lists the consecutive windows of the same state (`used` = part of the reference),
+with the medians of Iw, Iv, |I_H1| and I_RES and their difference to the undisturbed state; `res_n.disturbances` holds
+the windows (`state`, `reference`) and the steps found (`events`). The plausibility table has the row *Disturbed
+states in the steady-state interval*, the result file the section `disturbances`, and the figures of the RMS trend
+and of the harmonics per window hatch the disturbed ranges:
+
+![RMS trend of a recording with a network change at 3.8 s and an active residual current increase from 4.6 to 5.4 s:
+the disturbed ranges are hatched, the max window (dark) lies in the undisturbed state](../assets/disturbances_rms_trend.png)
+
+`Settings(exclude_disturbances=False)` only reports the disturbed states – the max window may then lie in one of them,
+as with groundfault 2.0:
+
+```python
+keep = gf.evaluate(rec_n, gf.Intervals((2.6, 5.9), (0.2, 1.8), (7.0, 8.8)), gf.Settings(exclude_disturbances=False))
+print("IRES %.2f A at %.1f s" % (keep.values["IRES"], keep.t_max_window))
+print(keep.table("plausibility").set_index("check").loc["Disturbed states in the steady-state interval", "status"])
+```
+
+```text
+IRES 69.05 A at 5.3 s
+WARNING
+```
+
 ## Settings
 
 [`Settings`](../reference/evaluation.md) holds the parameters of the evaluation. The defaults of the analysis
@@ -223,11 +322,13 @@ parameters are meant to be kept; the limits and margins at the end of the table 
 | `u_thd95_volt` | `None` | alternatively the 95 % quantile of the line-to-line harmonic voltage in V |
 | `pq_safety_factor` | `1.0` | factor k_s applied to the 95 % quantile, defined by the user; `1.0` = no factor |
 | `thd_reference` | `"mean"` | interval of the measured THD the scaling refers to: `"pre_fault"`, `"post_fault"` or `"mean"` |
-| `transformer_voltage` | `"mv"` | voltage set for the transformer power: `"mv"` or `"hv"` |
-| `transformer_sign` | `1.0` | +1: consumer reference-arrow system as measured; −1 reverses the signs of P and Q |
+| `transformer_voltage` | `"mv"` | side of the transformer currents, i.e. the voltage set of the transformer node: `"mv"` (with HV voltages the upstream impedance is split into transformer and HV network) or `"hv"` |
+| `transformer_sign` | `None` | polarity of the transformer currents: `None` = from the angle of the upstream impedance (generator reference arrow system → reversed, [Transformer node](../methods/transformer-node.md#polarity-of-the-current-transformers)); `1` as measured; `-1` reversed |
 | `ires_limits` | `()` | limits of the residual current in A, defined by the user; the station voltages are extrapolated to them, the largest is the reference current of the reduction factor; `()` = none |
 | `u_tp` | `None` | permissible touch voltage U_Tp in V, defined by the user; with `f_factor` the limit F·U_Tp of the earth potential rise (relevance of the reduction factor for the assessment) |
 | `f_factor` | `None` | factor F of the permissible earth potential rise F·U_Tp, defined by the user |
+| `exclude_disturbances` | `True` | leave disturbed states of the steady-state interval (active residual current increase, network change) out of the max window, the statistics and the checks; `False` = only report them ([Disturbed states](#disturbed-states)) |
+| `disturbance_threshold` | `0.05` | smallest step of Iw or Iv (without U0: of \|I_H1\|) that counts as a disturbance, as a share of \|I_H1\| of the undisturbed state (at least 0.5 A) |
 
 groundfault contains no limits, safety factors or uncertainty margins. `ires_limits`, `u_tp`, `f_factor`,
 `uncertainty_I`, `uncertainty_U` and `pq_safety_factor` are parameters you define for your network – from the
@@ -296,10 +397,14 @@ of every window; `res.phasor(channel_index, order)` returns one phasor of the ma
 | `assessment_quantities` | assessment quantities in the max window with the measurement-uncertainty margins | with a fault-current channel |
 | `plausibility` | checks of the measurement and of the evaluation | always |
 | `harmonics` | magnitude and angle of the orders 1…40 of every channel in the max window | always |
-| `statistics` | RMS values (and the assessed orders of currents and probes) over all steady-state windows | always |
+| `statistics` | RMS values (and the assessed orders of currents and probes) over the undisturbed steady-state windows | always |
+| `steady_state_segments` | the states in the steady-state interval: undisturbed (`reference`) and disturbed ranges with their medians ([Disturbed states](#disturbed-states)) | with a fault-current channel, or with transformer currents and a pre-fault or post-fault interval (fault current estimated) |
 | `coil_currents` | coil currents in the max window | with coil currents (else empty) |
 | `voltage_metrics`, `voltage_pre_fault`, `voltage_fault`, `voltage_post_fault` | voltages before, during and after the fault | with the three line-to-earth voltages |
-| `transformer_power` | active and reactive power and sequence currents per order and interval | with line currents |
+| `transformer_node` | U, I, P, Q and the apparent impedance U/I per state (`pre_fault`, `fault`, `post_fault`), order and sequence (`zero`, `pos`, `neg`, `total`) | with line currents |
+| `transformer_power_change` | change of P and Q per order and sequence: fault − pre-fault and post-fault − pre-fault (null test) | with line currents and a pre-fault or post-fault interval |
+| `transformer_impedance` | upstream impedance (transformer + HV network) per order from the fault-related change, positive and negative sequence; with HV voltages split into transformer and HV network | with line currents and a pre-fault or post-fault interval |
+| `transformer_power` | active and reactive power and sequence currents per order up to 13 and interval (the table of version 2) | with line currents |
 | `station_…` | station tables | at a station, see [Stations and the LV network](station.md) |
 
 ### Assessment quantities
@@ -365,21 +470,22 @@ print(res.table("plausibility")[["check", "status", "value"]].to_string(index=Fa
 ```
 
 ```text
-                                     check status                                         value
-      Windows in the steady-state interval     OK                                             9
-                      Network frequency f1     OK            50.0200 Hz (comparison 50.0200 Hz)
-Network frequency constant in the interval     OK                              spread 0.0000 Hz
-               RMS ↔ √ΣX² (orders 1,3,5,7)     OK                                         2.1 %
-                  RMS ↔ √ΣX² (orders 1…40)     OK                                         0.0 %
-      Stationarity of I_H1 in the interval     OK             span 0.0 % (ΔIw 0.0 A, ΔIv 0.0 A)
- Low-frequency component of I_RES (< f1/2)     OK             0.08 A (I_RES increased by 0.0 %)
-             Polarity of the fault current     OK Iw = 20.00 A (margin 38.7° to the ±90° limit)
-                Fault-current CT IF2 ↔ IF1     OK                 RMS ratio 1.008, Δφ(H1) -0.5°
-                             Faulted phase     OK                       L3: 0 V (0.0 % of max.)
-                         Pre-fault IF1 ≈ 0     OK                                        0.05 A
-                         Pre-fault IF2 ≈ 0     OK                                        0.05 A
-                       Pre-fault ISp21 ≈ 0     OK                                        3.90 A
-                       Pre-fault ISp22 ≈ 0     OK                                        3.25 A
+                                        check status                                         value
+         Windows in the steady-state interval     OK                                             9
+Disturbed states in the steady-state interval     OK              none detected (threshold 1.60 A)
+                         Network frequency f1     OK            50.0200 Hz (comparison 50.0200 Hz)
+   Network frequency constant in the interval     OK                              spread 0.0000 Hz
+                  RMS ↔ √ΣX² (orders 1,3,5,7)     OK                                         2.1 %
+                     RMS ↔ √ΣX² (orders 1…40)     OK                                         0.0 %
+         Stationarity of I_H1 in the interval     OK             span 0.0 % (ΔIw 0.0 A, ΔIv 0.0 A)
+    Low-frequency component of I_RES (< f1/2)     OK             0.08 A (I_RES increased by 0.0 %)
+                Polarity of the fault current     OK Iw = 20.00 A (margin 38.7° to the ±90° limit)
+                   Fault-current CT IF2 ↔ IF1     OK                 RMS ratio 1.008, Δφ(H1) -0.5°
+                                Faulted phase     OK                       L3: 0 V (0.0 % of max.)
+                            Pre-fault IF1 ≈ 0     OK                                        0.05 A
+                            Pre-fault IF2 ≈ 0     OK                                        0.05 A
+                          Pre-fault ISp21 ≈ 0     OK                                        3.90 A
+                          Pre-fault ISp22 ≈ 0     OK                                        3.25 A
 ```
 
 The fourth column, `comment`, explains each check. The status is `OK`, `NOTE`, `WARNING`, `CORRECTED`, `UNCERTAIN` or
@@ -388,12 +494,13 @@ The fourth column, `comment`, explains each check. The status is `OK`, `NOTE`, `
 | Check | Not `OK` when … | What to do |
 |---|---|---|
 | Corrections (`notes/corrections.csv`) | `CORRECTED`: corrections were applied (value: total factor per channel) | nothing – documents the corrections |
-| Windows in the steady-state interval | fewer than 3 windows (`NOTE`) | choose a longer interval |
+| Windows in the steady-state interval | fewer than 3 undisturbed windows (`NOTE`); with disturbed states the value is "undisturbed / all" | choose a longer interval |
+| Disturbed states in the steady-state interval | an active residual current increase or a network change lies in the interval (`NOTE`: left out, the comment names the undisturbed range; `WARNING`: not left out – `exclude_disturbances=False` – or no undisturbed window left) | nothing (`NOTE`); check the interval (`WARNING`) – see [Disturbed states](#disturbed-states) |
 | Network frequency f1 | the estimate is implausible (`WARNING`) | check the reference voltage; the rated frequency is used |
 | Network frequency constant in the interval | f1 per window spreads by more than 0.02 Hz (`NOTE`) – magnitude errors at high orders | choose a narrower interval |
 | RMS ↔ √ΣX² (assessed orders) | the RMS value deviates by 5 % or more from the root sum of squares of the assessed orders (`NOTE`) | further components (higher orders, interharmonics) – look at the spectrum |
 | RMS ↔ √ΣX² (orders 1…40) | deviation of 3 % or more (`WARNING`): interharmonics, noise or transients in the window | look at the window in the signal explorer |
-| Stationarity of I_H1 in the interval | the fundamental varies by 5 % or more (`WARNING`); the comment names the cause: active component changes (active residual current increase), reactive component changes (coil adjustment, network switching) or both | choose a narrower steady-state interval; with a coil adjustment Iv refers to the time of the max window |
+| Stationarity of I_H1 in the interval | the fundamental varies by 5 % or more in the undisturbed windows (`WARNING`); the comment names the cause: active component changes, reactive component changes (typically a coil adjustment – abrupt steps are already left out as disturbed states) or both | choose a narrower steady-state interval; with a coil adjustment Iv refers to the time of the max window |
 | Coil current balance ΔIv ↔ ΔΣI_coil | only if the coil currents change within the interval: Iv does not change by the same amount as the measured coil currents (slope outside 0.8…1.25 or R² < 0.8, `WARNING`) | a coil channel with a wrong ratio or a clamp around only one of several parallel feeders – correction in the corrections file |
 | Low-frequency component of I_RES (< f1/2) | a decaying DC component or drift raises I_RES by 1 % or more (`WARNING`); the value without it is given | start the steady-state interval later |
 | Polarity of the fault current | Iw was negative and the current phasors were rotated (`CORRECTED`), or the margin to the ±90° limit is below 10° (`UNCERTAIN`) | `CORRECTED`: usually a reversed clamp – fine; `UNCERTAIN`: check the clamp polarity, `correct_polarity=False` if it is known |
@@ -401,6 +508,9 @@ The fourth column, `comment`, explains each check. The status is `OK`, `NOTE`, `
 | Faulted phase | the smallest line-to-earth voltage is 10 % or more of the largest (`WARNING`) | not a solid earth fault, or wrong voltage channels |
 | Pre-fault … ≈ 0 | a fault or coil current is clearly present before the fault (`NOTE`) | check the DC offset of the clamps and the pre-fault interval |
 | Transformer zero-sequence current ↔ coil current/3 | information only (`INFO`) | equal if the measured coils are connected to the star point of this transformer |
+| Polarity of the transformer currents | the reference arrow system of the transformer currents from the angle of the upstream impedance: `INFO` (consumer), `CORRECTED` (generator, reversed automatically) or `WARNING` (`transformer_sign` contradicts the angle) | `WARNING`: check the current transformers or remove `transformer_sign` |
+| Upstream impedance (transformer + HV network) | X_up/m over the significant orders with its spread (`INFO`) | a large spread: look at `pos_neg_deviation_pct` and `uncertainty_pct` in `transformer_impedance` |
+| HV side: ratio and vector group | ratio and phase shift of the fundamental (`INFO`) | the phase shift is rounded to the vector group (k·30°) |
 | Saturation … | flat tops in more than 0.01 % of the samples (`WARNING`) | the channel is clipped – values distorted |
 
 ### Voltages, harmonics, statistics, coil currents
@@ -450,8 +560,18 @@ channel  RMS_A  H1_A  H1_angle_ref_ULL_deg
   ISp22 249.99 250.0                -180.0
 ```
 
-`transformer_power` (with three line currents) has one row per interval and order up to 13: `P_kW`, `Q_kvar` and the
-positive-, negative- and zero-sequence currents `I_pos_A`, `I_neg_A`, `I_zero_A`.
+With the three line currents of the transformer the evaluation analyses the **transformer node**
+([Transformer node](../methods/transformer-node.md)): `transformer_node` has one row per state, order and sequence with
+`U_V`, `I_A`, `P_kW`, `Q_kvar` and the apparent impedance `Z_Ohm`, `Z_angle_deg`; `transformer_power_change` the
+changes of P and Q; `transformer_impedance` the upstream impedance Z_up = −ΔU/ΔI of transformer and HV network with its
+second estimate, null test, uncertainty and – with HV voltages – the split into transformer and HV network.
+`res.values["transformer"]` holds the polarity, `X1_up_Ohm` (X_up/m over the significant orders), the HV ratio and
+vector group and the change of the fundamental power `dP1_fault_kW`, `dQ1_fault_kvar`;
+[`transformer.summary_text`](../reference/transformer.md#groundfault.transformer.summary_text) puts them in one line and
+[`transformer.power_overview`](../reference/transformer.md#groundfault.transformer.power_overview) shows P and Q per
+order and state side by side. `transformer_power` keeps the table of version 2: one row per interval and order up to
+13 with `P_kW`, `Q_kvar` and the sequence currents `I_pos_A`, `I_neg_A`, `I_zero_A` (the fault state is now the mean
+over the undisturbed windows of the steady-state interval).
 
 `res.values` holds the scalar results – among them `IRES`, `IG`, `Iw`, `Iv`, `IH_total`, `IH_sum`, `U0` (phasor),
 `faulted_phase`, `main_channel_i_res`, `polarity_margin_deg` and, if computed, `ires_low_frequency_A`,

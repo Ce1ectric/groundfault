@@ -102,6 +102,7 @@ nav:
       - Superposition at the station: methods/superposition.md
       - Reduction factor and LV network: methods/reduction-factor.md
       - Equivalent-source method: methods/equivalent-source.md
+      - Transformer node: methods/transformer-node.md
       - Validation: methods/validation.md
   - API reference:
       - reference/index.md
@@ -109,7 +110,9 @@ nav:
       - comtrade: reference/comtrade.md
       - channels: reference/channels.md
       - evaluation: reference/evaluation.md
+      - disturbances: reference/disturbances.md
       - station: reference/station.md
+      - transformer: reference/transformer.md
       - earthing: reference/earthing.md
       - equivalent_source: reference/equivalent_source.md
       - formulas: reference/formulas.md

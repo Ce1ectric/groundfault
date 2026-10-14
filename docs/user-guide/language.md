@@ -47,10 +47,10 @@ i18n.set_language("en")
 Messung: UW_0_10_000kHz  (UW_0_10_000kHz.cfg)
 Max-Fenster: 4,300 s  | f1 = 50,0200 Hz (phase)
 IRES = 56,53 A | IG = 32,01 A | Iw = 20,00 A | Iv = 25,00 A | IH = 46,59 A
-                        Pruefung Status                              Wert
-  Fenster im stationären Bereich     OK                                 9
-                 Netzfrequenz f1     OK 50,0200 Hz (Vergleich 50,0200 Hz)
-Netzfrequenz im Bereich konstant     OK                Streuung 0,0000 Hz
+                                Pruefung Status                              Wert
+          Fenster im stationären Bereich     OK                                 9
+Gestörte Zustände im stationären Bereich     OK   keine erkannt (Schwelle 1,60 A)
+                         Netzfrequenz f1     OK 50,0200 Hz (Vergleich 50,0200 Hz)
 Kurz Rolle                    Bedeutung Hauptkanal
   V1 u_l1e Leiter-Erde-Spannung L1 (MS)          ✓
   V2 u_l2e Leiter-Erde-Spannung L2 (MS)          ✓

@@ -79,16 +79,40 @@ def test_plausibility_ok(demo_results):
     assert not any(_NUMBERED_REFERENCE.search(t) for t in _texts(res))
 
 
-def test_active_current_increase_detected(demo_series):
-    """The interval includes the step of the active residual current → warning (the interval is not chosen
-    automatically)."""
+def test_active_current_increase_excluded(demo_series):
+    """The interval includes the active residual current increase (4.6–5.4 s): it is detected and left out – the
+    max window lies in the undisturbed state, the stationarity check over the reference is OK, a plausibility row
+    and a hint report the excluded range."""
     folder, truth = demo_series
     rec = open_recording(os.path.join(str(folder), truth[0]["file"]))
     res = evaluate(rec, Intervals((2.6, 5.9), (0.2, 1.8), (7.0, 8.8)))
+    assert res.values["IRES"] == pytest.approx(truth[0]["IRES"], rel=3e-3)               # not the step
+    assert not 4.6 <= res.t_max_window <= 5.4
+    pr = res.table("plausibility").set_index("check")
+    assert pr.at["Stationarität I_H1 im Bereich", "status"] == "OK"
+    line = pr.loc["Gestörte Zustände im stationären Bereich"]
+    assert line["status"] == "NOTE" and "Wattreststromerhöhung 4,6–5,4 s" in line["value"]
+    assert any(h.startswith("Gestörte Zustände ausgeblendet: Wattreststromerhöhung 4,6–5,4 s") for h in res.hints)
+    seg = res.table("steady_state_segments")
+    assert list(seg["state"]) == ["reference", "active increase", "reference"]
+    assert list(seg["used"]) == [True, False, True]
+    assert seg.loc[1, "d_Iw_A"] == pytest.approx(15.0, abs=0.2)
+    assert res.reference_windows.sum() == 12 and len(res.steady_state.t_mid) == 16
+
+
+def test_active_current_increase_not_excluded(demo_series):
+    """exclude_disturbances=False: the predecessor's behaviour – the max window lies in the step, the stationarity
+    check warns – and the plausibility row reports the disturbance as not excluded."""
+    folder, truth = demo_series
+    rec = open_recording(os.path.join(str(folder), truth[0]["file"]))
+    res = evaluate(rec, Intervals((2.6, 5.9), (0.2, 1.8), (7.0, 8.8)), Settings(exclude_disturbances=False))
     pr = res.table("plausibility").set_index("check")
     assert pr.at["Stationarität I_H1 im Bereich", "status"] == "WARNING"
     assert "Wirkanteil ändert sich" in pr.at["Stationarität I_H1 im Bereich", "comment"]
     assert res.values["IRES"] == pytest.approx(truth[0]["IRES_active_step"], rel=3e-3)   # max window in the step
+    assert pr.at["Gestörte Zustände im stationären Bereich", "status"] == "WARNING"
+    assert any("nicht ausgeblendet (exclude_disturbances=False)" in h for h in res.hints)
+    assert res.reference_windows.sum() == 16
 
 
 def test_coil_adjustment_distinguished_from_active_current_increase(tmp_path):
@@ -157,7 +181,7 @@ def test_result_file_round_trip(demo_results, tmp_path):
     res, w, path, _ = demo_results[5.0]
     with open(path, encoding="utf-8") as f:
         d = json.load(f)
-    assert d["format"] == "groundfault-result" and d["version"] == 3
+    assert d["format"] == "groundfault-result" and d["version"] == 4
     e = load_result(path)
     assert e.values["IRES"] == pytest.approx(res.values["IRES"])
     assert set(res.tables) <= set(e.tables) | {"voltage_pre_fault", "voltage_fault", "voltage_post_fault"}

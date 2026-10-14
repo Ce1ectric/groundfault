@@ -253,7 +253,7 @@ def test_reduction_factor_interpolated_between_measured_frequencies(tmp_path):
     assert r5["injection_frequency"] == "interpoliert 50–350 Hz"
     z50, z350 = abs(1 + 0.08j) * PROBE, abs(1 + 0.56j) * PROBE
     f5 = r5["f_Hz"]
-    assert r5["UE_per_A_injection"] == pytest.approx(z50 + (z350 - z50) * (f5 - 50) / 300, rel=1e-3)
+    assert r5["Z_E_injection_Ohm"] == pytest.approx(z50 + (z350 - z50) * (f5 - 50) / 300, rel=1e-3)
     without, _ = earthing.reduction_factor(res.tables, response, interpolate=False)
     assert np.isnan(without[(without["channel"] == "UE_70m") & (without["order"] == 5)]["r"].iloc[0])
 
@@ -318,13 +318,13 @@ def test_probe_maximum_lv_network_and_naive_check(tmp_path):
         t = _truth(w, int(r["order"]))
         z_lv, r_m, ze = _c(t["Z_LV"]), _c(t["r"]), _c(t["ZE"])
         assert r["Z_E_LV_Ohm"] == pytest.approx(0.97 * abs(z_lv), rel=0.02)
-        assert r["Z_E_fault_Ohm"] == pytest.approx(0.97 * abs(r_m * ze), rel=0.02)
+        assert r["rZE_fault_Ohm"] == pytest.approx(0.97 * abs(r_m * ze), rel=0.02)
         # second method: ratio from the currents, independent of the probe
-        assert r["Z_LV_to_Z_E_fault"] == pytest.approx(abs(z_lv) / abs(r_m * ze), rel=0.02)
-        assert r["Z_LV_to_Z_E_fault"] == pytest.approx(1.0 / r["share_I_LV"], rel=1e-9)
+        assert r["Z_LV_to_rZE_fault"] == pytest.approx(abs(z_lv) / abs(r_m * ze), rel=0.02)
+        assert r["Z_LV_to_rZE_fault"] == pytest.approx(1.0 / r["share_I_LV"], rel=1e-9)
         assert r["parallel_check"] == "satisfied" and r["earth_current_check"] == "satisfied"
     f = remote.set_index("order")
-    assert (mx.set_index("order")["Z_LV_to_Z_E_fault"] - f["Z_LV_to_Z_E_fault"]).abs().max() < 1e-9
+    assert (mx.set_index("order")["Z_LV_to_rZE_fault"] - f["Z_LV_to_rZE_fault"]).abs().max() < 1e-9
     eff = res.tables["station_lv_network_eff"]
     e_max, e_5 = eff[eff["channel"] == "max(UE)"].iloc[0], eff[eff["channel"] == "UE_70m"].iloc[0]
     assert e_max["probe"] == "UE_5m"

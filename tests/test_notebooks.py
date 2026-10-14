@@ -148,3 +148,50 @@ def test_committed_notebooks_are_regenerated_identically(generator, tmp_path):
             assert new == f.read(), "%s differs from the generator – regenerate the notebooks" % rel
     ids = [c["id"] for c in nbformat.read(str(tmp_path / generated[0]), as_version=4).cells]
     assert len(set(ids)) == len(ids) and all(re.fullmatch(r"[A-Za-z0-9_-]{1,64}", i) for i in ids)
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_numbered_cell_ids_keep_their_cells(generator, lang):
+    """Cells added after a release have a key instead of a number, so the numbered ids still denote the same cells
+    and a working copy updated from an earlier version maps every cell to its counterpart: the section headings stay
+    at the ids they had in 2.x, the numbers have no gaps, the cells of the transformer node have keys."""
+    sections = ((generator.measurement_notebook, 0, (2, 4, 6, 8, 20, 22, 24)),
+                (generator.campaign_notebook, 1, (2, 4, 6, 10, 12, 14, 16)))
+    for build, k, numbers in sections:
+        name = generator.NAMES[lang][k]
+        cells = {c["id"]: c["source"] for c in build(lang, False).cells}
+        for section, number in enumerate(numbers, start=1):
+            assert cells["%s-%02d" % (name, number)].startswith("## %d · " % section)
+        numbered = sorted(int(i[len(name) + 1:]) for i in cells if i[len(name) + 1:].isdigit())
+        assert numbered == list(range(len(numbered)))
+    name = generator.NAMES[lang][0]
+    cells = {c["id"]: c["source"] for c in generator.measurement_notebook(lang, False).cells}
+    assert cells["%s-transformer-node-text" % name].startswith("### ")
+    assert cells["%s-transformer-node" % name].startswith('if res is not None and "transformer_node" in res.tables')
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_transformer_cell_runs(generator, lang, tmp_path):
+    """The cell of the transformer node shows its tables and figures for a transformer recording and is skipped with
+    a note without transformer currents."""
+    import matplotlib.pyplot as plt
+    from groundfault import Intervals, demo, evaluate, i18n, open_recording, report, transformer
+    cell = next(c for c in _code(generator.measurement_notebook(lang, False)) if '"transformer_node" in res.tables' in c)
+    path = str(tmp_path / "TR_0_10_000kHz.cfg")
+    w = demo.make_transformer_recording(path)
+    b = w["intervals"]
+    shown, printed = [], []
+    plt.close("all")                                   # figures left open by other tests
+    with i18n.language(lang):
+        res = evaluate(open_recording(path), Intervals(tuple(b["steady_state"]), tuple(b["pre_fault"]),
+                                                       tuple(b["post_fault"])))
+        namespace = dict(res=res, transformer=transformer, report=report, show=shown.append,
+                         display=lambda x: shown.append(x), Markdown=str, print=printed.append)
+        exec(cell, namespace)
+        assert len(plt.get_fignums()) == 2 and not printed
+        plt.close("all")
+        tables = [x for x in shown if hasattr(x, "columns")]
+        assert len(tables) == 2 and "P_fault_kW" in tables[0].columns and tables[1]["significant"].all()
+        no_transformer = type("R", (), {"tables": {}})()
+        exec(cell, dict(namespace, res=no_transformer))
+        assert len(printed) == 1 and not plt.get_fignums()

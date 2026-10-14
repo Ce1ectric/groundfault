@@ -22,7 +22,9 @@ complex RMS phasors, English column names and language-neutral codes in all tabl
 | [comtrade](comtrade.md) | read COMTRADE files (IEEE C37.111, revisions 1991/1999/2013; binary data memory-mapped for large files) and write them (revision 1999, for synthetic recordings) |
 | [channels](channels.md) | channel roles (line-to-earth voltages, fault current, coil currents, station, transformer) |
 | [evaluation](evaluation.md) | evaluation of one recording (assessment quantities, voltages, station, transformer) |
+| [disturbances](disturbances.md) | disturbed states during the fault (active residual current increase, network change) – not the reference of the assessment |
 | [station](station.md) | station per frequency: earth potential rise and touch voltage, direct and fault-related (superposition), PEN and shield currents, current into the LV network and Z_E of the LV network |
+| [transformer](transformer.md) | transformer node: power, apparent and upstream impedance (transformer + HV network) per order and sequence before, during and after the fault |
 | [earthing](earthing.md) | groundmeas: read earthing measurements, compare them with the staged fault test (reduction factor, LV network in parallel) and enter the fault test |
 | [equivalent_source](equivalent_source.md) | equivalent-source method (active two-terminal equivalent per harmonic order) |
 | [formulas](formulas.md) | closed-form formulas (residual current, √2 method, angle method, measurement uncertainty, harmonics, resistive approach, limits, line parameters) |
@@ -71,6 +73,7 @@ complex RMS phasors, English column names and language-neutral codes in all tabl
 | compare with earthing measurements | [`earthing.Database`](earthing.md#groundfault.earthing.Database), [`frequency_response`](earthing.md#groundfault.earthing.frequency_response), [`compare`](earthing.md#groundfault.earthing.compare), [`reduction_factor`](earthing.md#groundfault.earthing.reduction_factor), [`check_lv_network`](earthing.md#groundfault.earthing.check_lv_network) |
 | enter a test in groundmeas | [`earthing.export_to_groundmeas`](earthing.md#groundfault.earthing.export_to_groundmeas) |
 | evaluate a campaign | [`campaign.overview`](campaign.md#groundfault.campaign.overview), [`consistency`](campaign.md#groundfault.campaign.consistency), [`resistive_approach`](campaign.md#groundfault.campaign.resistive_approach) |
+| transformer node | tables `transformer_node`, `transformer_impedance` of [`evaluate`](evaluation.md#groundfault.evaluation.evaluate), [`transformer.power_overview`](transformer.md#groundfault.transformer.power_overview), [`report.transformer_impedance`](report.md#groundfault.report.transformer_impedance) |
 | equivalent sources | [`equivalent_source.load_series`](equivalent_source.md#groundfault.equivalent_source.load_series), [`fit_equivalent_source`](equivalent_source.md#groundfault.equivalent_source.fit_equivalent_source), [`ires_at_impedance`](equivalent_source.md#groundfault.equivalent_source.ires_at_impedance), [`monte_carlo`](equivalent_source.md#groundfault.equivalent_source.monte_carlo) |
 | figures and tables for the report | [`report.all_figures`](report.md#groundfault.report.all_figures), [`report.report_tables`](report.md#groundfault.report.report_tables), [`report.export_tables`](report.md#groundfault.report.export_tables) |
 | signal explorer | [`explorer.explorer`](explorer.md#groundfault.explorer.explorer), [`explorer.explorer_html`](explorer.md#groundfault.explorer.explorer_html) |

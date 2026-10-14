@@ -383,7 +383,7 @@ def test_relevance_codes(u_fault, u_injection, code):
 def _spectrum_rows(r, measured=(True, True, True), uncertain=(False, False, False)):
     """Rows of one probe against one earthing measurement as built by reduction_factor (orders 1, 5, 7)."""
     return pd.DataFrame(dict(order=[1, 5, 7], f_Hz=[50.0, 250.0, 350.0], r=list(r),
-                             UE_per_A_fault=[0.5 * x for x in r], UE_per_A_injection=[0.5, 0.5, 0.5],
+                             rZE_fault_Ohm=[0.5 * x for x in r], Z_E_injection_Ohm=[0.5, 0.5, 0.5],
                              uncertain=list(uncertain), _measured=list(measured)))
 
 
@@ -392,8 +392,8 @@ def test_trend_codes_against_exact_power_law(exponent, code):
     f = np.array([50.0, 250.0, 350.0])
     c = earthing._classify(_spectrum_rows(0.4 * (f / 50.0) ** exponent), (0.25, 0.6))
     assert c["trend_r_vs_f"] == code and c["exponent_r_vs_f"] == pytest.approx(exponent, abs=1e-9)
-    assert c["exponent_Z_fault"] == pytest.approx(exponent, abs=1e-9)
-    assert c["exponent_Z_injection"] == pytest.approx(0.0)
+    assert c["exponent_rZE_fault"] == pytest.approx(exponent, abs=1e-9)
+    assert c["exponent_Z_E_injection"] == pytest.approx(0.0)
     assert (c["r_50Hz"], c["classification_r_50Hz"], c["r_typical_min"], c["r_typical_max"]) == (0.4, "typical", 0.25,
                                                                                                     0.6)
     assert c["trend_orders"] == "1, 5, 7"
@@ -414,7 +414,7 @@ def test_trend_only_from_measured_and_certain_orders():
 
 def _effective_row(**kw):
     row = dict(channel="max(UE)", probe="UE_5m", injection_id=1, distance_injection_m=70.0, distance_match="maximum",
-               r_50Hz=0.05, Z_E_fault_50Hz_Ohm=0.05, Z_E_injection_50Hz_Ohm=1.0, classification_r_50Hz="below",
+               r_50Hz=0.05, rZE_fault_50Hz_Ohm=0.05, Z_E_injection_50Hz_Ohm=1.0, classification_r_50Hz="below",
                r_typical_min=0.25, r_typical_max=0.6, trend_r_vs_f="falling", exponent_r_vs_f=-0.3,
                trend_orders="1, 5, 7", reference_current_A=100.0, U_E_fault_at_reference_current_V=5.0,
                U_E_injection_at_reference_current_V=100.0, U_Tp_V=100.0, F_factor=2.5, F_times_U_Tp_V=250.0,
@@ -427,8 +427,8 @@ def test_reduction_hints_from_codes():
     h = earthing.reduction_hints(_effective_row())
     assert len(h) == 1
     assert h[0].startswith("Reduktionsfaktor Sondenmaximum (UE_5m) ↔ Erdungsmessung ID 1 (70 m): r = 0,05 bei 50 Hz "
-                           "liegt unter dem üblichen Bereich 0,25–0,6 (Z_E aus dem Erdschluss (max(U_E)/I_F) 0,05 Ω, "
-                           "aus der Erdungsmessung 1 Ω).")
+                           "liegt unter dem üblichen Bereich 0,25–0,6 (r·Z_E aus dem Erdschluss (max(U_E)/I_F) "
+                           "0,05 Ω, Z_E aus der Erdungsmessung 1 Ω).")
     assert h[0].endswith("Für die Bewertung: beim Bezugsstrom 100 A ergibt der Erdschluss U_E = 5 V, die "
                          "Erdungsmessung 100 V – die Abweichung von 95 V sind 38 % von F·U_Tp = 250 V; beide liegen "
                          "unter F·U_Tp, die Bewertung ändert sich nicht.")
@@ -495,8 +495,8 @@ def test_messages_in_english(example_db, tmp_path):
     assert set(v[v["type"] == "earthing_current"]["designation"]) == {"test current"}
     assert set(rat[rat["channel"] == "UT"]["distance_match"]) == {"touch"}
     assert h[0].startswith("Reduction factor probe maximum (UE_5m) ↔ earthing measurement ID 1 (70 m): r = 0.05 at "
-                           "50 Hz is below the typical range 0.25–0.6 (Z_E from the fault test (max(U_E)/I_F) 0.05 Ω, "
-                           "from the earthing measurement 1 Ω).")
+                           "50 Hz is below the typical range 0.25–0.6 (r·Z_E from the fault test (max(U_E)/I_F) "
+                           "0.05 Ω, Z_E from the earthing measurement 1 Ω).")
     assert h[0].endswith("the deviation of 95 V is 38 % of F·U_Tp = 250 V; both are below F·U_Tp, the assessment "
                          "does not change.")
     assert "r rises with the frequency (r ∝ f^0.3 over the orders 1, 5, 7)" in h_rising[0]

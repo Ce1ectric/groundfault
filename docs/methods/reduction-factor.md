@@ -4,8 +4,10 @@ During an earth fault at a secondary substation, only part of the fault current 
 electrode into the soil; the rest returns through cable shields, PEN conductors and other return conductors. The
 **reduction factor** r is the share that flows through the earth: the earth potential rise is U_E = r·Z_E·I_F. A
 staged fault test measures the product r·Z_E – the fault-related earth potential rise per ampere of fault current –,
-an earthing measurement with current injection measures the earthing impedance Z_E. Their ratio is the reduction
-factor of the station, per harmonic order. This page describes how groundfault forms it from the
+an earthing measurement with current injection measures the earthing impedance Z_E. groundfault therefore calls the
+ratio U_E/I_F of the fault test **r·Z_E** (columns `rZE_…`), never Z_E: it contains the reduction factor. Only with
+the earth current I_E = I_F − I_S (shield currents measured) does the fault test give Z_E itself
+(`Z_E_earth_current_Ohm`). The ratio r·Z_E / Z_E is the reduction factor of the station, per harmonic order. This page describes how groundfault forms it from the
 [station evaluation](superposition.md) and the earthing measurements of a groundmeas database, how it rates the
 result, and how the earthing impedance of the LV network is compared with the earthing measurement. The functions are
 [`earthing.reduction_factor`](../reference/earthing.md#groundfault.earthing.reduction_factor) and
@@ -18,8 +20,8 @@ Both measurements are normalised to 1 A, per harmonic order m:
 
 | Measurement | Voltage per ampere | Source |
 |---|---|---|
-| staged fault test | \( \lvert\Delta\underline{U}_{\text{E},m}/\underline{I}_{\text{F},m}\rvert \) – the fault-related component | table `station_frequency` (`Z_fault_Ohm`) |
-| earthing measurement | \( \lvert\underline{U}_{\text{E},m}/\underline{I}_{\text{test},m}\rvert = \lvert\underline{Z}_{\text{E},m}\rvert \) at the probe | groundmeas, `earthing_impedance` per probe distance ([`frequency_response`](../reference/earthing.md#groundfault.earthing.frequency_response)) |
+| staged fault test | \( \lvert r\,\underline{Z}_{\text{E},m}\rvert = \lvert\Delta\underline{U}_{\text{E},m}/\underline{I}_{\text{F},m}\rvert \) – the fault-related component | table `station_frequency` (`Z_fault_Ohm`), in the reduction factor table `rZE_fault_Ohm` (as measured: `rZE_direct_Ohm`) |
+| earthing measurement | \( \lvert\underline{U}_{\text{E},m}/\underline{I}_{\text{test},m}\rvert = \lvert\underline{Z}_{\text{E},m}\rvert \) at the probe | groundmeas, `earthing_impedance` per probe distance ([`frequency_response`](../reference/earthing.md#groundfault.earthing.frequency_response)); `Z_E_injection_Ohm` |
 
 The fault-related component is used, not the value as measured: the background present before the fault does not
 exist at the injection. Uncertain fault-test values (column `uncertain`, see
@@ -30,10 +32,14 @@ exist at the injection. Uncertain fault-test values (column `uncertain`, see
 Per order the reduction factor is the ratio of the magnitudes,
 
 \[
-r_m = \frac{\lvert\Delta\underline{U}_{\text{E},m}/\underline{I}_{\text{F},m}\rvert}{\lvert\underline{Z}_{\text{E},m}\rvert}
+r_m = \frac{\lvert r\,\underline{Z}_{\text{E},m}\rvert}{\lvert\underline{Z}_{\text{E},m}\rvert}
+    = \frac{\lvert\Delta\underline{U}_{\text{E},m}/\underline{I}_{\text{F},m}\rvert}{\lvert\underline{Z}_{\text{E},m}\rvert}
 \]
 
 (column `r`; `r_to_r_50Hz` = r_m/r_1 shows the trend referred to 50 Hz). The angles of both impedances do not enter.
+`r_min` and `r_max` are the same ratio with the smallest and the largest of the single superposition methods
+(inception, clearance, voltage reference) – the span drawn as a bar in the figure of r over the frequency, in the same
+way as for the impedances. `r_direct` uses the value as measured (with the background).
 Over all orders with both values, weighted with the spectrum of the fault current, the RMS value is
 
 \[
@@ -71,8 +77,8 @@ spectrum, effective = earthing.reduction_factor(res, response, reference_current
 
 s = spectrum[spectrum["channel"] == "max(UE)"]                  # probe maximum ↔ farthest probe
 e = effective[effective["channel"] == "max(UE)"].iloc[0]
-u_fault = s["UE_per_A_fault"] * s["I_F_A"]                        # |ΔU_E,m|
-u_inj = s["UE_per_A_injection"] * s["I_F_A"]                      # |Z_E,m|·|I_F,m|
+u_fault = s["rZE_fault_Ohm"] * s["I_F_A"]                        # |ΔU_E,m|
+u_inj = s["Z_E_injection_Ohm"] * s["I_F_A"]                      # |Z_E,m|·|I_F,m|
 r_eff = np.sqrt((u_fault ** 2).sum() / (u_inj ** 2).sum())
 b = np.polyfit(np.log(s["f_Hz"]), np.log(s["r"]), 1)[0]          # r ∝ f^b
 print("r_eff  = %.4f (table %.4f)" % (r_eff, e["r_eff"]))
@@ -83,7 +89,7 @@ u_m = np.sqrt((u_inj ** 2).sum() / (s["I_F_A"] ** 2).sum()) * i_ref
 print("at %.0f A: U_E fault test %.1f V, earthing measurement %.1f V, deviation %.1f %% of F·U_Tp = %.0f V → %s"
       % (i_ref, u_f, u_m, 100 * abs(u_m - u_f) / limit, limit, e["assessment_relevance"]))
 print("coverage of I_F²: %.1f %%" % e["I_F_coverage_pct"])
-print(e[["r_eff", "r_eff_direct", "r_eff_rms", "r_eff_shield", "Z_E_fault_to_injection_eff", "r_50Hz",
+print(e[["r_eff", "r_eff_direct", "r_eff_rms", "r_eff_shield", "Z_E_earth_current_to_injection_eff", "r_50Hz",
          "classification_r_50Hz"]].to_string())
 ```
 
@@ -92,13 +98,13 @@ r_eff  = 0.4534 (table 0.4534)
 b      = -0.201 (table -0.201, falling)
 at 100 A: U_E fault test 43.8 V, earthing measurement 96.7 V, deviation 21.1 % of F·U_Tp = 250 V → unchanged
 coverage of I_F²: 100.0 %
-r_eff                         0.453392
-r_eff_direct                  0.453374
-r_eff_rms                     0.469794
-r_eff_shield                  0.453371
-Z_E_fault_to_injection_eff    1.000048
-r_50Hz                         0.50001
-classification_r_50Hz          typical
+r_eff                                 0.453392
+r_eff_direct                          0.453374
+r_eff_rms                             0.469794
+r_eff_shield                          0.453371
+Z_E_earth_current_to_injection_eff    1.000048
+r_50Hz                                 0.50001
+classification_r_50Hz                  typical
 ```
 
 ## Interpolation, never extrapolation
@@ -115,18 +121,18 @@ path = demo.make_groundmeas_db(os.path.join(d["base"], "sparse.db"), orders=(1, 
 with earthing.Database(path) as db:
     sparse = earthing.frequency_response(db, [1])
 sp2, eff2 = earthing.reduction_factor(res, sparse)
-print(sp2[sp2["channel"] == "max(UE)"][["order", "f_Hz", "UE_per_A_injection", "injection_frequency", "r"]]
+print(sp2[sp2["channel"] == "max(UE)"][["order", "f_Hz", "Z_E_injection_Ohm", "injection_frequency", "r"]]
       .round(3).to_string(index=False))
 print(eff2[eff2["channel"] == "max(UE)"][["orders", "I_F_coverage_pct", "r_eff", "trend_orders", "trend_r_vs_f"]]
       .round(3).to_string(index=False))
 ```
 
 ```text
- order   f_Hz  UE_per_A_injection     injection_frequency     r
-     1  49.98               0.933       measured at 50 Hz 0.500
-     5 249.90               1.011 interpolated 150–350 Hz 0.396
-     7 349.86               1.066      measured at 350 Hz 0.350
-    11 549.78                 NaN                           NaN
+ order   f_Hz  Z_E_injection_Ohm     injection_frequency     r
+     1  49.98              0.933       measured at 50 Hz 0.500
+     5 249.90              1.011 interpolated 150–350 Hz 0.396
+     7 349.86              1.066      measured at 350 Hz 0.350
+    11 549.78                NaN                           NaN
  orders  I_F_coverage_pct  r_eff trend_orders trend_r_vs_f
 1, 5, 7            99.265  0.453         1, 7      falling
 ```
@@ -163,8 +169,8 @@ The cross-check from the **shield current** is independent of both voltage measu
 does not return through the shields, \( \underline{I}_\text{E} = \underline{I}_\text{F} - \sum\Delta\underline{I}_\text{S} \)
 (all shield-current channels, fault-related, each turned into the direction of I_F). It is valid only if the
 shield-current channels capture all return conductors. With it, the fault test also gives the earthing impedance
-\( \lvert\Delta U_\text{E}\rvert/\lvert I_\text{E}\rvert \) (`UE_per_A_earth_current`), and
-`Z_E_fault_to_injection` = r/r_S compares it with the earthing measurement: 1 means that both measure the same earthing
+\( \lvert\Delta U_\text{E}\rvert/\lvert I_\text{E}\rvert \) (`Z_E_earth_current_Ohm`), and
+`Z_E_earth_current_to_injection` = r/r_S compares it with the earthing measurement: 1 means that both measure the same earthing
 impedance, a smaller value that the earthing measurement is higher than the shield current explains. `share_shield`
 is \( \lvert\Delta I_\text{S}\rvert/\lvert I_\text{F}\rvert \). (The max-window table `station_currents` also gives
 r = |I_F − I_S|/|I_F| per order and, for comparison, 1 − |I_S|/|I_F|, which ignores the angle between the two currents
@@ -184,11 +190,16 @@ of the earthing measurement.
 **Trend over the frequency** (`trend_r_vs_f`): a power law r ∝ f^b, the exponent b (`exponent_r_vs_f`) fitted as a
 regression line of log r over log f at the reliable orders (`trend_orders`: the earthing measurement was measured at
 that frequency and the fault-test value is not uncertain; with fewer than two such orders, all orders with an r).
-`falling` for b ≤ −0.1 – the expected case –, `rising` for b ≥ 0.1, otherwise `constant`. The same exponent of both
-impedances (`exponent_Z_fault`, `exponent_Z_injection`) shows whether a deviation grows with the frequency.
+`falling` for b ≤ −0.1 – the expected case –, `rising` for b ≥ 0.1, otherwise `constant`. The same exponent of r·Z_E
+and Z_E (`exponent_rZE_fault`, `exponent_Z_E_injection`; b = b(r·Z_E) − b(Z_E)) shows whether a deviation grows with
+the frequency. The figures of the reduction factor draw r over the frequency like the impedances – per order with the
+span of the superposition methods, ⊗ for uncertain fault-test values – together with the fitted trend
+\( r = c\,f^{\,b} \) over the reliable orders ([`earthing.power_fit`](../reference/earthing.md#groundfault.earthing.power_fit)):
+
+![Reduction factor of the demo station over the frequency (a) and the compared quantities r·Z_E and Z_E (b)](../assets/station_reduction_factor.png)
 
 **Relevance for the assessment** (`assessment_relevance`): with small earthing impedances relative deviations look
-large, while the assessment of an earthing system depends on the voltage. Both impedances are therefore converted to a
+large, while the assessment of an earthing system depends on the voltage. Both quantities (r·Z_E and Z_E) are therefore converted to a
 **reference current** of the user – the argument `reference_current_A`, otherwise the largest limit of the residual
 current in the settings of the evaluation (`Settings.ires_limits`) – with the measured spectrum of the fault current:
 U_E = Z_eff·I_ref, with

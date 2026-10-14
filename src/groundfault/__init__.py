@@ -20,8 +20,12 @@ symmetrical        symmetrical components, line-to-line quantities, common angle
 formulas           closed-form formulas (residual current, √2 method, angle method, measurement uncertainty,
                    harmonics, resistive approach, limits, line parameters)
 evaluation         evaluation of one recording (assessment quantities, voltages, station, transformer)
+disturbances       disturbed states during the fault (active residual current increase, network change) – not
+                   the reference of the assessment
 station            station per frequency: earth potential rise and touch voltage, direct and fault-related
                    (superposition), PEN and shield currents, current into the LV network and Z_E of the LV network
+transformer        transformer node: power, apparent and upstream impedance (transformer + HV network) per order and
+                   sequence before, during and after the fault
 earthing           groundmeas: read earthing measurements, compare them with the staged fault test (reduction
                    factor, LV network in parallel) and enter the fault test
 rms                evaluation of RMS recordings (trend, resonance curve, comparison with the device RMS values)
@@ -37,7 +41,7 @@ i18n               output language (English/German): messages, column names, num
 legacy             reading result and campaign files of the predecessor tool (German keys)
 demo               synthetic recordings with known solution (tests, training)
 """
-__version__ = "2.0.1"
+__version__ = "3.0.0"
 """Version of the package."""
 
 from .comtrade import Recording, ComtradeError, open_recording, write_comtrade  # noqa: E402

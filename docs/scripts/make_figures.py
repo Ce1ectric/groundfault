@@ -61,6 +61,24 @@ def main(argv=None):
     save(report.source_fit(series, Z_E=2.5), "equivalent_source_fit")
     save(report.ires_over_ze(series, 10.0), "equivalent_source_ires_over_ze")    # no limits: the user defines them
 
+    # disturbed states: network change at 3.8 s (Iv +12 A, coil currents unchanged) and the active residual current
+    # increase of the demo from 4.6 to 5.4 s, both inside the steady-state interval
+    path = os.path.join(base, "SUB_network_10_000kHz.cfg")
+    demo.make_substation_recording(path, 0.0, duration=9.0, network_step=(3.8, 12.0))
+    rec_n = open_recording(path)
+    res_n = evaluate(rec_n, Intervals((2.6, 5.9), (0.2, 1.8), (7.0, 8.8)))
+    save(report.rms_trend(res_n, rec_n, channels=("i_res", "i_coil")), "disturbances_rms_trend")
+
+    # transformer node: currents in the generator reference arrow system, active residual current increase
+    path = os.path.join(base, "TR_0_10_000kHz.cfg")
+    w = demo.make_transformer_recording(path, generator_reference=True, active_step=(3.0, 3.8, 12.0), duration=7.0,
+                                        t_off=5.5)
+    b = w["intervals"]
+    res_t = evaluate(open_recording(path), Intervals(tuple(b["steady_state"]), tuple(b["pre_fault"]),
+                                                     tuple(b["post_fault"])))
+    save(report.transformer_power(res_t, orders=(5, 7, 11)), "transformer_power")
+    save(report.transformer_impedance(res_t, orders=(5, 7, 11)), "transformer_impedance")
+
     # station with the earthing measurement of the demo database
     st = d["station"]
     rec = open_recording(os.path.join(camp, st["cfg"]))

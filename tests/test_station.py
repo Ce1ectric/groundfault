@@ -74,6 +74,15 @@ def test_fault_component_despite_background_and_frequency_drift(tmp_path, with_v
     line = h[(h["channel"] == "UE_70m") & (h["I_limit_A"] == 50.0)].iloc[0]
     target50 = 50.0 / w["IF_rms"] * w["UE_70m_rms"]                       # fault-related only, scaled exactly
     assert line["U_fault_V"] == pytest.approx(target50, rel=0.02)
+    # upper bound with background and fault-related component in phase at every order: at least the phasor sum of
+    # the test, at most fault-related plus background (RMS values), and computed per order
+    sf = res.table("station_frequency")
+    g = sf[sf["channel"] == "UE_70m"]
+    scale = 50.0 / float(res.steady_state.rms[res.max_index, res.roles.main("i_res").index])
+    upper = np.sqrt(np.sum((g["U_background_V"] + scale * g["U_fault_V"]) ** 2))
+    assert line["U_background_plus_fault_in_phase_V"] >= line["U_background_plus_fault_V"] - 1e-9
+    assert line["U_background_plus_fault_in_phase_V"] == pytest.approx(upper, rel=0.05)      # + rest of background
+    assert line["U_background_plus_fault_in_phase_V"] <= line["U_fault_V"] + np.sqrt(np.sum(g["U_background_V"] ** 2)) + 0.5
     assert not any(x.startswith("Keine Hochrechnung") for x in res.hints)
     assert {"UE_at_50A_V", "UE_at_100A_V"} <= set(res.table("station_metrics").columns)
 

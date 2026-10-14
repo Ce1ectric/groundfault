@@ -107,13 +107,14 @@ IH_total           46.59       46.59    A
   IH_sum           46.58       46.58    A
     UH1n        11547.07    11547.07    V
 true: IRES 56.52 A | IG 32.02 A | Iw 20.00 A | Iv 25.00 A | IH 46.58 A
-                                     check status                                         value
-      Windows in the steady-state interval     OK                                             9
-                      Network frequency f1     OK            50.0200 Hz (comparison 50.0200 Hz)
+                                        check status                                         value
+         Windows in the steady-state interval     OK                                             9
+Disturbed states in the steady-state interval     OK              none detected (threshold 1.60 A)
+                         Network frequency f1     OK            50.0200 Hz (comparison 50.0200 Hz)
 …
-             Polarity of the fault current     OK Iw = 20.00 A (margin 38.7° to the ±90° limit)
-                Fault-current CT IF2 ↔ IF1     OK                 RMS ratio 1.008, Δφ(H1) -0.5°
-                             Faulted phase     OK                       L3: 0 V (0.0 % of max.)
+                Polarity of the fault current     OK Iw = 20.00 A (margin 38.7° to the ±90° limit)
+                   Fault-current CT IF2 ↔ IF1     OK                 RMS ratio 1.008, Δφ(H1) -0.5°
+                                Faulted phase     OK                       L3: 0 V (0.0 % of max.)
 …
 ```
 
@@ -234,18 +235,18 @@ with earthing.Database(d["db"]) as db:            # opened read-only
 spectrum, effective = earthing.reduction_factor(res_st, response, r_typical=(0.3, 0.8), reference_current_A=100.0,
                                                 U_Tp=100.0, F=2.5)        # illustrative values – define your own
 mx = spectrum[spectrum["channel"] == "max(UE)"]
-print(mx[["order", "f_Hz", "UE_per_A_fault", "UE_per_A_injection", "r"]].round(3).to_string(index=False))
+print(mx[["order", "f_Hz", "rZE_fault_Ohm", "Z_E_injection_Ohm", "r"]].round(3).to_string(index=False))
 print(effective[["channel", "probe", "r_eff", "classification_r_50Hz", "trend_r_vs_f",
                  "assessment_relevance"]].round(3).to_string(index=False))
 print("true r:", {m: round(abs(v["r"]), 2) for m, v in d["station"]["orders"].items()})
 ```
 
 ```text
- order   f_Hz  UE_per_A_fault  UE_per_A_injection    r
-     1  49.98           0.466               0.933 0.50
-     5 249.90           0.401               1.002 0.40
-     7 349.86           0.373               1.066 0.35
-    11 549.78           0.372               1.239 0.30
+ order   f_Hz  rZE_fault_Ohm  Z_E_injection_Ohm    r
+     1  49.98          0.466              0.933 0.50
+     5 249.90          0.401              1.002 0.40
+     7 349.86          0.373              1.066 0.35
+    11 549.78          0.372              1.239 0.30
 channel  probe  r_eff classification_r_50Hz trend_r_vs_f assessment_relevance
 max(UE) UE_70m  0.453               typical      falling            unchanged
  UE_70m UE_70m  0.453               typical      falling            unchanged
@@ -288,7 +289,7 @@ figures/Station_Elm_Road_10_000kHz/Station_Elm_Road_10_000kHz_station_frequency.
 figures/Station_Elm_Road_10_000kHz/Station_Elm_Road_10_000kHz_station_background.png
 figures/Station_Elm_Road_10_000kHz/Station_Elm_Road_10_000kHz_station_lv_network.png
 figures/Station_Elm_Road_10_000kHz/Station_Elm_Road_10_000kHz_reduction_factor.png
-36 table files, e.g. results/Station_Elm_Road_10_000kHz/tables/Station_Elm_Road_10_000kHz_tables.docx
+38 table files, e.g. results/Station_Elm_Road_10_000kHz/tables/Station_Elm_Road_10_000kHz_tables.docx
 ```
 
 The figures have their final size for an A4 page and no titles; the tables are written as CSV and Markdown files plus
@@ -337,7 +338,7 @@ To try them, put the two example notebooks into an empty folder – copy them, o
 The first cell prints the version, the work folder it found and the detected folder layout:
 
 ```text
-groundfault 2.0.1 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
+groundfault 3.0.0 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
 ```
 
 For your own campaigns use the reference copies in `notebooks/en/templates/` (placeholders instead of the demo

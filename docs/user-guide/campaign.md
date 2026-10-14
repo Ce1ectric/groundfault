@@ -505,6 +505,7 @@ Harmonic content           35.7         23.5         46.6         30.9
 | `epr_<measurement>` | stations: largest measured earth potential rise and r·Z_E per 100 A per order |
 | `shield_current_<measurement>` | stations with a shield current: shield current and the reduction factor from it per order |
 | `transformer` | with line currents: harmonic power and sequence currents at the transformer |
+| `transformer_summary` | with line currents: polarity of the currents, upstream impedance X_up/m (with HV voltages split into transformer and HV network) and change of the fundamental power during the fault – one column per measurement, to compare the tests of a site |
 | `assessment_quantities` | measured and assessment value of every measurement |
 | `equivalent_sources` | with `series`: R_q, X_q, U_q, residual and Thevenin check per order; with `Z_E` also the current per order at Z_E, the remainder and I_RES |
 

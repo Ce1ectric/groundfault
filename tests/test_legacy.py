@@ -168,3 +168,27 @@ def test_check_option_and_check_keys_messages():
         legacy.check_keys("MEASUREMENTS", dict(name="M1", messung="SUB_0"), ("name", "measurement"))
     legacy.check_keys("RESISTIVE", dict(from_ll=True), ("U_thd95_V", "from_ll"))
     assert legacy.check_option("GROUNDMEAS_EXPORT", 1, (False, True, "replace")) == 1     # 1 counts as True
+
+
+def test_result_file_of_groundfault_2_0_gets_the_current_column_names(tmp_path):
+    """Result files of groundfault 2.0 (format version 3) call U_E/I_F of the fault test ``Z_E_fault_Ohm``; read with
+    3.0 the tables carry the r·Z_E names (``rZE_fault_Ohm`` …), other columns stay as they are."""
+    old = {"format": legacy.RESULT_FORMAT, "version": 3, "meta": {"measurement": "Station_A_10_000kHz"},
+           "tables": {"station_lv_network": [{"channel": "UE_70m", "order": 1, "Z_E_LV_Ohm": 0.9,
+                                              "Z_E_fault_Ohm": 0.05, "Z_LV_to_Z_E_fault": 18.0,
+                                              "Z_total_fault_Ohm": 0.06}],
+                      "station_lv_network_eff": [{"channel": "UE_70m", "Z_E_fault_eff_Ohm": 0.05,
+                                                  "Z_total_fault_eff_Ohm": 0.06}]}}
+    p = tmp_path / "Station_A_10_000kHz_result.json"
+    p.write_text(json.dumps(old), encoding="utf-8")
+    res = gf.load_result(str(p))
+    lv = res.table("station_lv_network")
+    assert list(lv.columns) == ["channel", "order", "Z_E_LV_Ohm", "rZE_fault_Ohm", "Z_LV_to_rZE_fault",
+                                "Z_E_earth_current_Ohm"]
+    assert list(res.table("station_lv_network_eff").columns) == ["channel", "rZE_fault_eff_Ohm",
+                                                                 "Z_E_earth_current_eff_Ohm"]
+    current = dict(old, version=legacy.RESULT_VERSION)               # a current file is not changed
+    assert legacy.update_result(current) == current
+    # the predecessor's German names lead to the current names as well
+    assert legacy.translate_key("Z_E_Erdschluss_Ohm") == "rZE_fault_Ohm"
+    assert legacy.translate_key("UE_je_A_Erdungsstrom") == "Z_E_earth_current_Ohm"

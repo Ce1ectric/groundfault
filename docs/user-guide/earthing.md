@@ -171,15 +171,15 @@ res = gf.evaluate(rec, gf.Intervals((2.5, 5.3), (0.2, 1.8), (5.8, 7.8)), roles=r
 
 long_df, ratio = earthing.compare(res.table("station_frequency"), response, measurement=res.name)
 print(ratio[ratio["order"] == 1][["channel", "probe", "distance_fault_m", "distance_injection_m", "distance_match",
-                                  "Z_fault_Ohm", "Z_injection_Ohm", "ratio_fault"]].round(3).to_string(index=False))
+                                  "Z_fault_Ohm", "Z_E_injection_Ohm", "ratio_fault"]].round(3).to_string(index=False))
 ```
 
 ```text
-channel  probe  distance_fault_m  distance_injection_m distance_match  Z_fault_Ohm  Z_injection_Ohm  ratio_fault
-max(UE) UE_70m              70.0                  70.0        maximum        0.466            0.933        0.500
- UE_70m UE_70m              70.0                  70.0          equal        0.466            0.933        0.500
-  UE_5m  UE_5m               5.0                  70.0      different        0.301            0.933        0.323
-     UT     UT               1.0                   1.0          touch        0.179            0.351        0.511
+channel  probe  distance_fault_m  distance_injection_m distance_match  Z_fault_Ohm  Z_E_injection_Ohm  ratio_fault
+max(UE) UE_70m              70.0                  70.0        maximum        0.466              0.933        0.500
+ UE_70m UE_70m              70.0                  70.0          equal        0.466              0.933        0.500
+  UE_5m  UE_5m               5.0                  70.0      different        0.301              0.933        0.323
+     UT     UT               1.0                   1.0          touch        0.179              0.351        0.511
 ```
 
 * `long_df` has one row per source, probe and frequency: the rows of the fault test (`source` `"fault test"`, `type`
@@ -207,16 +207,17 @@ name (`UE`, `UEr`) to the [corrections file](corrections.md) (column `distance_m
 ![Earthing measurement and fault test per frequency (top) and their ratio (bottom), demo station](../assets/station_earthing_comparison.png)
 
 `report.earthing_comparison(long_df, ratio)` and `interactive.earthing_comparison(long_df, ratio)` draw one panel per
-quantity (V/A, logarithmic): the earthing measurement per probe distance (grey squares), the fault test per probe
-(colour; the bar spans the superposition methods, ⊗ marks uncertain values), fault-test values stored in groundmeas
-(×), and below the ratio – black for the probe maximum.
+quantity (V/A, logarithmic): the earthing measurement per probe distance (grey squares; for the earth potential rise
+Z_E), the fault test per probe (colour; for the earth potential rise r·Z_E = U_E/I_F – it contains the reduction factor;
+the bar spans the superposition methods, ⊗ marks uncertain values), fault-test values stored in groundmeas (×), and
+below the ratio – black for the probe maximum.
 
 ## Reduction factor
 
 `earthing.reduction_factor(res, response)` computes the reduction factor from the earth potential rise per ampere of
-both measurements:
+both measurements – r·Z_E = U_E/I_F from the fault test, Z_E from the earthing measurement:
 
-* per order m: \( r_m = |\Delta U_{\text{E},m}/I_{\text{F},m}| \,/\, |Z_{\text{E},m}| \) – magnitudes only; the
+* per order m: \( r_m = |r Z_{\text{E},m}| \,/\, |Z_{\text{E},m}| = |\Delta U_{\text{E},m}/I_{\text{F},m}| \,/\, |Z_{\text{E},m}| \) – magnitudes only; the
   earthing measurement at the same frequency (± `tolerance_hz`) or interpolated linearly between two measured
   frequencies (`injection_frequency` says which), never extrapolated;
 * as an RMS value over all orders with both values, weighted with the fault current:
@@ -233,7 +234,7 @@ U_Tp and F (see the table below); the example uses illustrative values:
 ```python
 user = dict(r_typical=(0.3, 0.8), reference_current_A=100.0, U_Tp=100.0, F=2.5)  # illustrative values – define your own
 spectrum, effective = earthing.reduction_factor(res, response, **user)
-print(spectrum[spectrum["channel"] == "max(UE)"][["order", "f_Hz", "UE_per_A_fault", "UE_per_A_injection",
+print(spectrum[spectrum["channel"] == "max(UE)"][["order", "f_Hz", "rZE_fault_Ohm", "Z_E_injection_Ohm",
                                                   "injection_frequency", "r", "r_to_r_50Hz", "r_shield"]]
       .round(3).to_string(index=False))
 print(effective[["channel", "probe", "orders", "r_eff", "r_eff_direct", "r_eff_rms", "r_eff_shield",
@@ -243,11 +244,11 @@ print(effective[["channel", "probe", "orders", "r_eff", "r_eff_direct", "r_eff_r
 ```
 
 ```text
- order   f_Hz  UE_per_A_fault  UE_per_A_injection injection_frequency    r  r_to_r_50Hz  r_shield
-     1  49.98           0.466               0.933   measured at 50 Hz 0.50          1.0      0.50
-     5 249.90           0.401               1.002  measured at 250 Hz 0.40          0.8      0.40
-     7 349.86           0.373               1.066  measured at 350 Hz 0.35          0.7      0.35
-    11 549.78           0.372               1.239  measured at 550 Hz 0.30          0.6      0.30
+ order   f_Hz  rZE_fault_Ohm  Z_E_injection_Ohm injection_frequency    r  r_to_r_50Hz  r_shield
+     1  49.98          0.466              0.933   measured at 50 Hz 0.50          1.0      0.50
+     5 249.90          0.401              1.002  measured at 250 Hz 0.40          0.8      0.40
+     7 349.86          0.373              1.066  measured at 350 Hz 0.35          0.7      0.35
+    11 549.78          0.372              1.239  measured at 550 Hz 0.30          0.6      0.30
 channel                                     max(UE)
 probe                                        UE_70m
 orders                                  1, 5, 7, 11
@@ -272,11 +273,13 @@ both earth potential rises at the reference current stay below F·U_Tp – the d
 (with these illustrative parameters).
 
 The **spectrum** table has one row per probe, earthing measurement and order (`channel` `max(UE)` first, then every
-earth-potential probe against the probe of comparable distance): `I_F_A`, `UE_per_A_fault`, `UE_per_A_direct`,
-`UE_per_A_injection`, `injection_frequency`, `r`, `r_direct`, `r_to_r_50Hz` (trend referred to 50 Hz),
-`share_shield`, `r_shield`, `UE_per_A_earth_current` (ΔU_E/|I_F − I_S|), `Z_E_fault_to_injection` (r/r_S: 1 = both
-methods agree, smaller = the earthing measurement is higher), the voltages at the reference current, `uncertain` and
-the reliability columns of the station evaluation. The **effective** table has one row per probe and earthing
+earth-potential probe against the probe of comparable distance): `I_F_A`, `rZE_fault_Ohm` (r·Z_E = ΔU_E/I_F of the
+fault test), `rZE_direct_Ohm` (the same as measured), `Z_E_injection_Ohm` (Z_E of the earthing measurement),
+`injection_frequency`, `r`, `r_direct`, `r_min`/`r_max` (span of the superposition methods), `r_to_r_50Hz` (trend
+referred to 50 Hz), `share_shield`, `r_shield`, `Z_E_earth_current_Ohm` (Z_E = ΔU_E/|I_F − I_S| from the fault test
+with the earth current), `Z_E_earth_current_to_injection` (r/r_S: 1 = both methods agree, smaller = the earthing
+measurement is higher), the voltages at the reference current, `uncertain` and the reliability columns of the station
+evaluation. The **effective** table has one row per probe and earthing
 measurement with the RMS values (`r_eff`, `r_eff_direct`, `r_eff_rms`, `r_eff_shield`, `share_shield_eff`,
 `I_F_coverage_pct`, `uncertain_share_pct`) and three assessments:
 
@@ -284,7 +287,7 @@ measurement with the RMS values (`r_eff`, `r_eff_direct`, `r_eff_rms`, `r_eff_sh
 |---|---|---|
 | `classification_r_50Hz` | `typical`, `below`, `above`, `implausible`, `–` | r at 50 Hz against the range the user expects (`r_typical`, stored in `r_typical_min`…`r_typical_max`; e.g. from their own experience – it depends on the conditions); without a range `–`. `implausible` above 1.1, also without a range |
 | `trend_r_vs_f` | `falling`, `constant`, `rising`, `–` | exponent b of r ∝ f^b (`exponent_r_vs_f`, ±0.1 as limit), fitted over the reliable orders (`trend_orders`: earthing measurement measured there, fault-test value not uncertain). Falling is expected: the inductive coupling of the return conductors grows with the frequency |
-| `assessment_relevance` | `negligible`, `unchanged`, `relevant`, `–` | both impedances are converted to the reference current with the measured spectrum of the fault current; their difference is referred to F·U_Tp (`assessment_relevance_pct`): below 10 % negligible, both on the same side of F·U_Tp unchanged, otherwise relevant; `–` without a reference current, U_Tp or F |
+| `assessment_relevance` | `negligible`, `unchanged`, `relevant`, `–` | r·Z_E and Z_E are converted to the reference current with the measured spectrum of the fault current; their difference is referred to F·U_Tp (`assessment_relevance_pct`): below 10 % negligible, both on the same side of F·U_Tp unchanged, otherwise relevant; `–` without a reference current, U_Tp or F |
 
 The reference current, U_Tp and F are parameters of the user: the arguments `reference_current_A`, `U_Tp` and `F`,
 otherwise the largest of `Settings.ires_limits`, `Settings.u_tp` and `Settings.f_factor` of the evaluation. groundfault
@@ -294,13 +297,17 @@ has no defaults for them, nor for `r_typical`; the effective table records the v
 impedances relative deviations look large – the relevance shows whether a deviation matters for the assessment of
 the earthing system, which depends on the voltage.
 
-![Reduction factor per order with r_eff and the shield-current cross-check (top); compared impedances (bottom), demo
-station](../assets/station_reduction_factor.png)
+![Reduction factor over the frequency with the trend r ∝ f^b, r_eff and the shield-current cross-check (top); the
+compared quantities r·Z_E and Z_E (bottom), demo station](../assets/station_reduction_factor.png)
 
-`report.reduction_factor(spectrum, effective)` and `interactive.reduction_factor(spectrum, effective)` draw r per
-order (● measured, ○ interpolated, ⊗ uncertain), r_eff dashed, the shield-current cross-check (◆) and – if a range is
-given (`r_typical`, otherwise the range stored in `effective`) – the typical range at 50 Hz as a grey bar, below the
-two compared impedances.
+`report.reduction_factor(spectrum, effective)` and `interactive.reduction_factor(spectrum, effective)` draw r over the
+frequency in the same way as the impedances: per order (● measured, ○ interpolated, ⊗ uncertain) with the span of the
+superposition methods as a bar, the trend \( r = c\,f^{\,b} \) fitted over the reliable orders (dotted, `trend=True`;
+the exponent is `exponent_r_vs_f`), r_eff dashed, the shield-current cross-check (◆), with `direct=True` also r from
+the values as measured (open circles), and – if a range is given (`r_typical`, otherwise the range stored in
+`effective`) – the typical range at 50 Hz as a grey bar. Below, the two compared quantities: r·Z_E = U_E/I_F of the
+fault test (●), Z_E = U_E/I_E of the fault test with the earth current (◇, with a shield current) and Z_E of the
+earthing measurement (■).
 
 ### Hints
 
@@ -320,9 +327,9 @@ for h in earthing.reduction_hints(effective10, per_order10):
 ```
 
 ```text
-⚠ Reduction factor probe maximum (UE_70m) ↔ earthing measurement ID 1 (70 m): r = 0.05 at 50 Hz is below the typical range 0.3–0.8 (Z_E from the fault test (max(U_E)/I_F) 0.466 Ω, from the earthing measurement 9.33 Ω). The fault test gives a much smaller earth potential rise than the earthing measurement suggests. If the return paths (cable shields, PEN connections to neighbouring stations) do not explain this, a methodological error of the earthing measurement is likely – the fall-of-potential method tends to give values that are too high, e.g. due to inductive coupling of the measuring leads or the position of probe and auxiliary electrode – or the earthing measurement was made in a different switching state. For the assessment: at the reference current 100 A the fault test gives U_E = 44 V, the earthing measurement 967 V – the deviation of 923 V is 369 % of F·U_Tp = 250 V; one is above and one below F·U_Tp – the assessment depends on the method.
+⚠ Reduction factor probe maximum (UE_70m) ↔ earthing measurement ID 1 (70 m): r = 0.05 at 50 Hz is below the typical range 0.3–0.8 (r·Z_E from the fault test (max(U_E)/I_F) 0.466 Ω, Z_E from the earthing measurement 9.33 Ω). The fault test gives a much smaller earth potential rise than the earthing measurement suggests. If the return paths (cable shields, PEN connections to neighbouring stations) do not explain this, a methodological error of the earthing measurement is likely – the fall-of-potential method tends to give values that are too high, e.g. due to inductive coupling of the measuring leads or the position of probe and auxiliary electrode – or the earthing measurement was made in a different switching state. For the assessment: at the reference current 100 A the fault test gives U_E = 44 V, the earthing measurement 967 V – the deviation of 923 V is 369 % of F·U_Tp = 250 V; one is above and one below F·U_Tp – the assessment depends on the method.
 ⚠ Reduction factor probe maximum (UE_70m) ↔ earthing measurement ID 1 (70 m): from the earth potential rise r_eff = 0.0453, from the shield current 0.453 – Z_E from the fault test with the earth current I_E = I_F − I_S is 0.1 times the earthing measurement. Either further return paths carry current that the shield-current channel does not capture (shields of other cables, PEN connections), or the earthing measurement is too high (methodological error); the cross-check from the shield current then does not apply.
-⚠ LV network probe maximum (UE_70m) ↔ earthing measurement ID 1 (70 m): Z_E,LV is below the earthing impedance of the earthing measurement at 50, 250, 350, 550 Hz (at 50 Hz 3.74 Ω against 9.33 Ω) – impossible for a parallel branch of the total earthing if both values are correct. Against the fault test itself (Z_E,fault = max(U_E)/I_F) the parallel connection is satisfied – the contradiction lies with the earthing measurement (measured value too high, e.g. a methodological error of the fall-of-potential method, or a different switching state such as disconnected PEN conductors or cable shields). Record it as a finding.
+⚠ LV network probe maximum (UE_70m) ↔ earthing measurement ID 1 (70 m): Z_E,LV is below the earthing impedance of the earthing measurement at 50, 250, 350, 550 Hz (at 50 Hz 3.74 Ω against 9.33 Ω) – impossible for a parallel branch of the total earthing if both values are correct. Against the fault test itself (r·Z_E = max(U_E)/I_F) the parallel connection is satisfied – the contradiction lies with the earthing measurement (measured value too high, e.g. a methodological error of the fall-of-potential method, or a different switching state such as disconnected PEN conductors or cable shields). Record it as a finding.
 ```
 
 | Hint | Meaning |
@@ -366,7 +373,7 @@ max(UE)           3.883                  9.563            0.406   below (see ord
 ```
 
 `per_order` has one row per probe, earthing measurement and order with `Z_E_LV_Ohm`, `Z_E_injection_Ohm`,
-`injection_frequency`, `Z_LV_to_Z_E`, `injection_comparison`, `comparison_uncertainty_pct`, `Z_E_fault_Ohm`,
+`injection_frequency`, `Z_LV_to_Z_E`, `injection_comparison`, `comparison_uncertainty_pct`, `rZE_fault_Ohm`,
 `parallel_check` (taken over from the station evaluation) and `uncertain`. `injection_comparison` is `satisfied`,
 `borderline` (below 1 by less than the uncertainty – the uncertainty of Z_E,LV and 5 % for the earthing measurement,
 `injection_uncertainty_pct`, added in quadrature) or `below`; in the RMS table `satisfied` or `below (see orders)`.

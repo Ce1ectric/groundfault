@@ -41,7 +41,7 @@ python -c "import groundfault; print(groundfault.__version__)"
 ```
 
 ```text
-2.0.1
+3.0.0
 ```
 
 ## Optional extras
@@ -172,7 +172,7 @@ pytest -q
 ```text
 …
 SKIPPED [1] tests/test_units.py:63: could not import 'groundmeas.core.units': No module named 'groundmeas'
-490 passed, 1 skipped in 56.97s
+572 passed, 1 skipped in 63.26s
 ```
 
 It takes about a minute. `pytest -k station` runs a subset. The skipped test compares the unit handling directly with

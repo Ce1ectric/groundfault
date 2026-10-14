@@ -7,26 +7,29 @@ the [API reference](../reference/index.md).
 
 | Page | Content | Main functions |
 |---|---|---|
-| [Signal processing](signal-processing.md) | windows, DC removal, DFT at the harmonic frequencies, network frequency, true RMS value, max window, statistics, symmetrical components, alignment of recorder subsystems, RMS recordings | [`dsp`](../reference/dsp.md), [`evaluate`](../reference/evaluation.md), [`symmetrical`](../reference/symmetrical.md), [`rms`](../reference/rms.md) |
+| [Signal processing](signal-processing.md) | windows, DC removal, DFT at the harmonic frequencies, network frequency, true RMS value, max window, disturbed states (active residual current increase, network change), statistics, symmetrical components, alignment of recorder subsystems, RMS recordings | [`dsp`](../reference/dsp.md), [`evaluate`](../reference/evaluation.md), [`disturbances`](../reference/disturbances.md), [`symmetrical`](../reference/symmetrical.md), [`rms`](../reference/rms.md) |
 | [Assessment quantities](assessment.md) | residual current, fundamental component, active and detuning current (angle method, √2 method), harmonic content, measurement uncertainty, scaling to a power-quality measurement, limit from the permissible touch voltage, resistive approach, line parameters | [`formulas`](../reference/formulas.md), [`campaign`](../reference/campaign.md) |
 | [Superposition at the station](superposition.md) | background and fault-related component, the three superposition methods, network frequency on both sides, uncertainty (null test, frequency reference), extrapolation, PEN currents, current into the LV network, probe maximum, parallel checks | [`station`](../reference/station.md) |
 | [Reduction factor and LV network](reduction-factor.md) | comparison with the earthing measurement per frequency, reduction factor per order and as RMS value, comparison methods, classification, trend, relevance for the assessment, physical interpretation | [`earthing`](../reference/earthing.md) |
 | [Equivalent-source method](equivalent-source.md) | active two-terminal equivalent per harmonic order from a series of tests, normalisation of the source fluctuation, estimators, checks, residual current at the earthing impedance | [`equivalent_source`](../reference/equivalent_source.md) |
+| [Transformer node](transformer-node.md) | power, apparent impedance and upstream impedance (transformer + HV network) per order and sequence before, during and after the fault, polarity of the current transformers, fault current estimated from the transformer currents | [`transformer`](../reference/transformer.md) |
 | [Validation](validation.md) | synthetic recordings with known solution, second methods, test suite, limitations | [`demo`](../reference/demo.md) |
 
 ## Processing chain
 
 ```text
 COMTRADE recording (.cfg/.dat)
-  │  corrections of the measuring chain, channel roles, analysis intervals (read off by hand)
+  │  corrections of the measuring chain, channel roles, analysis intervals (read off by hand, with a proposal)
   ▼
 200-ms windows of all channels ── DC removal (median) ── Hann window ── DFT at m·f1 (f1 estimated per interval)
   │  per window and channel: true RMS value and RMS phasors of the orders 1 … 40
+  ├─► disturbed states (steps of Iw, Iv) left out
   ├─► max window (largest residual current) ──► assessment quantities: I_RES, I_G, Iw, Iv, I_H, uncertainty,
   │                                              scaling to the 95 % quantile of a power-quality measurement
   ├─► voltages before, during and after the fault: sequence components per order, THD
   ├─► station: superposition per order ──► ΔU/I_F per probe, ΔI_PEN/I_F ──► LV network, parallel checks
   │                                    └─► with groundmeas: reduction factor, LV network vs earthing measurement
+  ├─► transformer node: P, Q, U/I per order and sequence ──► upstream impedance Z_up = −ΔU/ΔI (transformer, HV)
   ▼
 result file (JSON) ──► campaign: consistency, equivalent sources per order ──► I_RES(Z_E), resistive approach
 ```

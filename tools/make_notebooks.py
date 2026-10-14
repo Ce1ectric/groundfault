@@ -38,6 +38,14 @@ def code(text):
     return nbf.v4.new_code_cell(text.strip("\n"))
 
 
+def keyed(key, cell):
+    """The cell with an id of its own (``<name>-<key>``) instead of a position number. Cells added after a release
+    get a key, so the numbered ids of the existing cells – which a working copy shares with its reference copy – do
+    not shift and updating a working copy maps every cell to its counterpart."""
+    cell["id"] = "@" + key
+    return cell
+
+
 def setup(lang):
     t = (lambda en, de: en if lang == "en" else de)
     return '''%matplotlib inline
@@ -63,8 +71,8 @@ except ImportError:            ''' + t("# not installed: use the source folder o
 import numpy as np
 import pandas as pd
 from IPython.display import Markdown, display
-from groundfault import (campaign, corrections, demo, diagnostics, earthing, equivalent_source, explorer, i18n,
-                         interactive, layout, legacy, register, report, rms, sites)
+from groundfault import (campaign, corrections, demo, diagnostics, disturbances, earthing, equivalent_source,
+                         explorer, i18n, interactive, layout, legacy, register, report, rms, sites, transformer)
 
 i18n.set_language(LANGUAGE)
 ''' + t("# work folder = this folder or the first folder above it with a campaigns folder (\"campaigns\" or\n"
@@ -102,7 +110,7 @@ DEMO        = True                                   # create the demo campaign 
 
 # ---------------------------------------------------------------- analysis intervals in s (read them in section 3!)
 # demo substation 0 Ω – fault from 2 s to 6 s, active residual current increased from 4.6 s:
-STEADY_STATE = (2.6, 4.4)   # steady-state fault – after the transient, before an active residual current increase
+STEADY_STATE = (2.6, 4.4)   # steady-state fault – after the transient (disturbed states inside are left out)
 PRE_FAULT    = (0.2, 1.8)   # operation without fault before the fault
 POST_FAULT   = (7.0, 8.8)   # after the decay of the neutral displacement voltage''',
                  '''CAMPAIGN    = "2026-01-15_Demo"                     # Ordner im Kampagnenordner
@@ -113,7 +121,7 @@ DEMO        = True                                   # Demo-Kampagne anlegen, fa
 
 # ---------------------------------------------------------------- Auswertebereiche in s (in Abschnitt 3 ablesen!)
 # Demo-UW 0 Ω – Fehler von 2 s bis 6 s, Wattreststromerhöhung ab 4,6 s:
-STEADY_STATE = (2.6, 4.4)   # stationärer Erdschluss – nach dem Einschwingen, vor einer Wattreststromerhöhung
+STEADY_STATE = (2.6, 4.4)   # stationärer Erdschluss – nach dem Einschwingen (gestörte Zustände darin werden ausgeblendet)
 PRE_FAULT    = (0.2, 1.8)   # erdschlussfreier Betrieb vor dem Fehler
 POST_FAULT   = (7.0, 8.8)   # nach dem Abklingen der Verlagerungsspannung''')
         rms_file = "None"
@@ -127,7 +135,7 @@ Z_FAULT     = 0.0                                     # additional impedance in 
 DEMO        = False                                   # True: create the demo campaign if it does not exist yet
 
 # ---------------------------------------------------------------- analysis intervals in s (read them in section 3!)
-STEADY_STATE = None   # (t0, t1) steady-state fault – after the transient, before an active residual current increase
+STEADY_STATE = None   # (t0, t1) steady-state fault – after the transient (disturbed states inside are left out)
 PRE_FAULT    = None   # (t0, t1) operation without fault before the fault
 POST_FAULT   = None   # (t0, t1) after the decay of the neutral displacement voltage''',
                  '''CAMPAIGN    = "JJJJ-MM-TT_Ort"                       # Ordner im Kampagnenordner
@@ -137,7 +145,7 @@ Z_FAULT     = 0.0                                     # Zusatzimpedanz im Fehler
 DEMO        = False                                   # True: Demo-Kampagne anlegen, falls sie noch nicht existiert
 
 # ---------------------------------------------------------------- Auswertebereiche in s (in Abschnitt 3 ablesen!)
-STEADY_STATE = None   # (t0, t1) stationärer Erdschluss – nach dem Einschwingen, vor einer Wattreststromerhöhung
+STEADY_STATE = None   # (t0, t1) stationärer Erdschluss – nach dem Einschwingen (gestörte Zustände darin werden ausgeblendet)
 PRE_FAULT    = None   # (t0, t1) erdschlussfreier Betrieb vor dem Fehler
 POST_FAULT   = None   # (t0, t1) nach dem Abklingen der Verlagerungsspannung''')
         rms_file = "None"
@@ -157,8 +165,10 @@ computations are in the package **`groundfault`** – the notebook is only the u
    Leave the analysis intervals empty at first.
 2. **Open the file** – check the channel roles and the raw-data diagnostics.
 3. **RMS trend** – read the times of the *steady-state fault*, *pre-fault* and *post-fault* intervals, enter them in
-   section 1 and run the notebook again (*Run All*). Nothing is automatic: of all 200-ms windows in the steady-state
-   interval the window with the **largest** residual current is assessed.
+   section 1 and run the notebook again (*Run All*). groundfault proposes the undisturbed part of the fault as the
+   steady state. Of all undisturbed 200-ms windows in the steady-state interval the window with the **largest**
+   residual current is assessed – an active residual current increase or a network change (a section trips) inside
+   the interval is detected and left out.
 4. **Evaluation** – assessment quantities with your measurement-uncertainty margins, angle method, plausibility checks, voltages
    before/during/after the fault, station and transformer if measured. At a **station**: earth potential rise and
    touch voltage per frequency (direct and fault-related), PEN currents and current into the LV network (Z_E,LV),
@@ -181,8 +191,10 @@ Paket **`groundfault`** – das Notebook ist nur die Bedienoberfläche. Ausgangs
    keine). Auswertebereiche zunächst leer lassen.
 2. **Datei öffnen** – Kanalrollen und Rohdaten-Diagnose prüfen.
 3. **Effektivwertverlauf** – Zeiten für *stationären Fehler*, *Vorfehler* und *Nachfehler* ablesen
-   und in Abschnitt 1 eintragen, dann das Notebook erneut ausführen (*Run All*). Kein Automatismus:
-   aus allen 200-ms-Fenstern im stationären Bereich wird das Fenster mit dem **größten** Erdschlussreststrom bewertet.
+   und in Abschnitt 1 eintragen, dann das Notebook erneut ausführen (*Run All*). groundfault schlägt den ungestörten
+   Teil des Fehlers als stationären Bereich vor. Aus allen ungestörten 200-ms-Fenstern im stationären Bereich wird
+   das Fenster mit dem **größten** Erdschlussreststrom bewertet – eine Wattreststromerhöhung oder eine Netzänderung
+   (ein Netzabschnitt löst aus) im Bereich wird erkannt und ausgeblendet.
 4. **Auswertung** – Bewertungsgrößen mit den eigenen Messunsicherheitszuschlägen, Winkelverfahren, Plausibilitätsprüfungen, Spannungen
    vor/im/nach dem Fehler, ggf. Station und Trafo. An einer **Station**: Erdungs- und Berührungsspannung je Frequenz
    (direkt und fehlerbedingt), PEN-Ströme und Strom ins Ortsnetz (Z_E,Ortsnetz), Vergleich mit der
@@ -221,6 +233,8 @@ SETTINGS = gf.Settings(
     u_thd95_percent=None,        # 95 % quantile of the THD (line-to-line) of a PQ measurement in % (None = no scaling)
     pq_safety_factor=PQ_SAFETY_FACTOR,
     correct_polarity=True,       # Iw < 0 → rotate the current phasors by 180° (clamp reversed)
+    exclude_disturbances=True,   # active residual current increase and network change are not the reference
+    transformer_sign=None,       # transformer currents: None = polarity from the upstream impedance, +1 as measured, -1 reversed
     ires_limits=LIMITS, u_tp=U_TP, f_factor=F_FACTOR,
 )
 
@@ -278,6 +292,8 @@ SETTINGS = gf.Settings(
     u_thd95_percent=None,        # 95-%-Quantil des THD (L-L) einer PQ-Messung in % (None = keine Skalierung)
     pq_safety_factor=PQ_SAFETY_FACTOR,
     correct_polarity=True,       # Iw < 0 → Stromzeiger um 180° drehen (verpolte Zange)
+    exclude_disturbances=True,   # Wattreststromerhöhung und Netzänderung nicht als Referenz verwenden
+    transformer_sign=None,       # Trafoströme: None = Polarität aus der Vorimpedanz, +1 wie gemessen, -1 umgekehrt
     ires_limits=LIMITS, u_tp=U_TP, f_factor=F_FACTOR,
 )
 
@@ -353,19 +369,40 @@ show(dg.channels)'''),
 ## 3 · RMS trend – read the analysis intervals
 
 Moving true RMS value (20-ms windows, DC removed per window). Read the times with zoom and range slider:
-**steady state** = after the transient and *before* an active residual current increase or coil adjustment;
-**pre-fault** and **post-fault** = operation without fault (after the decay of the neutral displacement voltage).
-Entered intervals are shaded.
+**steady state** = after the transient; **pre-fault** and **post-fault** = operation without fault (after the decay of
+the neutral displacement voltage). Entered intervals are shaded.
+
+groundfault searches the whole fault for **disturbed states** – an active residual current increase (Iw rises
+abruptly for a few seconds) and a network change (a section trips or is switched: Iv and thus the fundamental
+component and the RMS value change abruptly) – shades them red and proposes the undisturbed part as `STEADY_STATE`.
+Inside `STEADY_STATE` they are left out automatically (`exclude_disturbances` in section 1); a coil adjustment is no
+disturbance. A transformer recording without a fault-current channel is scanned with the fault current estimated from
+the negative-sequence current of the transformer; enter a pre-fault interval for it in the evaluation as well.
 ''', '''
 ## 3 · Effektivwertverlauf – Auswertebereiche ablesen
 
 Gleitender Echt-Effektivwert (20-ms-Fenster, DC je Fenster entfernt). Mit Zoom/Range-Slider die Zeiten ablesen:
-**stationär** = nach dem Einschwingen und *vor* einer Wattreststromerhöhung/Spulenverstellung; **Vorfehler** und
-**Nachfehler** = erdschlussfreier Betrieb (nach dem Abklingen der Verlagerungsspannung). Eingetragene Bereiche
-werden farbig hinterlegt.
+**stationär** = nach dem Einschwingen; **Vorfehler** und **Nachfehler** = erdschlussfreier Betrieb (nach dem Abklingen
+der Verlagerungsspannung). Eingetragene Bereiche werden farbig hinterlegt.
+
+groundfault durchsucht den ganzen Fehler nach **gestörten Zuständen** – Wattreststromerhöhung (Iw steigt für einige
+Sekunden sprunghaft) und Netzänderung (ein Netzabschnitt löst aus oder wird umgeschaltet: Iv und damit
+Grundschwingung und Effektivwert ändern sich sprunghaft) –, hinterlegt sie rot und schlägt den ungestörten Teil als
+`STEADY_STATE` vor. Innerhalb von `STEADY_STATE` werden sie automatisch ausgeblendet (`exclude_disturbances` in
+Abschnitt 1); eine Spulenverstellung ist keine Störung. Eine Trafoaufzeichnung ohne Fehlerstromkanal wird mit dem aus
+dem Gegenstrom des Trafos geschätzten Fehlerstrom durchsucht; dafür in der Auswertung auch einen Vorfehlerbereich
+eintragen.
 ''')),
         code('''INTERVALS = gf.Intervals(STEADY_STATE, PRE_FAULT, POST_FAULT)
-interactive.rms_values(rec, roles, intervals=INTERVALS).show()
+SCAN = None
+if roles.has("i_res") or roles.capabilities()["transformer"]:
+    try:
+        SCAN = disturbances.scan(rec, roles, SETTINGS)     ''' + t("# disturbed states in the whole fault, suggestion",
+                                                           "# gestörte Zustände im ganzen Fehler, Vorschlag") + '''
+        print(SCAN.text())
+    except ValueError as ex:
+        print("ℹ", ex)
+interactive.rms_values(rec, roles, intervals=INTERVALS, disturbances=SCAN).show()
 if SHOW_ENVELOPE:
     interactive.overview(rec, roles, intervals=INTERVALS).show()'''),
         md(t("## 4 · Evaluation", "## 4 · Auswertung")),
@@ -381,7 +418,11 @@ else:
                               "**Bewertungsgrößen** – Messwert und Bewertung mit den Messunsicherheitszuschlägen aus Abschnitt 1") + '''"))
     show(res.table("assessment_quantities"))
     display(Markdown("''' + t("**Plausibility checks**", "**Plausibilitätsprüfungen**") + '''"))
-    show(res.table("plausibility"))'''),
+    show(res.table("plausibility"))
+    if res.disturbances is not None and res.disturbances.found:
+        display(Markdown("''' + t("**States in the steady-state interval** – disturbed states are not part of the reference (`used`)",
+                                  "**Zustände im stationären Bereich** – gestörte Zustände sind nicht Teil der Referenz (`verwendet`)") + '''"))
+        show(res.table("steady_state_segments"))'''),
         md(t("### Voltages before, during and after the fault", "### Spannungen vor, im und nach dem Fehler")),
         code('''if res is not None and "voltage" in res.values:
     show(res.table("voltage_metrics"))
@@ -394,10 +435,10 @@ else:
     if not res.table("coil_currents").empty:
         show(res.table("coil_currents"))
     show(res.table("statistics"))'''),
-        md(t("### Station (earth potential rise, touch voltage, shield current) and transformer – if measured",
-             "### Station (Erdungs-/Berührungsspannung, Schirmstrom) und Trafo – falls gemessen")),
+        md(t("### Station (earth potential rise, touch voltage, shield current) – if measured",
+             "### Station (Erdungs-/Berührungsspannung, Schirmstrom) – falls gemessen")),
         code('''if res is not None:
-    for name in ("station_metrics", "station_voltages", "station_currents", "transformer_power"):
+    for name in ("station_metrics", "station_voltages", "station_currents"):
         if name in res.tables and not res.tables[name].empty:
             display(Markdown("**%s**" % report.table_title(name)))
             show(res.tables[name])'''),
@@ -426,7 +467,7 @@ change). **Z_E,LV = ΔU_E/I_LV** per frequency and as an RMS value – for every
 **probe maximum** (`channel` = `max(UE)`, column `probe`): per frequency the highest voltage of all probes against the
 station earth, as RMS value the probe with the highest RMS value. Potentials spread differently; each probe measures
 at most the full earth potential rise. **Parallel check** (`parallel_check`): the LV network is a branch of the total
-earthing, so |Z_E,LV| ≥ |Z_E,fault| = |max(U_E)/I_F| (equivalent to |I_LV| ≤ |I_F|) at every frequency; with a shield
+earthing, so |Z_E,LV| ≥ |r·Z_E| = |max(U_E)/I_F| (equivalent to |I_LV| ≤ |I_F|) at every frequency; with a shield
 current also against the earth current I_E = I_F − I_S (`earth_current_check`). Violated only if the deviation exceeds
 the measurement uncertainty. The comparison with the earthing measurement follows in the next section.
 ''', '''
@@ -454,15 +495,15 @@ Effektivwert – für jede Erdungsspannungssonde und für das **Sondenmaximum** 
 Frequenz die höchste Spannung aller Sonden gegen die Stationserde, effektiv die Sonde mit dem höchsten Effektivwert.
 Die Potentiale breiten sich unterschiedlich aus; jede Sonde misst höchstens die volle Erdungsspannung.
 **Prüfung Parallelschaltung** (`Pruefung_Parallelschaltung`): Das Ortsnetz ist ein Zweig der Gesamterdung, also
-|Z_E,Ortsnetz| ≥ |Z_E,Erdschluss| = |max(U_E)/I_F| (gleichbedeutend |I_ON| ≤ |I_F|), bei jeder Frequenz; mit
+|Z_E,Ortsnetz| ≥ |r·Z_E| = |max(U_E)/I_F| (gleichbedeutend |I_ON| ≤ |I_F|), bei jeder Frequenz; mit
 Schirmstrom zusätzlich gegen den Erdungsstrom I_E = I_F − I_S (`Pruefung_Erdungsstrom`). Verletzt erst, wenn die
 Abweichung größer ist als die Messunsicherheit. Der Vergleich mit der Erdungsmessung folgt im nächsten Abschnitt.
 ''')),
         code('''if res is not None and not res.tables.get("station_frequency", pd.DataFrame()).empty:
     show(res.table("station_frequency"))
     if LIMITS:
-        display(Markdown("''' + t("**Extrapolation to the limits of the residual current** (proportional; fault-related; with background)",
-                                  "**Hochrechnung auf die Grenzwerte des Reststroms** (proportional; fehlerbedingt; mit Grundlast)") + '''"))
+        display(Markdown("''' + t("**Extrapolation to the limits of the residual current** (proportional; fault-related; with background as in the test and – upper bound – in phase)",
+                                  "**Hochrechnung auf die Grenzwerte des Reststroms** (proportional; fehlerbedingt; mit Grundlast wie im Versuch und – obere Schranke – gleichphasig)") + '''"))
         show(res.table("station_extrapolation"))
     else:
         print("''' + t("ℹ Extrapolation to the limits of the residual current skipped – LIMITS is not set (section 1).",
@@ -473,8 +514,8 @@ Abweichung größer ist als die Messunsicherheit. Der Vergleich mit der Erdungsm
                                   "**PEN- und Schirmströme je Frequenz** – im Fehler gemessen, Grundlast (Unsymmetrie der Last) und fehlerbedingter Anteil (Anteil = ΔI/I_F)") + '''"))
         show(res.table("station_currents_frequency"))
     if not res.tables.get("station_lv_network", pd.DataFrame()).empty:
-        display(Markdown("''' + t("**LV network: current I_LV and earthing impedance Z_E,LV = ΔU_E/I_LV** (per frequency and RMS value; parallel check: Z_E,LV ≥ max(U_E)/I_F, earth-current check: |I_LV| ≤ |I_E|)",
-                                  "**Ortsnetz: Strom I_ON und Erdungsimpedanz Z_E,Ortsnetz = ΔU_E/I_ON** (je Frequenz und effektiv; Prüfung Parallelschaltung: Z_E,Ortsnetz ≥ max(U_E)/I_F, Prüfung Erdungsstrom: |I_ON| ≤ |I_E|)") + '''"))
+        display(Markdown("''' + t("**LV network: current I_LV and earthing impedance Z_E,LV = ΔU_E/I_LV** (per frequency and RMS value; parallel check: Z_E,LV ≥ r·Z_E = max(U_E)/I_F, earth-current check: |I_LV| ≤ |I_E|)",
+                                  "**Ortsnetz: Strom I_ON und Erdungsimpedanz Z_E,Ortsnetz = ΔU_E/I_ON** (je Frequenz und effektiv; Prüfung Parallelschaltung: Z_E,Ortsnetz ≥ r·Z_E = max(U_E)/I_F, Prüfung Erdungsstrom: |I_ON| ≤ |I_E|)") + '''"))
         show(res.table("station_lv_network"))
         show(res.table("station_lv_network_eff"))
         interactive.lv_network(res.table("station_lv_network")).show()
@@ -488,12 +529,15 @@ The earthing measurements (current injection) are kept in a **groundmeas databas
 The location comes from the sites file of the campaign, otherwise from the folder name (typing errors are tolerated)
 – if needed set `GROUNDMEAS_LOCATION` or `GROUNDMEAS_MEASUREMENTS` in section 1. Compared is the **voltage per ampere**
 (V/A = Ω) at the same frequency: injection (probe at a comparable distance) ↔ fault-related part of the fault test.
-For the earth potential rise at a remote probe the ratio is the effective **reduction factor** (return current through
-cable shields). Add probe distances that are not in the channel name (`UEr`, `UE`) to the corrections file (column
+For the earth potential rise the fault test gives **r·Z_E** = U_E/I_F – the earthing impedance times the reduction
+factor, because only the earth current I_E = r·I_F flows into the earthing system (the rest returns through cable
+shields) – while the earthing measurement gives Z_E itself. At a remote probe their ratio is the effective
+**reduction factor**. Add probe distances that are not in the channel name (`UEr`, `UE`) to the corrections file (column
 `distance_m`). The entry of this measurement in groundmeas follows in section 7.
 
-**Reduction factor** r = Z_E,fault/Z_E,injection (earth potential rise per ampere, magnitudes only): per harmonic and
-as an RMS value over all harmonics (weighted with the fault current); for comparison the RMS value from the measured
+**Reduction factor** r = r·Z_E (fault test) / Z_E (earthing measurement), magnitudes only: per harmonic – shown
+over the frequency like the impedances, with the span of the superposition methods and the trend r ∝ f^b – and as an
+RMS value over all harmonics (weighted with the fault current); for comparison the RMS value from the measured
 RMS values (with background, earthing impedance at 50 Hz) and – if measured – the cross-check from the shield
 current. Decisive is the **probe maximum** of the fault test (`max(UE)`: highest voltage of all probes) against the
 farthest probe of the earthing measurement; in addition each probe against the probe at a comparable distance. If the
@@ -516,12 +560,15 @@ Die Erdungsmessungen (Strom-Einspeisung) liegen in der **groundmeas-Datenbank**.
 Der Ort kommt aus der Messorte-Datei der Kampagne, sonst aus dem Ordnernamen (Tippfehler werden erkannt) – bei Bedarf
 `GROUNDMEAS_LOCATION` bzw. `GROUNDMEAS_MEASUREMENTS` in Abschnitt 1 setzen. Verglichen wird **Spannung je Ampere**
 (V/A = Ω) bei derselben Frequenz: Einspeisung (Sonde in vergleichbarem Abstand) ↔ fehlerbedingter Anteil im
-Erdschluss. Für die Erdungsspannung an einer fernen Sonde ist das Verhältnis der wirksame **Reduktionsfaktor**
-(Rückstrom über Kabelschirme). Sondenabstände, die nicht im Kanalnamen stehen (`UEr`, `UE`), in der Korrekturen-Datei
+Erdschluss. Für die Erdungsspannung liefert der Erdschluss **r·Z_E** = U_E/I_F – die Erdungsimpedanz mal den
+Reduktionsfaktor, denn nur der Erdungsstrom I_E = r·I_F fließt in die Erdungsanlage (der Rest über die Kabelschirme
+zurück) –, die Erdungsmessung dagegen Z_E selbst. An einer fernen Sonde ist ihr Verhältnis der wirksame
+**Reduktionsfaktor**. Sondenabstände, die nicht im Kanalnamen stehen (`UEr`, `UE`), in der Korrekturen-Datei
 (Spalte `Abstand_m`) nachtragen. Der Eintrag dieser Messung in groundmeas folgt in Abschnitt 7.
 
-**Reduktionsfaktor** r = Z_E,Erdschluss/Z_E,Erdungsmessung (Erdungsspannung je Ampere, nur Beträge): je Harmonische
-und als Effektivwert über alle Harmonischen (gewichtet mit dem Fehlerstrom); zum Vergleich der Effektivwert aus den
+**Reduktionsfaktor** r = r·Z_E (Erdschluss) / Z_E (Erdungsmessung), nur Beträge: je Harmonische – über der Frequenz
+dargestellt wie die Impedanzen, mit der Spanne der Überlagerungsverfahren und dem Verlauf r ∝ f^b – und als
+Effektivwert über alle Harmonischen (gewichtet mit dem Fehlerstrom); zum Vergleich der Effektivwert aus den
 gemessenen Effektivwerten (mit Grundlast, Erdungsimpedanz bei 50 Hz) und – falls gemessen – die Gegenprobe aus dem
 Schirmstrom. Maßgeblich ist das **Sondenmaximum** des Erdschlusses (`max(UE)`: höchste Spannung aller Sonden) gegen die
 fernste Sonde der Erdungsmessung; dazu jede Sonde gegen die Sonde mit vergleichbarem Abstand. Fehlt die Erdungsmessung
@@ -609,6 +656,65 @@ if res is not None and not res.tables.get("station_frequency", pd.DataFrame()).e
         for h in earthing.reduction_hints(RF_EFF, LV_CHECK):
             print("⚠", h)
         DB.close()'''),
+        keyed("transformer-node-text", md(t('''
+### Transformer node: power and impedance per harmonic before, during and after the fault
+
+With the three line currents of the HV/MV transformer (`I1` … `I3`, `IL1` … `IL3`) and the busbar voltages, the
+harmonic sources of the whole network – bundled at the transformer – can be followed through the fault. The states
+are the pre-fault interval, the undisturbed windows of `STEADY_STATE` and the post-fault interval. Without a
+fault-current channel the fault current for the detection of disturbed states (active residual current increase,
+network change) is estimated from the change of the negative-sequence current of the transformer (3·ΔI₂).
+
+* **Power per order** (sum of the sequences, consumer reference arrow system: P > 0 flows from the HV into the MV
+  network). P_m < 0 means that the MV network as a whole feeds this harmonic into the HV network. Table
+  `transformer_node` holds U, I, P, Q and the apparent impedance U/I per state, order and sequence,
+  `transformer_power_change` the changes fault − pre-fault and post-fault − pre-fault (null test).
+* **Upstream impedance** Z_up = −ΔU/ΔI (`transformer_impedance`): the earth fault draws positive- and
+  negative-sequence currents of every order through the transformer; the busbar voltage changes by −Z_up·ΔI. Z_up is
+  the impedance of transformer and HV network seen from the MV busbar – inductive, X_up/m about constant. Two
+  estimates (fault − pre-fault, fault − post-fault) and the null test give the uncertainty; `significant` = at most
+  20 %. Positive and negative sequence must agree (`pos_neg_deviation_pct`); orders divisible by 3 and the
+  fundamental are affected by other effects (voltage transformers at the raised voltage of the healthy phases, load
+  changes). With HV voltages Z_up is split into transformer and HV network.
+* **Polarity:** a capacitive Z_up means that the currents were measured in the generator reference arrow system –
+  they are reversed automatically (hint and plausibility table); `transformer_sign` in `SETTINGS` (section 1) fixes
+  the sign.
+''', '''
+### Trafoknoten: Leistung und Impedanz je Harmonische vor, im und nach dem Erdschluss
+
+Mit den drei Leiterströmen des HS/MS-Trafos (`I1` … `I3`, `IL1` … `IL3`) und den Sammelschienenspannungen lässt sich
+verfolgen, wie sich die Oberschwingungsquellen des ganzen Netzes – gebündelt am Trafo – im Erdschluss verhalten. Die
+Zustände sind der Vorfehlerbereich, die ungestörten Fenster von `STEADY_STATE` und der Nachfehlerbereich. Ohne
+Fehlerstromkanal wird der Fehlerstrom für die Erkennung gestörter Zustände (Wattreststromerhöhung, Netzänderung) aus
+der Änderung des Gegenstroms des Trafos geschätzt (3·ΔI₂).
+
+* **Leistung je Ordnung** (Summe der Systeme, Verbraucherzählpfeilsystem: P > 0 fließt vom HS- ins MS-Netz). P_m < 0
+  heißt: Das MS-Netz speist diese Harmonische als Ganzes ins HS-Netz. Die Tabelle `trafoknoten` enthält U, I, P, Q
+  und die scheinbare Impedanz U/I je Zustand, Ordnung und System, `trafo_leistungsaenderung` die Änderungen
+  Erdschluss − Vorfehler und Nachfehler − Vorfehler (Nulltest).
+* **Vorimpedanz** Z_vor = −ΔU/ΔI (`trafo_impedanz`): Der Erdschluss zieht Mit- und Gegenströme aller Ordnungen über
+  den Trafo; die Sammelschienenspannung ändert sich um −Z_vor·ΔI. Z_vor ist die Impedanz von Trafo und HS-Netz von der
+  MS-Sammelschiene aus – induktiv, X_vor/m etwa konstant. Zwei Schätzungen (Erdschluss − Vorfehler,
+  Erdschluss − Nachfehler) und der Nulltest ergeben die Unsicherheit; `signifikant` = höchstens 20 %. Mit- und
+  Gegensystem müssen übereinstimmen (`Abweichung_Mit_Gegen_proz`); durch 3 teilbare Ordnungen und die
+  Grundschwingung sind von anderen Effekten beeinflusst (Spannungswandler bei der erhöhten Spannung der gesunden
+  Leiter, Laständerungen). Mit HS-Spannungen wird Z_vor in Trafo und HS-Netz aufgeteilt.
+* **Polarität:** Eine kapazitive Z_vor bedeutet, dass die Ströme im Erzeugerzählpfeilsystem gemessen wurden – sie
+  werden automatisch umgekehrt (Hinweis und Plausibilitätstabelle); `transformer_sign` in `SETTINGS` (Abschnitt 1)
+  legt das Vorzeichen fest.
+'''))),
+        keyed("transformer-node", code('''if res is not None and "transformer_node" in res.tables:
+    display(Markdown("**''' + t("Transformer node:", "Trafoknoten:") + '''** " + transformer.summary_text(res)))
+    display(Markdown("**''' + t("Power per order", "Leistung je Ordnung") + '''** (''' + t("sum of the sequences, in kW and kvar", "Summe der Systeme, in kW und kvar") + ''')"))
+    show(transformer.power_overview(res))
+    if "transformer_impedance" in res.tables:
+        ZI = res.table("transformer_impedance")
+        display(Markdown("**%s** (''' + t("significant orders", "signifikante Ordnungen") + ''')" % report.table_title("transformer_impedance")))
+        show(ZI[ZI["significant"]])
+        report.transformer_impedance(res)
+    report.transformer_power(res)
+elif res is not None:
+    print("''' + t("No transformer currents measured – section not applicable.", "Keine Trafoströme gemessen – Abschnitt entfällt.") + '''")''')),
         md(t('''
 ## 5 · Signal explorer – check the values at the curve
 
@@ -1372,13 +1478,19 @@ if PLANS:
 
 
 def _notebook(cells, lang, name):
-    """Notebook of the cells with deterministic cell ids ``<name>-<index>`` (e.g. ``evaluate_measurement-07``).
+    """Notebook of the cells with deterministic cell ids: ``<name>-<number>`` counted over the cells without a key
+    (e.g. ``evaluate_measurement-07``), ``<name>-<key>`` for cells with a key (see ``keyed``).
 
     nbformat gives new cells random ids; fixed ids make every regeneration of an unchanged notebook give the same
     file (a reference copy and its working copy share the ids).
     """
-    for i, cell in enumerate(cells):
-        cell["id"] = "%s-%02d" % (name, i)
+    number = 0
+    for cell in cells:
+        if cell["id"].startswith("@"):
+            cell["id"] = "%s-%s" % (name, cell["id"][1:])
+        else:
+            cell["id"] = "%s-%02d" % (name, number)
+            number += 1
     nb = nbf.v4.new_notebook(cells=cells)
     nb.metadata = {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
                    "language_info": {"name": "python"}}

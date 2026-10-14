@@ -67,6 +67,7 @@ SUB_0_10_000kHz_voltage_positive_sequence.png
 | `voltage_negative_sequence`, `voltage_positive_sequence` | 5th/11th (negative) and 7th/13th (positive sequence) harmonic before, during and after the fault | line-to-earth voltages |
 | `station_voltages`, `station_frequency`, `station_background`, `station_lv_network` | station figures ([Stations and the LV network](station.md#figures-and-interactive-views)) | station evaluation |
 | `transformer_power` | active and reactive power per order at the transformer | line currents |
+| `transformer_impedance` | apparent impedance per state and upstream impedance over the frequency | line currents and a pre-fault or post-fault interval |
 
 Without `prefix` the file names start with the measurement name as `report.slug` writes it – letters and digits,
 everything else `_`, lower case (`report.slug("M1 (2,5 Ω)")` → `m1_2_5`). Each figure function can also be called on
@@ -83,6 +84,7 @@ its own; it returns a matplotlib figure that `report.save` writes:
 | `phasor_diagram(res, coils=False)` | phasor diagram of the fundamental |
 | `v_curve(t, ires, result=None, i_coil=None, quantity="I_RES")` | resonance curve |
 | `transformer_power(res, orders=(5, 7, 11, 13))` | power per order at the transformer |
+| `transformer_impedance(res, orders=(5, 7, 11, 13))` | apparent impedance \|U_m/I_m\| per state (a) and upstream impedance \|Z_up\| over the frequency with m·X_up,1 and the shares of transformer and HV network (b) |
 | `station_voltages(res)`, `station_frequency(res)`, `station_background(res)`, `lv_network(table, check=None)` | station ([Stations and the LV network](station.md)) |
 | `earthing_comparison(long_df, ratio)`, `reduction_factor(spectrum, effective, r_typical=None)` | earthing measurement ([Earthing measurements](earthing.md)); a grey bar at 50 Hz only for a typical range of r that you give |
 | `source_fit(series, Z_E=None)`, `source_plane(series, mc=None)`, `ires_over_ze(series, Z_E_max, limits=(), IG, scaling)` | equivalent-source method, `ires_over_ze` with lines at the limits of the residual current that you give (none by default); `source_plane` draws the Monte Carlo spread of Z_q given the result of `equivalent_source.monte_carlo` ([Campaign evaluation](campaign.md#checks-and-hints)) |

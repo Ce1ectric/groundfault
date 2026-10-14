@@ -9,12 +9,12 @@ voltages, the earth potential rise and touch voltage per frequency, the current 
 factor compared with earthing measurements. All algorithms live in a Python package; two Jupyter notebooks serve as the
 user interface. Tables, hints and figures are available in English and German.
 
-![Reduction factor per harmonic order from a staged fault test and an earthing measurement of the same station (top)
-and the two compared impedances (bottom) – demo station](assets/station_reduction_factor.png)
+![Reduction factor over the frequency from a staged fault test and an earthing measurement of the same station (top)
+and the two compared quantities r·Z_E and Z_E (bottom) – demo station](assets/station_reduction_factor.png)
 
-*Reduction factor of the demo station: the fault-related earth potential rise per ampere of fault current divided by
-the earthing impedance from a current-injection measurement, per harmonic order (top), and the two compared impedances
-(bottom).*
+*Reduction factor of the demo station: the fault-related earth potential rise per ampere of fault current, r·Z_E,
+divided by the earthing impedance Z_E from a current-injection measurement, over the frequency with its trend (top),
+and the two compared quantities (bottom).*
 
 ## What it does
 
@@ -27,8 +27,12 @@ the earthing impedance from a current-injection measurement, per harmonic order 
     Residual earth-fault current as the true RMS value of the largest 200-ms window, its fundamental component and
     harmonics, active and reactive (detuning) current by the angle method, measurement uncertainty, scaling to the
     95 % quantile of a power-quality measurement, voltages before, during and after the fault (sequence components,
-    THD). Over a series of tests with different additional impedances: the **equivalent-source method** – an active
-    two-terminal equivalent per harmonic order and the residual current at any earthing impedance Z_E.
+    THD). Disturbed states during the fault – a network section that trips, a short active residual current increase
+    for fault location – are **detected and left out of the reference**. Over a series of tests with different
+    additional impedances: the **equivalent-source method** – an active two-terminal equivalent per harmonic order and
+    the residual current at any earthing impedance Z_E. With the line currents of the transformer: the **transformer
+    node** – power and impedance per harmonic before, during and after the fault, and the upstream impedance of
+    transformer and HV network from the fault-related change.
 
 -   __Secondary substation__
 
@@ -38,7 +42,8 @@ the earthing impedance from a current-injection measurement, per harmonic order 
     (superposition removes the background already present before the fault), with an uncertainty estimate. PEN
     currents give the current into the LV network and the earthing impedance of the LV network. Compared with the
     earthing measurements stored in a [groundmeas](https://github.com/Ce1ectric/groundmeas) database, the
-    **reduction factor** follows per harmonic and as an RMS value; evaluated tests can be entered in groundmeas.
+    **reduction factor** r = r·Z_E / Z_E follows per harmonic – over the frequency with the span of the methods and a
+    trend – and as an RMS value; evaluated tests can be entered in groundmeas.
 
 -   __Checks at the curves__
 

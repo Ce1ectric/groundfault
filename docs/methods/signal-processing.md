@@ -179,21 +179,75 @@ For a signal that consists of harmonics only it equals \(\sqrt{\sum_m \lvert\und
 plausibility rows *RMS ↔ √ΣX²* compare both, over the assessed orders and over the orders 1…40, and point to
 interharmonics, noise or transients in the window if they differ.
 
-The **max window** is the window of the steady-state interval with the largest true RMS value of the main
-fault-current channel. All assessment quantities come from this one window – the residual current, its harmonics, the
-angle method, the station quantities – so that they describe the same instant, and taking the largest window is
-conservative. `Settings.max_search_hop` searches the maximum on a finer grid of window positions; the window found
+The **max window** is the window of the undisturbed part of the steady-state interval (see the next section) with the
+largest true RMS value of the main fault-current channel. All assessment quantities come from this one window – the
+residual current, its harmonics, the angle method, the station quantities – so that they describe the same instant,
+and taking the largest window is conservative. `Settings.max_search_hop` searches the maximum on a finer grid of window positions; the window found
 there replaces the max window of the standard grid. Windows that contain gaps (NaN, e.g. after an alignment of
 subsystems) are ignored, with a hint.
 
+## Disturbed states
+
+The assessment refers to the normal state of the network during the earth fault. Two events change that state while
+the fault persists, and the windows they affect are left out of the reference
+([`groundfault.disturbances`](../reference/disturbances.md)):
+
+* an **active residual current increase** (a resistor at the auxiliary winding of a coil, for a few seconds, to locate
+  the faulted feeder) – the active component Iw rises abruptly and falls back;
+* a **network change** (a network section trips or is switched) – the capacitive earth-fault current I_C and with it
+  the detuning Iv = ΣI_coil − I_C change abruptly and persist.
+
+Windows **without fault current** are no state of the fault at all: if the steady-state interval reaches beyond the
+clearance (or begins before the inception), the windows whose RMS value of the fault current is below 10 % of its
+largest value in the interval (median of three consecutive windows, so that a single outlier does not count) get the
+state *no fault current*. They are never part of the reference and take no part in the detection – otherwise the drop
+of Iw at the clearance would look like the end of an active residual current increase that lasted the whole fault.
+
+Per window k the fundamental phasor of the fault current gives Iw_k and Iv_k by the angle method (relative to U0,
+oriented so that the median of Iw is positive). A **step** at window k is a difference of the medians of the m = 3
+windows after and before it (window k itself, which may straddle the step, is left out)
+
+\[
+\Delta x_k = \operatorname{median}(x_{k+1} \ldots x_{k+m}) - \operatorname{median}(x_{k-m} \ldots x_{k-1})
+\]
+
+that is at least the threshold \(\theta\) and at least three times the spread (maximum − minimum) of either side,
+\(\lvert\Delta x_k\rvert \geq \max(\theta,\, 3\,s_k)\). A uniform ramp gives \(\lvert\Delta x\rvert = 2\,s\) and is
+therefore no step – a motor-driven coil adjustment changes Iv gradually and stays part of the reference (the
+stationarity check reports it). The threshold is \(\theta = \max(0.05\,\lvert I_{H1}\rvert,\ 0.5\ \text{A})\)
+with |I_H1| of the undisturbed state (`Settings.disturbance_threshold`; first from all windows, then repeated with the
+undisturbed ones).
+
+The steps are classified:
+
+| Step | Classification |
+|---|---|
+| ΔIw ≥ θ (abrupt) | start of an active residual current increase (ΔIw ≤ −θ: its end); a simultaneous step of Iv smaller than half of ΔIw belongs to it (the resistor shifts the reactive component a little) |
+| ΔIv ≥ θ (abrupt), coil currents measured and changing by at least 25 % of ΔIv | coil change – reported, **no** disturbance (25 % also covers a coil channel that captures only one of several conductors) |
+| ΔIv ≥ θ (abrupt), coil currents unchanged | network change |
+| ΔIv ≥ θ (abrupt), no coil currents | step of the reactive component, cause open – treated as a network change |
+| Δ\|I_H1\| ≥ θ without U0 | step of the fundamental component, cause open (station without voltage measurement) |
+
+The steps of Iw are added up per window; a window lies in an active residual current increase if its level is at
+least θ above the lowest level (the increase only ever adds active current, so an interval may also start during one).
+The network steps of Iv (of |I_H1| without U0) are added up as well; a window whose level differs from that of the
+first window by at least θ is in a changed state – **the start of the steady-state interval is the reference**. A
+window that straddles a step – judged from the stepping quantity and from the RMS value, because the Hann window hardly
+sees a step near the edge of a window – belongs to the disturbed state.
+
+Left out are the max window, the statistics, the stationarity check, the coil-current balance and the least-squares
+superposition of a station (method `voltage`). The superposition at fault inception and clearance uses its own
+windows next to those instants; a disturbed state there does not bias it, because the ratio ΔU/I_F of a linear earthing
+system does not depend on the size of the fault current.
+
 ## Statistics over the steady state
 
-Besides the max window, the table `statistics` describes all windows of the steady-state interval: for every channel
+Besides the max window, the table `statistics` describes the undisturbed windows of the steady-state interval: for every channel
 the RMS value, and for fault, coil, shield and PEN currents and the probes also the magnitudes of the assessed orders –
 number of windows, mean, standard deviation, minimum, maximum and 95 % quantile next to the value in the max window. A
 large spread shows that the interval is not steady. Two plausibility rows look at the interval as well: *Stationarity
-of I_H1 in the interval* evaluates the angle method in every window and separates a change of the active component
-(active residual current increase) from a change of the reactive component (coil adjustment, network switching); the
+of I_H1 in the interval* evaluates the angle method in every undisturbed window and separates a change of the active
+component from a change of the reactive component (typically a coil adjustment); the
 *coil current balance* compares the change of Iv with the change of the measured coil currents (slope 1 expected) and
 reveals a coil channel with a wrong ratio. See [Plausibility checks](../user-guide/evaluation.md#plausibility-checks).
 

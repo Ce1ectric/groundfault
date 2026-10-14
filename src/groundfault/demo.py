@@ -19,7 +19,9 @@ Physical model (fault on line L3 or ``faulted_phase``, 20-kV network):
   displacement voltage after the fault clearance, noise and DC offset of the current clamps.
 * Station: earth potential rise U_E = r·Z_E·I_F (reduction factor r, Z_E per order), probe shares, touch voltage
   U_T = U_E/F, shield current I_S = (1 − r)·I_F.
-* Transformer: load current + harmonic powers S_m per order + zero-sequence current = coil current/3.
+* Transformer: load current + harmonic powers S_m per order; during the fault the positive- and negative-
+  sequence share of the fault current of every order through the upstream impedance (transformer + HV
+  network) and the zero-sequence current = coil current/3.
 
 All true values are saved as JSON next to the ``.cfg`` file (``<stem>_truth.json``).
 
@@ -158,6 +160,7 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
                        drift: complex = 1.0, faulted_phase: int = 3, t_on: float = 2.0, t_off: float = 6.0,
                        active_step: Optional[Tuple[float, float, float]] = (4.6, 5.4, 15.0),
                        reactive_step: Optional[Tuple[float, float, float]] = None,
+                       network_step: Optional[Tuple[float, float]] = None,
                        dc_offset: Optional[Tuple[float, float]] = None,
                        coils_A: Sequence[float] = (300.0, 250.0), U0_pre: complex = polar(150, 60),
                        polarity: int = 1, second_ct: Optional[Tuple[float, float]] = (1.01, 0.5),
@@ -196,7 +199,12 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
     active_step : tuple (t_a, t_b, ΔIw), optional
         Active residual current increase by ΔIw between t_a and t_b.
     reactive_step : tuple (t_a, t_b, ΔIv), optional
-        Step of the detuning current by ΔIv between t_a and t_b (coil adjustment) – at most one of the two steps.
+        Step of the detuning current by ΔIv between t_a and t_b (coil adjustment: the current of coil 1 changes by
+        ΔIv) – at most one of ``active_step`` and ``reactive_step``.
+    network_step : tuple (t_a, ΔIv), optional
+        Network change from t_a until the fault clearance: the detuning current changes by ΔIv while the coil
+        currents stay the same (a network section trips, the capacitive earth-fault current changes); may be
+        combined with ``active_step``.
     dc_offset : tuple (A, τ), optional
         DC component A·e^{−t/τ} in the fault current, decaying after the fault inception (e.g. from the coil
         current).
@@ -263,20 +271,31 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
 
     U0_f, Ip1, Y = u0_off(Iw, Iv)
     gate = ((t >= t_on) & (t < t_off)).astype(float)
-    # step of the active residual current: G increases by ΔIw/|U0| (or the detuning by ΔIv)
+    # states of the fundamental component during the fault: steady state, step of the active residual current
+    # (G increases by ΔIw/|U0|) or of the detuning (coil), network change (detuning, coils unchanged)
+    step_ = np.zeros(n, bool)
     if active_step or reactive_step:
-        wa, wb, d = active_step or reactive_step
-        U0_w, Ip1_w, _ = u0_off(Iw + d, Iv) if active_step else u0_off(Iw, Iv + d)
-        step_ = ((t >= wa) & (t < wb)).astype(float)
-    else:
-        U0_w, Ip1_w, step_ = U0_f, Ip1, np.zeros(n)
-    base = gate * (1 - step_)
-    # voltages (fundamental component) – steady state, step, before/after the fault
+        wa, wb, _d = active_step or reactive_step
+        step_ = (t >= wa) & (t < wb)
+    net_ = (t >= network_step[0]) if network_step else np.zeros(n, bool)
+    states = {}                                        # (step, network) → (U0, I'_1, mask)
+    for a_ in (False, True):
+        for b_ in (False, True):
+            mask = gate * ((step_ == a_) & (net_ == b_))
+            if not mask.any():
+                continue
+            iw_ = Iw + (active_step[2] if a_ and active_step else 0.0)
+            iv_ = Iv + (reactive_step[2] if a_ and reactive_step else 0.0) + (network_step[1] if b_ else 0.0)
+            U0_s, Ip1_s, _ = u0_off(iw_, iv_)
+            states[(a_, b_)] = (U0_s, Ip1_s, mask)
+    U0_w, Ip1_w = (states[(True, False)][:2] if (True, False) in states else (U0_f, Ip1))
+    # voltages (fundamental component) – states during the fault, before/after the fault
     U = np.zeros((3, n))
     for x in range(3):
         U[x] += _wave(t, f1, E[x])
         U[x] += (1 - gate) * _wave(t, f1, U0_pre_t)
-        U[x] += base * _wave(t, f1, U0_f) + gate * step_ * _wave(t, f1, U0_w)
+        for U0_s, _, mask in states.values():
+            U[x] += mask * _wave(t, f1, U0_s)
     # decaying neutral displacement voltage after the fault clearance (natural frequency ≈ 48 Hz)
     post = t >= t_off
     tau_off, f_own = 0.15, 48.0
@@ -287,7 +306,7 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
     for x in range(3):
         U[x] += decay
     # fault current (orientation I' of the angle method, measured with ``polarity``)
-    I_F = base * _wave(t, f1, Ip1) + gate * step_ * _wave(t, f1, Ip1_w)
+    I_F = sum(mask * _wave(t, f1, Ip1_s) for _, Ip1_s, mask in states.values())
     true_h = {}
     U0_h = {}
     for h in harmonic_sources:
@@ -322,10 +341,11 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
     for k, IL in enumerate(coils_A):
         XL = U_PH / IL
         i = (1 - gate) * _wave(t, f1, U0_pre_t / (1j * XL))
-        il_step = U0_w / (1j * XL)
-        if reactive_step and k == 0:              # coil adjustment: coil 1 changes its current by ΔIv
-            il_step = il_step * (1 + reactive_step[2] / abs(il_step))
-        i += base * _wave(t, f1, U0_f / (1j * XL)) + gate * step_ * _wave(t, f1, il_step)
+        for (a_, _b), (U0_s, _, mask) in states.items():
+            il = U0_s / (1j * XL)
+            if a_ and reactive_step and k == 0:    # coil adjustment: coil 1 changes its current by ΔIv
+                il = il * (1 + reactive_step[2] / abs(il))
+            i += mask * _wave(t, f1, il)
         for h in harmonic_sources:
             i += gate * _wave(t, h.order * f1, U0_h[h.order] / (1j * h.order * XL))
         if transient:
@@ -371,14 +391,16 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
         Iw=Iw, Iv=Iv, IG=IG, IH=IH, IRES=math.sqrt(IG ** 2 + IH ** 2),
         IRES_active_step=(math.sqrt(abs(Ip1_w) ** 2 + IH ** 2) if active_step else None),
         IRES_step=(math.sqrt(abs(Ip1_w) ** 2 + IH ** 2) if (active_step or reactive_step) else None),
+        IRES_network_step=(math.sqrt(abs(states[(False, True)][1]) ** 2 + IH ** 2)
+                           if network_step and (False, True) in states else None),
         U0_fault=abs(U0_f), U0_fault_ll=U0_f * np.exp(-1j * phi_ll),
         UTHD_LL_pre_pct=100 * uh_ll / (U_PH * math.sqrt(3)), UH_LL_pre_V=uh_ll,
         UH5g_pre=abs(U_pre_seq.get(5, 0)), UH7m_pre=abs(U_pre_seq.get(7, 0)),
         coils_H1_A=[abs(U0_f) / (U_PH / IL) for IL in coils_A],
         harmonic_sources={m: dict(I=abs(v["I_ll"]), I_ll=v["I_ll"], U_pre_ll=v["U_pre_ll"], Uq=v["Uq"],
                                   Zq=v["Zq"], sequence=v["sequence"]) for m, v in true_h.items()},
-        intervals=dict(steady_state=(t_on + 0.6, ((active_step or reactive_step)[0] - 0.2) if (active_step or reactive_step)
-                                  else t_off - 0.2),
+        intervals=dict(steady_state=(t_on + 0.6, min([x[0] - 0.2 for x in (active_step, reactive_step, network_step)
+                                                     if x] + [t_off - 0.2])),
                       pre_fault=(0.2, t_on - 0.2), post_fault=(t_off + 1.0, duration - 0.2)),
     )
     _save_truth(path, truth)
@@ -621,12 +643,32 @@ def make_transformer_recording(path: str, *, fs: float = 10000.0, duration: floa
                   S_harm: Optional[Dict[int, complex]] = None,
                   U_harm: Optional[Dict[int, complex]] = None, with_fault: bool = True,
                   I_coil: float = 300.0, t_on: float = 1.5, t_off: float = 4.5, hv: bool = True,
-                  seed: int = 2) -> dict:
-    """Write a COMTRADE recording of a transformer measurement (MV line currents, MV and HV voltages) with a given
-    power per order and known solution.
+                  seed: int = 2, Z_transformer: complex = complex(0.05, 1.8), Z_hv: complex = complex(0.03, 0.12),
+                  Iw: float = 20.0, Iv: float = 5.0, fault_harmonics: Optional[Dict[int, complex]] = None,
+                  share: complex = complex(0.9, 0.0), generator_reference: bool = False,
+                  active_step: Optional[Tuple[float, float, float]] = None,
+                  coil_at_transformer: bool = True) -> dict:
+    """Write a COMTRADE recording of a transformer measurement (MV line currents of the transformer, MV busbar and HV
+    voltages, coil current) with known solution.
 
-    True value: S_m = Σ_x U_x,m·conj(I_x,m) (load reference-arrow system, sum over the three lines). During the
-    fault, each MV line additionally carries I_coil/3 in the zero sequence.
+    Model (per order m, symmetrical components referred to U_L1-L2, consumer reference arrow system of the MV
+    network):
+
+    * Before and after the fault: busbar voltage ``U_harm`` and power ``S_harm`` per order in the natural sequence of
+      the order (fundamental: load power ``S1``, positive sequence).
+    * Upstream impedance (transformer and HV network seen from the MV busbar) Z_up(m) = Z_T(m) + Z_HV(m) with
+      Z(m) = R + j·m·X from ``Z_transformer`` and ``Z_hv`` (values at the fundamental): the busbar voltage is
+      U = U_bg − Z_up·I.
+    * Fault in L3 at the busbar: fault current I_F,m (fundamental from ``Iw``, ``Iv`` relative to the voltage of the
+      faulted phase; harmonics ``fault_harmonics`` referred to U_L1-L2), at the fault location I_1 = a²·I_F/3,
+      I_2 = a·I_F/3. The transformer carries ``share``·I_1 and ``share``·I_2 additionally, the busbar voltage changes
+      by ΔU_s = −Z_up·ΔI_s, and U0,m = −(a·U_1,m + a²·U_2,m) (U_L3E = 0). With ``coil_at_transformer`` the
+      transformer also carries the coil current/3 in the zero sequence (fundamental).
+    * ``active_step = (t_from, t_to, ΔIw)``: active residual current increase (fault current + ΔIw in phase with the
+      voltage of the faulted phase).
+    * HV voltages: U_HV = t_s·(U + Z_T·I) with the ratio 110 kV/20 kV and the phase shift of vector group 5
+      (positive sequence +150°, negative sequence −150°).
+    * ``generator_reference``: the currents are recorded reversed (generator reference arrow system).
 
     Parameters
     ----------
@@ -641,11 +683,11 @@ def make_transformer_recording(path: str, *, fs: float = 10000.0, duration: floa
     theta0_deg : float, optional
         Phase angle at t = 0 in degrees.
     S1 : complex, optional
-        Complex power of the fundamental component in VA (three lines).
+        Complex power of the fundamental component in VA (three lines, before the fault).
     S_harm : dict, optional
-        ``{order: complex power in VA}`` of the harmonics.
+        ``{order: complex power in VA}`` of the harmonics before the fault.
     U_harm : dict, optional
-        ``{order: sequence voltage (line-to-earth) in V, referred to L1-L2}`` of the harmonics.
+        ``{order: sequence voltage (line-to-earth) in V, referred to L1-L2}`` of the harmonics before the fault.
     with_fault : bool, optional
         Earth fault between ``t_on`` and ``t_off``.
     I_coil : float, optional
@@ -656,52 +698,136 @@ def make_transformer_recording(path: str, *, fs: float = 10000.0, duration: floa
         Record the HV line-to-earth voltages as well.
     seed : int, optional
         Seed of the random generator (noise).
+    Z_transformer, Z_hv : complex, optional
+        Impedance of the transformer and of the HV network (referred to the MV side) at the fundamental in Ω.
+    Iw, Iv : float, optional
+        Active and reactive residual current of the fault in A (Iv > 0: over-compensated).
+    fault_harmonics : dict, optional
+        ``{order: fault current in A, referred to L1-L2}`` of the harmonics.
+    share : complex, optional
+        Share of the positive- and negative-sequence fault current that flows through the transformer.
+    generator_reference : bool, optional
+        Record the currents in the generator reference arrow system (reversed).
+    active_step : tuple, optional
+        ``(t_from, t_to, ΔIw)`` – active residual current increase.
+    coil_at_transformer : bool, optional
+        The coil is connected to the star point of this transformer (zero-sequence current in its lines).
 
     Returns
     -------
     dict
-        True values (also saved as ``<stem>_truth.json``): ``S`` (``P_kW``, ``Q_kvar`` per order), the
-        zero-sequence current and the coil current during the fault, recommended analysis intervals.
+        True values (also saved as ``<stem>_truth.json``): ``S`` (``P_kW``, ``Q_kvar`` per order before the fault),
+        ``S_fault`` (the same during the undisturbed fault), ``dP1_fault_kW``, ``dQ1_fault_kvar``, the upstream
+        impedance ``Z_up`` and its parts ``Z_transformer`` and ``Z_hv`` per order (``re``, ``im``), ``X1_up``,
+        ``X1_transformer``, ``X1_hv`` (reactances at the fundamental), ``sign`` (+1, −1 with
+        ``generator_reference``), the zero-sequence current and the coil current during the fault, ``active_step``
+        and recommended analysis intervals.
     """
     rng = np.random.default_rng(seed)
     n = int(round(duration * fs)); t = np.arange(n) / fs
     th = np.deg2rad(theta0_deg)
     S_harm = S_harm or {5: complex(-4e3, 9e3), 7: complex(2e3, -3e3), 11: complex(-1e3, 1.5e3)}
     U_harm = U_harm or {5: polar(180, -20), 7: polar(90, 40), 11: polar(30, 75)}
+    fault_harmonics = fault_harmonics if fault_harmonics is not None else {5: polar(9.0, 95), 7: polar(4.0, 80),
+                                                                           11: polar(1.5, 60)}
     gate = ((t >= t_on) & (t < t_off)).astype(float) if with_fault else np.zeros(n)
-    E = U_PH * np.exp(1j * th) * np.array([1, A2, A])
-    U0 = -E[2]
+    gate_a = np.zeros(n)
+    if active_step is not None and with_fault:
+        gate_a = ((t >= max(active_step[0], t_on)) & (t < min(active_step[1], t_off))).astype(float)
+    E = U_PH * np.exp(1j * th) * np.array([1, A2, A])                 # source voltages in the file's time origin
     phi_ll = float(np.angle(E[0] - E[1]))
-    U = [_wave(t, f1, E[x]) + gate * _wave(t, f1, U0) for x in range(3)]
-    I1 = np.conj(S1 / (3 * E[0]))
-    I = [_wave(t, f1, I1 * f) for f in (1, A2, A)]
-    I0 = U0 / (1j * U_PH / I_coil) / 3.0
-    for x in range(3):
-        I[x] += gate * _wave(t, f1, I0)
-    S_true = {1: S1}
-    for m, Sm in S_harm.items():
-        Um = _rotate_phase(U_harm[m], m, phi_ll)
-        fac = _seq_factors(m)
-        Im = np.conj(Sm / (3 * Um))
-        for x in range(3):
-            U[x] += _wave(t, m * f1, Um * fac[x])
-            I[x] += _wave(t, m * f1, Im * fac[x])
-        S_true[m] = Sm
+    E_ref = E * np.exp(-1j * phi_ll)                                  # … referred to U_L1-L2 (fundamental)
+    sgn = -1.0 if generator_reference else 1.0
+    kpos, kneg = A2, A                                                 # fault in L3: I_1 = a²·I_F/3, I_2 = a·I_F/3
+
+    def z_at(Z: complex, m: int) -> complex:
+        return complex(Z.real, m * Z.imag)
+
+    # ---- phasors per order and state (referred to U_L1-L2): sequences (0, 1, 2) of U and I
+    orders = sorted({1} | set(S_harm) | set(fault_harmonics))
+    pre = {}
+    for m in orders:
+        U = np.zeros(3, complex); I = np.zeros(3, complex)
+        if m == 1:
+            U[1] = E_ref[0]
+            I[1] = np.conj(S1 / (3 * U[1]))
+        elif m in S_harm:
+            q = m % 3
+            U[q] = U_harm[m]
+            I[q] = np.conj(S_harm[m] / (3 * U_harm[m]))
+        pre[m] = (U, I)
+    E3 = E_ref[2]
+    I_F = {1: (Iw - 1j * Iv) * E3 / abs(E3)}
+    I_F.update({m: complex(v) for m, v in fault_harmonics.items()})
+    dIw = {1: (active_step[2] if active_step else 0.0) * E3 / abs(E3)}
+
+    def fault_state(m: int, extra: complex = 0.0):
+        U, I = (x.copy() for x in pre[m])
+        iF = I_F.get(m, 0.0) + extra
+        dI = np.array([0.0, share * kpos * iF / 3.0, share * kneg * iF / 3.0], complex)
+        Zu = z_at(Z_transformer, m) + z_at(Z_hv, m)
+        U = U + np.array([0.0, -Zu * dI[1], -Zu * dI[2]])
+        I = I + dI
+        U[0] = -(A * U[1] + A2 * U[2])                                 # U_L3E = 0 (bolted fault at the busbar)
+        if m == 1 and coil_at_transformer:
+            I[0] = U[0] / (1j * U_PH / I_coil) / 3.0
+        return U, I
+
+    fault = {m: fault_state(m) for m in orders}
+    step = {m: fault_state(m, dIw[1] if m == 1 else 0.0) for m in orders}
+    # ---- waveforms: pre-fault + gate·(fault − pre) + gate_a·(step − fault)
+    seq_phase = np.array([[1, 1, 1], [1, A2, A], [1, A, A2]])          # rows: sequence 0, 1, 2; columns: L1…L3
+
+    def phases(x):
+        return x @ seq_phase                                           # sequences → phases
+
+    U_w = [np.zeros(n) for _ in range(3)]; I_w = [np.zeros(n) for _ in range(3)]
+    Uhv_w = [np.zeros(n) for _ in range(3)]
+    ratio = 110000.0 / 20000.0
+    fac = {0: 0.0, 1: ratio * np.exp(1j * np.deg2rad(150.0)), 2: ratio * np.exp(-1j * np.deg2rad(150.0))}
+    for m in orders:
+        Zt = z_at(Z_transformer, m)
+        states = [(pre[m], np.ones(n)), ((fault[m][0] - pre[m][0], fault[m][1] - pre[m][1]), gate),
+                  ((step[m][0] - fault[m][0], step[m][1] - fault[m][1]), gate_a)]
+        for (U, I), g in states:
+            Uph = phases(U); Iph = phases(I)
+            Uhv = phases(np.array([fac[q] * (U[q] + Zt * I[q]) for q in range(3)]))
+            for x in range(3):
+                rot = np.exp(1j * m * phi_ll)
+                U_w[x] += g * _wave(t, m * f1, Uph[x] * rot)
+                I_w[x] += g * _wave(t, m * f1, Iph[x] * rot)
+                Uhv_w[x] += g * _wave(t, m * f1, Uhv[x] * rot)
     signals = {}
     for x in range(3):
-        signals["DANEO 1_System 1_V%d Inst" % (x + 1)] = ("V", U[x] + _noise(rng, n, 3.0))
+        signals["DANEO 1_System 1_V%d Inst" % (x + 1)] = ("V", U_w[x] + _noise(rng, n, 3.0))
     for x in range(3):
-        signals["DANEO 1_System 2_I%d Inst" % (x + 1)] = ("A", I[x] + _noise(rng, n, 0.05))
+        signals["DANEO 1_System 2_I%d Inst" % (x + 1)] = ("A", sgn * I_w[x] + _noise(rng, n, 0.05))
     if hv:
-        E_hv = 110000 / math.sqrt(3) * np.exp(1j * (th + np.deg2rad(150))) * np.array([1, A2, A])
         for x in range(3):
-            signals["DANEO 1_System 3_V%dHS Inst" % (x + 1)] = ("V", _wave(t, f1, E_hv[x]) + _noise(rng, n, 20.0))
-    signals["DANEO 1_Ströme_ISp22 Inst"] = ("A", gate * _wave(t, f1, U0 / (1j * U_PH / I_coil))
-                                            + _noise(rng, n, 0.05))
+            signals["DANEO 1_System 3_V%dHS Inst" % (x + 1)] = ("V", Uhv_w[x] + _noise(rng, n, 20.0))
+    U0f = fault[1][0][0] * np.exp(1j * phi_ll)
+    coil_w = gate * _wave(t, f1, U0f / (1j * U_PH / I_coil))
+    signals["DANEO 1_Ströme_ISp22 Inst"] = ("A", coil_w + _noise(rng, n, 0.05))
     write_comtrade(path, signals, fs, t_start=_dt.datetime(2026, 1, 15, 10, 0, 0), trigger_s=t_on)
+
+    def power(st, m):
+        U, I = st[m]
+        return complex(np.sum(phases(U) * np.conj(phases(I))))
+    z_up = {m: z_at(Z_transformer, m) + z_at(Z_hv, m) for m in orders}
+    S_pre = {m: power(pre, m) for m in orders}
+    S_fault = {m: power(fault, m) for m in orders}
+    cx = lambda z: dict(re=float(np.real(z)), im=float(np.imag(z)))
     truth = dict(file=os.path.basename(path), f1=f1,
-                S={m: dict(P_kW=s.real / 1e3, Q_kvar=s.imag / 1e3) for m, s in S_true.items()},
-                I_zero_fault_A=abs(I0), I_coil_A=abs(U0) / (U_PH / I_coil),
+                S={m: dict(P_kW=s.real / 1e3, Q_kvar=s.imag / 1e3) for m, s in S_pre.items()},
+                S_fault={m: dict(P_kW=s.real / 1e3, Q_kvar=s.imag / 1e3) for m, s in S_fault.items()},
+                dP1_fault_kW=(S_fault[1] - S_pre[1]).real / 1e3, dQ1_fault_kvar=(S_fault[1] - S_pre[1]).imag / 1e3,
+                Z_up={m: cx(z) for m, z in z_up.items()},
+                Z_transformer={m: cx(z_at(Z_transformer, m)) for m in orders},
+                Z_hv={m: cx(z_at(Z_hv, m)) for m in orders},
+                X1_up=float(Z_transformer.imag + Z_hv.imag), X1_transformer=float(Z_transformer.imag),
+                X1_hv=float(Z_hv.imag), sign=-1 if generator_reference else 1,
+                I_zero_fault_A=float(abs(fault[1][1][0])), I_coil_A=float(abs(U0f) / (U_PH / I_coil)),
+                active_step=list(active_step) if active_step else None,
                 intervals=dict(steady_state=(t_on + 0.5, t_off - 0.2), pre_fault=(0.2, t_on - 0.2),
                               post_fault=(t_off + 0.3, duration - 0.2)))
     _save_truth(path, truth)

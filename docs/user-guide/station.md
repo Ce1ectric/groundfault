@@ -136,8 +136,11 @@ channel  order   f_Hz  I_F_A  U_during_fault_V  Z_direct_Ohm  Z_fault_Ohm  Z_fau
 ['direct', 'inception', 'clearance', 'voltage', 'fault']
 ```
 
-For the earth potential rise at a remote probe, Z_fault is the product r·Z_E of the reduction factor and the earthing
-impedance – compared with an earthing measurement it gives the reduction factor ([Earthing measurements](earthing.md)).
+The columns `Z_<method>_Ohm` are the voltage per ampere of fault current, U/I_F in V/A (German output:
+`U_zu_I_F_…`), for every probe. For an earth-potential probe this is **r·Z_E** – the earthing impedance times the
+reduction factor, because only the earth current I_E = r·I_F flows into the earthing system; groundfault does not call
+it Z_E. Compared with an earthing measurement (which gives Z_E itself) it gives the reduction factor
+([Earthing measurements](earthing.md)).
 At 50 Hz the angle of Z (referred to I_F) is expected to lie roughly between −30° and +60°; outside −45…+75° a hint
 “Angle U_E/I_F (…, 50 Hz) = …° – atypical for an earthing impedance …” points to a reversed probe or clamp. The
 magnitudes are not affected by the polarity.
@@ -237,7 +240,8 @@ without them the table is empty and the hint above names the setting.
 | `channel`, `role`, `I_limit_A` | probe and limit of the residual current |
 | `U_proportional_V` | measured RMS value scaled proportionally (contains the background) |
 | `U_fault_V` | only the fault-related component scaled (RMS value over the evaluated orders) |
-| `U_background_plus_fault_V` | scaled fault-related component plus the unchanged background – added as phasors per order, the background at the other frequencies as RMS value |
+| `U_background_plus_fault_V` | scaled fault-related component plus the unchanged background – added as phasors per order with the phase relation of the test, the background at the other frequencies as RMS value |
+| `U_background_plus_fault_in_phase_V` | upper bound: background and scaled fault-related component **in phase** at every order, \( \sqrt{\sum_m (\lvert U_{\text{bg},m}\rvert + s\,\lvert\Delta U_m\rvert)^2 + U_\text{rest}^2} \). At a real fault the phase relation differs from the test – another faulted line turns the fault current by ±120° against the network voltage, the load is another – so the phasor sum of the test is only one case; a background in antiphase even makes the measured voltage smaller than the fault-related component |
 
 ```python
 limits = (50.0, 100.0)                                       # illustrative values – define your own
@@ -247,9 +251,9 @@ print(res_lim.table("station_extrapolation").head(2).round(2).to_string(index=Fa
 ```
 
 ```text
-channel role  I_limit_A  U_proportional_V  U_fault_V  U_background_plus_fault_V
- UE_70m  u_e       50.0             21.92      21.92                      21.92
- UE_70m  u_e      100.0             43.83      43.83                      43.83
+channel role  I_limit_A  U_proportional_V  U_fault_V  U_background_plus_fault_V  U_background_plus_fault_in_phase_V
+ UE_70m  u_e       50.0             21.92      21.92                      21.92                               21.92
+ UE_70m  u_e      100.0             43.83      43.83                      43.83                               43.83
 ```
 
 ## PEN currents and the LV network
@@ -302,11 +306,11 @@ These rows come first; rows per earth-potential probe follow for comparison.
 **Parallel check.** The LV network is one branch of the total earthing, so at every frequency
 
 \[
-|\underline{Z}_\text{E,LV}| \ge |\underline{Z}_\text{E,fault}| = \left|\frac{\max(\underline{U}_\text{E})}{\underline{I}_\text{F}}\right|
+|\underline{Z}_\text{E,LV}| \ge |r\,\underline{Z}_\text{E}| = \left|\frac{\max(\underline{U}_\text{E})}{\underline{I}_\text{F}}\right|
 \quad\Leftrightarrow\quad |\underline{I}_\text{LV}| \le |\underline{I}_\text{F}|
 \]
 
-(column `parallel_check`, ratio `Z_LV_to_Z_E_fault`). The condition depends only on the currents, not on the probe.
+(column `parallel_check`, ratio `Z_LV_to_rZE_fault`). The condition depends only on the currents, not on the probe.
 With a measured shield current the stricter condition against the earth current I_E = I_F − I_S (sum of all
 shield-current channels) is checked as well: |I_LV| ≤ |I_E| (column `earth_current_check`, ratio `I_LV_to_I_E`). The
 result is `satisfied`, `borderline` (deviation within the estimated uncertainty, column `check_uncertainty_pct`) or
@@ -323,33 +327,33 @@ PEN conductors.
 | `kcl_deviation_pct`, `I_LV_uncertainty_pct` | deviation between the measuring points; uncertainty of I_LV |
 | `U_E_fault_V` | fault-related earth potential rise |
 | `Z_E_LV_Ohm`, `Z_E_LV_angle_deg`, `Z_E_LV_uncertainty_pct` | earthing impedance of the LV network |
-| `Z_E_fault_Ohm`, `Z_LV_to_Z_E_fault`, `parallel_check` | ΔU_E/I_F, the ratio and the parallel check |
+| `rZE_fault_Ohm`, `Z_LV_to_rZE_fault`, `parallel_check` | r·Z_E = ΔU_E/I_F, the ratio Z_E,LV/(r·Z_E) and the parallel check |
 | `total_earthing_reference` | `I_E = I_F − I_S (shield current …)` or `I_F (without shield current – weaker condition)` |
-| `Z_total_fault_Ohm`, `I_LV_to_I_E`, `earth_current_check`, `check_uncertainty_pct` | ΔU_E/I_E, the ratio and the earth-current check |
+| `Z_E_earth_current_Ohm`, `I_LV_to_I_E`, `earth_current_check`, `check_uncertainty_pct` | Z_E = ΔU_E/I_E (earthing impedance from the fault test with the earth current), the ratio and the earth-current check |
 | `uncertain` | the probe value or I_LV is uncertain |
 
 `station_lv_network_eff` holds the RMS values per probe and for the probe maximum: `orders`, `I_F_eff_A`, `I_LV_eff_A`,
-`share_I_LV_eff`, `U_E_fault_eff_V`, `Z_E_LV_eff_Ohm`, `Z_E_fault_eff_Ohm`, `parallel_check`,
-`total_earthing_reference`, `Z_total_fault_eff_Ohm`, `I_LV_to_I_E_eff`, `earth_current_check` and
+`share_I_LV_eff`, `U_E_fault_eff_V`, `Z_E_LV_eff_Ohm`, `rZE_fault_eff_Ohm`, `parallel_check`,
+`total_earthing_reference`, `Z_E_earth_current_eff_Ohm`, `I_LV_to_I_E_eff`, `earth_current_check` and
 `uncertain_share_pct` (share of I_LV² from uncertain orders).
 
 ```python
 lv = res.table("station_lv_network")
 print(lv[lv["channel"] == "max(UE)"][["probe", "order", "I_F_A", "I_LV_A", "kcl_deviation_pct", "Z_E_LV_Ohm",
-                                      "Z_LV_to_Z_E_fault", "parallel_check", "I_LV_to_I_E",
+                                      "Z_LV_to_rZE_fault", "parallel_check", "I_LV_to_I_E",
                                       "earth_current_check"]].round(3).to_string(index=False))
 eff = res.table("station_lv_network_eff")
-print(eff[["channel", "probe", "I_LV_eff_A", "Z_E_LV_eff_Ohm", "Z_E_fault_eff_Ohm", "parallel_check",
+print(eff[["channel", "probe", "I_LV_eff_A", "Z_E_LV_eff_Ohm", "rZE_fault_eff_Ohm", "parallel_check",
            "earth_current_check"]].round(3).to_string(index=False))
 ```
 
 ```text
- probe  order  I_F_A  I_LV_A  kcl_deviation_pct  Z_E_LV_Ohm  Z_LV_to_Z_E_fault parallel_check  I_LV_to_I_E earth_current_check
+ probe  order  I_F_A  I_LV_A  kcl_deviation_pct  Z_E_LV_Ohm  Z_LV_to_rZE_fault parallel_check  I_LV_to_I_E earth_current_check
 UE_70m      1 35.001   4.368              0.039       3.738              8.013      satisfied        0.250           satisfied
 UE_70m      5 30.000   2.890              0.030       4.159             10.381      satisfied        0.241           satisfied
 UE_70m      7  6.001   0.493              0.241       4.540             12.172      satisfied        0.235           satisfied
 UE_70m     11  3.999   0.269              0.202       5.521             14.858      satisfied        0.225           satisfied
-channel  probe  I_LV_eff_A  Z_E_LV_eff_Ohm  Z_E_fault_eff_Ohm parallel_check earth_current_check
+channel  probe  I_LV_eff_A  Z_E_LV_eff_Ohm  rZE_fault_eff_Ohm parallel_check earth_current_check
 max(UE) UE_70m       5.268           3.883              0.438      satisfied           satisfied
  UE_70m UE_70m       5.268           3.883              0.438      satisfied           satisfied
   UE_5m  UE_5m       5.268           2.505              0.283      satisfied           satisfied

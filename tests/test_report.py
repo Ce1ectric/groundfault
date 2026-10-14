@@ -63,7 +63,7 @@ def _rf_spectrum(origin_250hz: str) -> pd.DataFrame:
     for m, origin in ((1, "gemessen bei 50 Hz"), (5, origin_250hz), (7, "gemessen bei 350 Hz")):
         rows.append(dict(channel=MAX_PROBE, probe="UE_5m", distance_fault_m=5.0, injection_id=1,
                          distance_injection_m=70.0, distance_match="maximum", order=m, f_Hz=50.0 * m, I_F_A=10.0,
-                         UE_per_A_fault=0.5, UE_per_A_direct=0.5, UE_per_A_injection=1.0, injection_frequency=origin,
+                         rZE_fault_Ohm=0.5, rZE_direct_Ohm=0.5, Z_E_injection_Ohm=1.0, injection_frequency=origin,
                          r=0.5, r_direct=0.5, r_to_r_50Hz=1.0, share_shield=np.nan, r_shield=np.nan, uncertain=False))
     return pd.DataFrame(rows)
 

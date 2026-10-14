@@ -35,7 +35,7 @@ campaigns folder; in a folder without one (a new, empty work folder) the layout 
 line such as
 
 ```text
-groundfault 2.0.1 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
+groundfault 3.0.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
 ```
 
 One copy of the measurement notebook is enough for all recordings of a campaign: for the next recording change
@@ -59,8 +59,8 @@ The notebook has seven sections; you work through them from top to bottom.
 | 1 · Configuration | enter campaign, file and additional impedance; leave the intervals at `None` the first time |
 | – | run all cells (*Run → Run All Cells*) |
 | 2 · Open the file, channel roles, raw-data diagnostics | check the roles (✓ marks the main channel of each role), the probe distances and the diagnosis |
-| 3 · RMS trend – read the analysis intervals | read off the steady-state, pre-fault and post-fault intervals, enter them in section 1, run all cells again |
-| 4 · Evaluation | read the summary, the hints, the assessment quantities and the plausibility checks; at a station also the evaluation per frequency, the LV network and the comparison with groundmeas |
+| 3 · RMS trend – read the analysis intervals | read off the steady-state, pre-fault and post-fault intervals – the scan of the fault shades disturbed states red and proposes `STEADY_STATE` – enter them in section 1, run all cells again |
+| 4 · Evaluation | read the summary, the hints, the assessment quantities and the plausibility checks; at a station also the evaluation per frequency, the LV network and the comparison with groundmeas; with the line currents of the transformer the transformer node (power and upstream impedance per order) |
 | 5 · Signal explorer | check the values at the measured curves (works before the intervals are entered) |
 | 6 · Checks (optional) | network frequency, comparison with the RMS export of the recorder, resonance curve |
 | 7 · Export | result file, tables, figures and explorer HTML are written; read the groundmeas dry run and enter the test on request |
@@ -92,7 +92,7 @@ ValueError: GROUNDMEAS_EXPORT='ersetzen' is not allowed – allowed: False, True
 | `MEASUREMENT` | `None` | name of the result and figure folders and file prefix; `None` = file name without extension |
 | `Z_FAULT` | `0.0` | additional impedance in the fault branch in Ω (substation tests, e.g. 0 / 2.5 / 5); `None` at a station |
 | `DEMO` | `False` | `True`: create the demo campaign if it does not exist yet; nothing outside the demo campaign folder is changed |
-| `STEADY_STATE` | `None` | steady-state fault `(t0, t1)` in s – after the transient, before an active residual current increase |
+| `STEADY_STATE` | `None` | steady-state fault `(t0, t1)` in s – after the transient, before an active residual current increase or a network change; section 3 proposes it. Disturbed states inside are left out automatically |
 | `PRE_FAULT` | `None` | operation without fault before the fault `(t0, t1)` |
 | `POST_FAULT` | `None` | operation without fault after the decay of the neutral displacement voltage `(t0, t1)` |
 
@@ -127,6 +127,8 @@ U_Tp and F come from the block above.
 | `harmonics` | `(1, 3, 5, 7)` | orders of the assessment quantities; the result file stores the orders 1 to 25 regardless (for the equivalent-source method) |
 | `u_thd95_percent` | `None` | 95 % quantile of the line-to-line THD of a power-quality measurement in %; adds the rows scaled to it to the assessment quantities (needs the voltages before or after the fault) |
 | `correct_polarity` | `True` | if the active component Iw is negative (reversed clamp), rotate the current phasors by 180°. Set `False` only if the hint “Polarity decision uncertain” appears and the polarity of the clamp is known for sure |
+| `exclude_disturbances` | `True` | leave disturbed states inside `STEADY_STATE` – an active residual current increase, a network change – out of the max window, the statistics and the checks ([Disturbed states](evaluation.md#disturbed-states)); `False` only reports them |
+| `transformer_sign` | `None` | polarity of the transformer currents: `None` = from the angle of the upstream impedance during the fault (generator reference arrow system → reversed); `1` as measured; `-1` reversed ([Transformer node](../methods/transformer-node.md#polarity-of-the-current-transformers)) |
 
 **Channels** – only if needed. Permanent corrections belong in the [corrections file](corrections.md); these
 variables apply to the current run only.
@@ -317,6 +319,8 @@ The reference copies are always rewritten; existing working copies are kept (“
 `--overwrite` is given, so your own changes survive an update of groundfault.
 
 The cell ids are derived from the name of the notebook and the position of the cell (`evaluate_measurement-07`), so
-an unchanged generator writes byte-identical files on every platform. After a change of `tools/make_notebooks.py`,
+an unchanged generator writes byte-identical files on every platform. Cells added in a later version have a name
+instead of a number (`evaluate_measurement-transformer-node`), so the ids of the existing cells – which a working copy
+shares with its reference copy – do not change. After a change of `tools/make_notebooks.py`,
 regenerate the notebooks of the repository with the first two commands; the test suite (`tests/test_notebooks.py`)
 checks that the committed notebooks are exactly what the generator writes.

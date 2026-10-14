@@ -26,11 +26,11 @@ except Exception:  # pragma: no cover
 
 from . import i18n
 from .i18n import tr
-from .report import (COLORS, INTERVAL_COLORS, COLOR_MAX, ROLE_COLORS, COLOR_TYPICAL, _COMPARISON_QUANTITIES,
+from .report import (COLORS, INTERVAL_COLORS, COLOR_DISTURBED, COLOR_MAX, ROLE_COLORS, COLOR_TYPICAL, _COMPARISON_QUANTITIES,
                      _SOURCE_FAULT, _SOURCE_GROUNDMEAS_FAULT, _SOURCE_INJECTION, _cap, _comma, _group_colors,
                      _groups, _interpolated, _pair_text, _probe_selection, _span, probe_label, station_colors, number,
                      typical_band)
-from .earthing import _yes
+from .earthing import QUANTITY_EPR, _yes
 from .station import MAX_PROBE
 from .channels import detect_roles
 
@@ -144,6 +144,8 @@ i18n.register({
                                           "de": "Erdungsmessung {distance} m (ID {id})"},
     "interactive.fault_channel_fault": {"en": "Fault test {channel} (fault-related)",
                                         "de": "Erdschluss {channel} (fehlerbedingt)"},
+    "interactive.fault_channel_rze": {"en": "Fault test {channel}: r·Z<sub>E</sub> (fault-related)",
+                                      "de": "Erdschluss {channel}: r·Z<sub>E</sub> (fehlerbedingt)"},
     "interactive.fault_channel_direct": {"en": "Fault test {channel} (direct)", "de": "Erdschluss {channel} (direkt)"},
     "interactive.name_probe": {"en": "{name} · probe {probe}", "de": "{name} · Sonde {probe}"},
     "interactive.hover_ratio": {
@@ -160,10 +162,13 @@ i18n.register({
     "interactive.comparison_title": {"en": "Earthing measurement and real earth fault per frequency",
                                      "de": "Erdungsmessung und realer Erdschluss je Frequenz"},
     # ---- reduction factor
-    "interactive.rf_title_ratio": {"en": "Reduction factor r = fault test / earthing measurement (magnitude)",
-                                   "de": "Reduktionsfaktor r = Erdschluss / Erdungsmessung (Betrag)"},
-    "interactive.rf_title_impedances": {"en": "Compared impedances (voltage per ampere)",
-                                        "de": "Verglichene Impedanzen (Spannung je Ampere)"},
+    "interactive.rf_title_ratio": {
+        "en": "Reduction factor r = r·Z<sub>E</sub> (fault test) / Z<sub>E</sub> (earthing measurement) over f",
+        "de": "Reduktionsfaktor r = r·Z<sub>E</sub> (Erdschluss) / Z<sub>E</sub> (Erdungsmessung) über f"},
+    "interactive.rf_title_impedances": {
+        "en": "Compared quantities: r·Z<sub>E</sub> from the fault test, Z<sub>E</sub> (voltage per ampere)",
+        "de": "Verglichene Größen: r·Z<sub>E</sub> aus dem Erdschluss, Z<sub>E</sub> (Spannung je Ampere)"},
+    "interactive.direct_short": {"en": "direct (as measured)", "de": "direkt (wie gemessen)"},
     "interactive.typical_hover": {
         "en": "typical reduction factor at 50 Hz: {low} … {high} (the range given by the user)",
         "de": "üblicher Reduktionsfaktor bei 50 Hz: {low} … {high} (vom Anwender vorgegebener Bereich)"},
@@ -173,13 +178,15 @@ i18n.register({
         "de": "<br>aus dem Schirmstrom: r = {r} (Schirmstrom {share} % von I<sub>F</sub>)"},
     "interactive.hover_rf_point": {
         "en": "<b>{name}</b><br>f = {f} Hz · order {order} · I<sub>F</sub> = {i_f} A{probe}<br>"
-              "<b>r = {r}</b> (direct {r_direct}) · r/r(50 Hz) = {r_relative}<br>fault test {z_fault} V/A "
-              "(fault-related) ÷ earthing measurement {z_injection} V/A ({origin})<br>probes: {d_fault} m ↔ "
+              "<b>r = {r}</b> (direct {r_direct}) · r/r(50 Hz) = {r_relative}<br>fault test r·Z<sub>E</sub> = "
+              "{z_fault} V/A (fault-related) ÷ earthing measurement Z<sub>E</sub> = {z_injection} V/A ({origin})<br>"
+              "probes: {d_fault} m ↔ "
               "{d_injection} m ({match}){shield}<br>at the reference current: U<sub>E</sub> {u_fault} V (fault test) · "
               "{u_injection} V (earthing measurement) = {relevance} % of F·U<sub>Tp</sub>{uncertain}",
         "de": "<b>{name}</b><br>f = {f} Hz · Ordnung {order} · I<sub>F</sub> = {i_f} A{probe}<br>"
-              "<b>r = {r}</b> (direkt {r_direct}) · r/r(50 Hz) = {r_relative}<br>Erdschluss {z_fault} V/A "
-              "(fehlerbedingt) ÷ Erdungsmessung {z_injection} V/A ({origin})<br>Sonden: {d_fault} m ↔ "
+              "<b>r = {r}</b> (direkt {r_direct}) · r/r(50 Hz) = {r_relative}<br>Erdschluss r·Z<sub>E</sub> = "
+              "{z_fault} V/A (fehlerbedingt) ÷ Erdungsmessung Z<sub>E</sub> = {z_injection} V/A ({origin})<br>"
+              "Sonden: {d_fault} m ↔ "
               "{d_injection} m ({match}){shield}<br>beim Bezugsstrom: U<sub>E</sub> {u_fault} V (Erdschluss) · "
               "{u_injection} V (Erdungsmessung) = {relevance} % von F·U<sub>Tp</sub>{uncertain}"},
     "interactive.hover_rf_effective": {
@@ -201,22 +208,23 @@ i18n.register({
                              "de": "Reduktionsfaktor je Harmonische – ○ Erdungsmessung interpoliert, ⊗ unsicher"},
     # ---- LV network
     "interactive.lv_title_impedance": {
-        "en": "Earthing impedance per frequency (the LV network must lie above the total earthing from the fault "
-              "test)",
-        "de": "Erdungsimpedanz je Frequenz (Ortsnetz muss über der Gesamterdung aus dem Erdschluss liegen)"},
+        "en": "Earthing impedance per frequency (Z<sub>E,LV</sub> must lie above r·Z<sub>E</sub> from the fault test)",
+        "de": "Erdungsimpedanz je Frequenz (Z<sub>E,Ortsnetz</sub> muss über r·Z<sub>E</sub> aus dem Erdschluss liegen)"},
     "interactive.lv_title_current": {"en": "Fault-related current into the LV network and fault current",
                                      "de": "Fehlerbedingter Strom ins Ortsnetz und Fehlerstrom"},
     "interactive.probe_in_parentheses": {"en": " (probe {probe})", "de": " (Sonde {probe})"},
     "interactive.hover_lv": {
         "en": "<b>{name}</b>{probe} · f = {f} Hz · order {order}<br><b>Z<sub>E,{lv}</sub> = {z} V/A</b> ({angle}°, "
               "uncertainty {uncertainty} %)<br>ΔU<sub>E</sub> = {du} V · I<sub>{lv_i}</sub> = {i_lv} A ({share} % of "
-              "I<sub>F</sub>)<br>total earthing from the fault test {reference}/I<sub>F</sub> = {z_fault} V/A → "
-              "<b>{check}</b><br>with the earth current: {z_total} V/A · I<sub>{lv_i}</sub>/I<sub>E</sub> = {ratio} → "
+              "I<sub>F</sub>)<br>fault test r·Z<sub>E</sub> = {reference}/I<sub>F</sub> = {z_fault} V/A → "
+              "<b>{check}</b><br>with the earth current: Z<sub>E</sub> = {z_total} V/A · "
+              "I<sub>{lv_i}</sub>/I<sub>E</sub> = {ratio} → "
               "{earth_check}{uncertain}",
         "de": "<b>{name}</b>{probe} · f = {f} Hz · Ordnung {order}<br><b>Z<sub>E,{lv}</sub> = {z} V/A</b> ({angle}°, "
               "Unsicherheit {uncertainty} %)<br>ΔU<sub>E</sub> = {du} V · I<sub>{lv_i}</sub> = {i_lv} A ({share} % von "
-              "I<sub>F</sub>)<br>Gesamterdung aus dem Erdschluss {reference}/I<sub>F</sub> = {z_fault} V/A → "
-              "<b>{check}</b><br>mit dem Erdungsstrom: {z_total} V/A · I<sub>{lv_i}</sub>/I<sub>E</sub> = {ratio} → "
+              "I<sub>F</sub>)<br>Erdschluss r·Z<sub>E</sub> = {reference}/I<sub>F</sub> = {z_fault} V/A → "
+              "<b>{check}</b><br>mit dem Erdungsstrom: Z<sub>E</sub> = {z_total} V/A · "
+              "I<sub>{lv_i}</sub>/I<sub>E</sub> = {ratio} → "
               "{earth_check}{uncertain}"},
     "interactive.hover_uncertain": {"en": "<br><b>⚠ uncertain</b>", "de": "<br><b>⚠ unsicher</b>"},
     "interactive.hover_lv_check": {
@@ -278,6 +286,25 @@ def _draw_intervals(fig, intervals, rows: int):
                               annotation_position="top left")
 
 
+def _draw_disturbed(fig, disturbances, rows: int) -> None:
+    """Shade the disturbed time ranges of a [`Disturbances`][groundfault.disturbances.Disturbances] (or of the
+    ``disturbances`` of a result) in all panels; the state is named in the top panel."""
+    d = getattr(disturbances, "disturbances", disturbances)
+    if d is None or not getattr(d, "found", False):
+        return
+    from .disturbances import _label
+    for t0, t1, state in d.excluded_intervals():
+        for r in range(1, rows + 1):
+            kw = dict(row=r, col=1) if rows > 1 else {}
+            fig.add_vrect(x0=t0, x1=t1, fillcolor=COLOR_DISTURBED, opacity=0.12, line_width=0, layer="below", **kw)
+        # the state on hover: an invisible marker line over the range in the top panel
+        fig.add_trace(go.Scatter(x=[t0, t1], y=[0, 0], mode="lines", line=dict(color=COLOR_DISTURBED, width=6),
+                                 opacity=0.5, name=tr("report.interval_disturbed"), showlegend=False,
+                                 hovertemplate="%s<br>%s–%s s<extra></extra>" % (_label(state), _fmt(t0, ".2f"),
+                                                                               _fmt(t1, ".2f"))),
+                      **(dict(row=1, col=1) if rows > 1 else {}))
+
+
 def overview(rec, roles=None, n_bins: int = 4000, intervals=None, height_per_panel: int = 230):
     """Min/max envelope of the whole recording, one panel per quantity, range slider at the bottom.
 
@@ -326,7 +353,7 @@ def overview(rec, roles=None, n_bins: int = 4000, intervals=None, height_per_pan
 
 
 def rms_values(rec, roles=None, window_s: float = 0.02, intervals=None, max_window: Optional[Tuple[float, float]] = None,
-               height_per_panel: int = 230):
+               height_per_panel: int = 230, disturbances=None):
     """True RMS value (window ``window_s``) over time – for reading off the analysis intervals.
 
     Parameters
@@ -343,6 +370,9 @@ def rms_values(rec, roles=None, window_s: float = 0.02, intervals=None, max_wind
         Max window (start, end) in s to shade.
     height_per_panel : int
         Height per panel in pixels.
+    disturbances : Disturbances or Result, optional
+        Disturbed states to shade, e.g. from [`groundfault.disturbances.scan`][groundfault.disturbances.scan] (before
+        the intervals are chosen) or the result of the evaluation.
 
     Returns
     -------
@@ -361,6 +391,7 @@ def rms_values(rec, roles=None, window_s: float = 0.02, intervals=None, max_wind
         fig.update_yaxes(title_text="%s in %s" % ("U" if ks[0].unit.upper().startswith("V") else "I",
                                                   ks[0].unit), row=r, col=1, rangemode="tozero")
     _draw_intervals(fig, intervals, n)
+    _draw_disturbed(fig, disturbances, n)
     if max_window:
         for r in range(1, n + 1):
             fig.add_vrect(x0=max_window[0], x1=max_window[1], fillcolor="#111111", opacity=0.2, line_width=0,
@@ -428,11 +459,12 @@ def harmonics_time(res, role: str = "i_res", orders: Sequence[int] = (1, 3, 5, 7
     Returns
     -------
     plotly.graph_objects.Figure
-        The dashed line marks the max window.
+        The dashed line marks the max window; disturbed states (not part of the reference) are shaded.
     """
     _check_plotly()
     st = res.steady_state; k = res.roles.main(role)
     fig = go.Figure()
+    _draw_disturbed(fig, getattr(res, "disturbances", None), 1)
     fig.add_trace(go.Scatter(x=st.t_mid, y=st.rms[:, k.index], mode="lines+markers", name=tr("report.rms"),
                              line=dict(color="#111111")))
     for i, m in enumerate(o for o in orders if o in st.orders):
@@ -884,7 +916,8 @@ def earthing_comparison(long_df, ratio=None, f_max="auto", height_per_panel: int
                 if meth_ == "fault":
                     lo = np.fmin(np.asarray(g["Z_min_Ohm"], float), y); hi = np.fmax(np.asarray(g["Z_max_Ohm"], float), y)
                     lo = np.where(np.isfinite(lo), lo, y); hi = np.where(np.isfinite(hi), hi, y)
-                    nm = tr("interactive.fault_channel_fault", channel=channel)
+                    nm = tr("interactive.fault_channel_rze" if grp == QUANTITY_EPR
+                            else "interactive.fault_channel_fault", channel=channel)
                     own_ = _legend_as_certain(fig, g, nm, channel, c, r)
                     fig.add_trace(go.Scatter(x=g["f_Hz"], y=y, mode="lines+markers", legendgroup=channel,
                                              name=nm, showlegend=not own_, line=dict(color=c, width=1.6),
@@ -918,7 +951,7 @@ def earthing_comparison(long_df, ratio=None, f_max="auto", height_per_panel: int
                       name=tr("interactive.name_probe", name=name, probe=x["probe"]) if is_max else channel,
                       f=_z(x["f_Hz"], 5), order=int(x["order"]), fault=_z(x["ratio_fault"], 3),
                       direct=_z(x["ratio_direct"], 3), z_fault=_z(x["Z_fault_Ohm"]),
-                      z_injection=_z(x["Z_injection_Ohm"]),
+                      z_injection=_z(x["Z_E_injection_Ohm"]),
                       id=int(x["injection_id"]), distance=_z(x["distance_injection_m"], 3),
                       match=i18n.value_label("distance_match", x.get("distance_match", "")),
                       uncertain=tr("interactive.hover_uncertain_fault_value") if _yes(x.get("uncertain")) else "")
@@ -958,15 +991,16 @@ def _short(v) -> str:
 
 def reduction_factor(spectrum, effective=None, probes: str = "maximum", height: Optional[int] = None,
                      impedances: bool = True, r_typical: Optional[Tuple[float, float]] = None,
-                     remote_probes_only: Optional[bool] = None):
-    """Reduction factor per harmonic (magnitude) – result of
+                     remote_probes_only: Optional[bool] = None, direct: bool = False, trend: bool = True):
+    """Reduction factor over the frequency (magnitude) – result of
     [`groundfault.earthing.reduction_factor`][groundfault.earthing.reduction_factor].
 
-    Top r: ● per order (earthing measurement measured), ○ earthing measurement interpolated, ⊗ uncertain; dashed
-    the RMS value r_eff; grey bar at 50 Hz the typical range given by the user; ◇ grey the cross-check from the
-    shield current. Bottom (``impedances``) the two compared impedances in V/A: fault test U_E/I_F (●), with the
-    earth current U_E/I_E (◇) and earthing measurement (■). Hover: values, origin, relevance at the reference
-    current.
+    Top r = r·Z_E/Z_E, drawn like the impedances: ● per order (earthing measurement measured), ○ earthing
+    measurement interpolated, ⊗ uncertain, bar = span of the superposition methods; dotted the trend r ∝ f^b
+    (``trend``); dashed the RMS value r_eff; grey bar at 50 Hz the typical range given by the user; ◇ grey the
+    cross-check from the shield current; with ``direct`` also r from the values as measured (open circles). Bottom
+    (``impedances``) in V/A: fault test r·Z_E = U_E/I_F (●), with the earth current Z_E = U_E/I_E (◇) and earthing
+    measurement Z_E (■). Hover: values, origin, relevance at the reference current.
 
     Parameters
     ----------
@@ -989,6 +1023,10 @@ def reduction_factor(spectrum, effective=None, probes: str = "maximum", height: 
         one no bar.
     remote_probes_only : bool, optional
         Earlier interface: True → ``probes="remote"``, False → ``probes="all"``.
+    direct : bool
+        Also show r from the values as measured (``r_direct``, with background).
+    trend : bool
+        Show the trend r ∝ f^b (needs ``effective``).
 
     Returns
     -------
@@ -1000,6 +1038,7 @@ def reduction_factor(spectrum, effective=None, probes: str = "maximum", height: 
         If there is no reduction factor (no earthing measurement at the frequencies of the fault test).
     """
     _check_plotly()
+    from .earthing import power_fit
     band = typical_band(r_typical, effective)
     if remote_probes_only is not None:                    # earlier interface
         probes = "remote" if remote_probes_only else "all"
@@ -1030,7 +1069,7 @@ def reduction_factor(spectrum, effective=None, probes: str = "maximum", height: 
                   i_f=_z(x["I_F_A"]),
                   probe=tr("interactive.probe_suffix", probe=x["probe"]) if channel == MAX_PROBE else "",
                   r=_z(x["r"], 3), r_direct=_z(x["r_direct"], 3), r_relative=_z(x.get("r_to_r_50Hz"), 3),
-                  z_fault=_z(x["UE_per_A_fault"]), z_injection=_z(x["UE_per_A_injection"]),
+                  z_fault=_z(x["rZE_fault_Ohm"]), z_injection=_z(x["Z_E_injection_Ohm"]),
                   origin=x["injection_frequency"], d_fault=_z(x["distance_fault_m"], 3),
                   d_injection=_z(x["distance_injection_m"], 3),
                   match=i18n.value_label("distance_match", x["distance_match"]),
@@ -1042,10 +1081,24 @@ def reduction_factor(spectrum, effective=None, probes: str = "maximum", height: 
                   relevance=_z(x.get("assessment_relevance_pct"), 2),
                   uncertain=tr("interactive.hover_uncertain_fault_value") if _yes(x["uncertain"]) else "")
                for _, x in g.iterrows()]
+        r_ = g["r"].to_numpy(float)
+        error = None
+        if {"r_min", "r_max"} <= set(g.columns):                  # span of the superposition methods
+            lo = np.fmin(pd.to_numeric(g["r_min"], errors="coerce").to_numpy(float), r_)
+            hi = np.fmax(pd.to_numeric(g["r_max"], errors="coerce").to_numpy(float), r_)
+            lo = np.where(np.isfinite(lo), lo, r_); hi = np.where(np.isfinite(hi), hi, r_)
+            if np.any(hi - lo > 0.01 * np.abs(r_)):
+                error = dict(type="data", symmetric=False, array=hi - r_, arrayminus=r_ - lo, thickness=1.2,
+                             width=0, color=c)
         fig.add_trace(go.Scatter(x=g["f_Hz"], y=g["r"], mode="lines+markers", name=name, legendgroup=name,
-                                 line=dict(color=c, width=1.6),
+                                 line=dict(color=c, width=1.6), error_y=error,
                                  marker=dict(symbol=sym, size=9, color=c, line=dict(color=c, width=1.4)),
                                  hovertext=hov, hoverinfo="text"), row=1, col=1)
+        if direct and "r_direct" in g:
+            fig.add_trace(go.Scatter(x=g["f_Hz"], y=g["r_direct"], mode="markers", legendgroup=name,
+                                     name=tr("report.r_direct"), marker=dict(symbol="circle-open", size=8, color=c),
+                                     hovertemplate="f = %{x:.1f} Hz<br>r " + tr("interactive.direct_short")
+                                                   + " = %{y:.3f}<extra></extra>"), row=1, col=1)
         if effective is not None and len(effective):
             e = effective[(effective["channel"] == channel) & (effective["injection_id"] == mid)]
             if len(e) and np.isfinite(_num(e["r_eff"].iloc[0])):
@@ -1064,6 +1117,17 @@ def reduction_factor(spectrum, effective=None, probes: str = "maximum", height: 
                                          name="r<sub>eff</sub> = %s – %s" % (_z(x0["r_eff"], 3), name.split(" ↔ ")[0]),
                                          line=dict(color=c, width=1.2, dash="dash"),
                                          hovertext=hover, hoverinfo="text"), row=1, col=1)
+                orders_ = str(x0.get("trend_orders") or "")
+                chosen = [int(v) for v in orders_.replace(" ", "").split(",") if v.isdigit()]
+                if trend and len(chosen) >= 2:                   # r ∝ f^b at the reliable orders
+                    gt = g[g["order"].isin(chosen)]
+                    c_, b_ = power_fit(gt["f_Hz"], gt["r"])
+                    if np.isfinite(b_):
+                        ft = np.geomspace(float(gt["f_Hz"].min()), float(gt["f_Hz"].max()), 50)
+                        label = tr("report.trend_r", formula="r ∝ f<sup>b</sup>", b=_z(b_, 2), orders=orders_)
+                        fig.add_trace(go.Scatter(x=ft, y=c_ * ft ** b_, mode="lines", legendgroup=name, name=label,
+                                                 line=dict(color=c, width=1.2, dash="dot"),
+                                                 hovertemplate=label + "<extra></extra>"), row=1, col=1)
     if "r_shield" in spectrum and spectrum["r_shield"].notna().any():
         s_ = spectrum.drop_duplicates("order").sort_values("f_Hz")
         s_ = s_[(s_["f_Hz"] <= f_max) & s_["r_shield"].notna()]
@@ -1092,43 +1156,45 @@ def reduction_factor(spectrum, effective=None, probes: str = "maximum", height: 
                 continue
             g = g.sort_values("f_Hz"); c = _color(colors, channel)
             left = _pair_text(channel, g).split(" ↔ ")[0]
-            y = pd.to_numeric(g["UE_per_A_fault"], errors="coerce")
+            y = pd.to_numeric(g["rZE_fault_Ohm"], errors="coerce")
             fig.add_trace(go.Scatter(x=g["f_Hz"], y=y, mode="lines+markers",
                                      name=tr("report.fault_quotient", name=left,
-                                             quotient="U<sub>E</sub>/I<sub>F</sub>"),
+                                             quotient="r·Z<sub>E</sub> = U<sub>E</sub>/I<sub>F</sub>"),
                                      line=dict(color=c, width=1.6), marker=_marker(g, c, 8),
                                      hovertemplate="f = %{x:.1f} Hz<br>" + fault_test
-                                                   + " U<sub>E</sub>/I<sub>F</sub> = %{y:.4g} V/A<extra></extra>"),
+                                                   + " r·Z<sub>E</sub> = U<sub>E</sub>/I<sub>F</sub> = %{y:.4g} V/A"
+                                                     "<extra></extra>"),
                           row=2, col=1)
             values_z += list(y)
-            if "UE_per_A_earth_current" in g:
-                ie = pd.to_numeric(g["UE_per_A_earth_current"], errors="coerce")
+            if "Z_E_earth_current_Ohm" in g:
+                ie = pd.to_numeric(g["Z_E_earth_current_Ohm"], errors="coerce")
                 if ie.notna().any() and np.nanmax(np.abs(ie / y - 1.0)) > 0.05:
                     fig.add_trace(go.Scatter(x=g["f_Hz"], y=ie, mode="lines+markers",
                                              name=tr("report.fault_quotient", name=left,
-                                                     quotient="U<sub>E</sub>/I<sub>E</sub>"),
+                                                     quotient="Z<sub>E</sub> = U<sub>E</sub>/I<sub>E</sub>"),
                                              line=dict(color=c, width=1.0, dash="dot"),
                                              marker=dict(symbol="diamond-open", size=9, color=c),
-                                             hovertemplate="f = %{x:.1f} Hz<br>U<sub>E</sub>/I<sub>E</sub> (I<sub>E</sub> "
+                                             hovertemplate="f = %{x:.1f} Hz<br>Z<sub>E</sub> = U<sub>E</sub>/I<sub>E</sub> (I<sub>E</sub> "
                                                            "= I<sub>F</sub> − I<sub>S</sub>) = %{y:.4g} V/A"
                                                            "<extra></extra>"), row=2, col=1)
                     values_z += list(ie)
         for mid, g in sp.groupby("injection_id", sort=False):
             g = g.drop_duplicates("order").sort_values("f_Hz")
             interp = _interpolated(g)
-            fig.add_trace(go.Scatter(x=g["f_Hz"], y=g["UE_per_A_injection"], mode="lines+markers",
-                                     name=tr("report.injection_id", id=int(mid),
-                                             distance=" (%s m)" % _short(g["distance_injection_m"].iloc[0])),
+            fig.add_trace(go.Scatter(x=g["f_Hz"], y=g["Z_E_injection_Ohm"], mode="lines+markers",
+                                     name=tr("report.injection_ze", symbol="Z<sub>E</sub>",
+                                             label=tr("report.injection_id", id=int(mid),
+                                                      distance=" (%s m)" % _short(g["distance_injection_m"].iloc[0]))),
                                      line=dict(color="#4d4d4d", dash="dash", width=1.4),
                                      marker=dict(symbol=["square-open" if i else "square" for i in interp], size=8,
                                                  color="#4d4d4d"),
                                      hovertext=[tr("interactive.hover_injection", id=int(mid), f=_z(x["f_Hz"], 5),
-                                                   z=_z(x["UE_per_A_injection"]), origin=x["injection_frequency"])
+                                                   z=_z(x["Z_E_injection_Ohm"]), origin=x["injection_frequency"])
                                                 for _, x in g.iterrows()],
                                      hoverinfo="text"), row=2, col=1)
-            values_z += list(g["UE_per_A_injection"])
+            values_z += list(g["Z_E_injection_Ohm"])
         _log_ticks(fig, values_z, 2)
-        fig.update_yaxes(title_text="|Z| in V/A", row=2, col=1)
+        fig.update_yaxes(title_text="r·Z<sub>E</sub>, Z<sub>E</sub> in V/A", row=2, col=1)
     fig.update_xaxes(title_text="f in Hz", range=[0, f_max], row=n, col=1)
     fig.update_layout(template=TEMPLATE, separators=_separators(), height=height or (820 if impedances else 520),
                       hovermode="closest", title=tr("interactive.rf_title"),
@@ -1141,8 +1207,8 @@ def lv_network(lv_table, check=None, all_probes: bool = False, height_per_panel:
     """Current into the LV network and earthing impedance of the LV network (table ``station_lv_network``) with the
     parallel-connection check.
 
-    Top |Z| in V/A: Z_E,LV ●, total earthing from the fault test max(U_E)/I_F ◇ – and with a shield current
-    ΔU_E/I_E △ if visibly different –, earthing measurement ■. Bottom the currents in A: I_LV ●, ▲ before / ▼ after
+    Top |Z| in V/A: Z_E,LV ●, from the fault test r·Z_E = max(U_E)/I_F ◇ – and with a shield current
+    Z_E = ΔU_E/I_E △ if visibly different –, earthing measurement Z_E ■. Bottom the currents in A: I_LV ●, ▲ before / ▼ after
     the transformer star point, fault current □, earth current ◇.
 
     Parameters
@@ -1193,9 +1259,9 @@ def lv_network(lv_table, check=None, all_probes: bool = False, height_per_panel:
                   f=_z(x["f_Hz"], 5), order=int(x["order"]), lv=lv, lv_i=lv_i, z=_z(x["Z_E_LV_Ohm"]),
                   angle=_z(x["Z_E_LV_angle_deg"], 3), uncertainty=_z(x["Z_E_LV_uncertainty_pct"], 2),
                   du=_z(x["U_E_fault_V"]), i_lv=_z(x["I_LV_A"]), share=_z(100 * _num(x["share_I_LV"]), 3),
-                  reference=ref_label, z_fault=_z(x.get("Z_E_fault_Ohm")),
+                  reference=ref_label, z_fault=_z(x.get("rZE_fault_Ohm")),
                   check=i18n.value_label("parallel_check", x["parallel_check"]),
-                  z_total=_z(x["Z_total_fault_Ohm"]), ratio=_z(x["I_LV_to_I_E"], 3),
+                  z_total=_z(x["Z_E_earth_current_Ohm"]), ratio=_z(x["I_LV_to_I_E"], 3),
                   earth_check=i18n.value_label("earth_current_check", x.get("earth_current_check", "–")),
                   uncertain=tr("interactive.hover_uncertain") if _yes(x["uncertain"]) else "")
                for _, x in g.iterrows()]
@@ -1203,24 +1269,28 @@ def lv_network(lv_table, check=None, all_probes: bool = False, height_per_panel:
                                  name="Z<sub>E,%s</sub> %s" % (lv, name), line=dict(color=c, width=1.6),
                                  marker=_marker(g, c, 8), hovertext=hov, hoverinfo="text"), row=1, col=1)
         values_z += list(g["Z_E_LV_Ohm"])
-        z_f = pd.to_numeric(g["Z_E_fault_Ohm"], errors="coerce") if "Z_E_fault_Ohm" in g else None
+        z_f = pd.to_numeric(g["rZE_fault_Ohm"], errors="coerce") if "rZE_fault_Ohm" in g else None
         if z_f is not None and z_f.notna().any():
             fig.add_trace(go.Scatter(x=g["f_Hz"], y=z_f, mode="lines+markers",
-                                     name=tr("report.total_earthing", quotient="%s/I<sub>F</sub>" % ref_label),
+                                     name=tr("report.fault_rze", symbol="r·Z<sub>E</sub>",
+                                             quotient="%s/I<sub>F</sub>" % ref_label),
                                      line=dict(color=c, width=1.0, dash="dot"),
                                      marker=dict(symbol="diamond-open", size=9, color=c),
                                      hovertemplate="f = %{x:.1f} Hz<br>"
-                                                   + tr("report.total_earthing", quotient="%{y:.4g} V/A")
+                                                   + tr("report.fault_rze", symbol="r·Z<sub>E</sub>",
+                                                        quotient="%{y:.4g} V/A")
                                                    + "<extra></extra>"), row=1, col=1)
             values_z += list(z_f)
         with_s = str(g["total_earthing_reference"].iloc[0]).startswith("I_E")
-        z_g = pd.to_numeric(g["Z_total_fault_Ohm"], errors="coerce")
+        z_g = pd.to_numeric(g["Z_E_earth_current_Ohm"], errors="coerce")
         if with_s and (z_f is None or not z_f.notna().any() or np.nanmax(np.abs(z_g / z_f - 1.0)) > 0.05):
             fig.add_trace(go.Scatter(x=g["f_Hz"], y=z_g, mode="lines+markers",
-                                     name=tr("report.total_earthing", quotient="%s/I<sub>E</sub>" % ref_label),
+                                     name=tr("report.fault_rze", symbol="Z<sub>E</sub>",
+                                             quotient="%s/I<sub>E</sub>" % ref_label),
                                      line=dict(color=c, width=1.0, dash="dot"),
                                      marker=dict(symbol="triangle-up-open", size=9, color=c),
-                                     hovertemplate="f = %{x:.1f} Hz<br>ΔU<sub>E</sub>/I<sub>E</sub> = %{y:.4g} V/A"
+                                     hovertemplate="f = %{x:.1f} Hz<br>Z<sub>E</sub> = ΔU<sub>E</sub>/I<sub>E</sub> = "
+                                                   "%{y:.4g} V/A"
                                                    "<extra></extra>"), row=1, col=1)
             values_z += list(z_g)
     if check is not None and len(check):

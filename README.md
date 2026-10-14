@@ -15,22 +15,28 @@ frequency, the current into the LV network and the reduction factor compared wit
 algorithms live in a Python package; two Jupyter notebooks serve as the user interface. Output is available in English
 and German, and a synthetic demo campaign lets everything run without measurement data.
 
-![Reduction factor per harmonic order of the demo station from a staged fault test and an earthing measurement (top)
-and the two compared impedances (bottom)](docs/assets/station_reduction_factor.png)
+![Reduction factor over the frequency of the demo station from a staged fault test and an earthing measurement (top)
+and the two compared quantities r·Z_E and Z_E (bottom)](docs/assets/station_reduction_factor.png)
 
 ## Features
 
 - **Substation** – residual earth-fault current as the true RMS value of the largest 200-ms window, its fundamental
   component and harmonics, active and detuning current (angle method), measurement uncertainty, voltages before,
-  during and after the fault (sequence components, THD), plausibility checks for every recording.
+  during and after the fault (sequence components, THD), plausibility checks for every recording. Disturbed states
+  during the fault – a network section that trips, a short active residual current increase for fault location – are
+  detected and left out of the reference.
 - **Equivalent-source method** – over a series of tests with different fault impedances, an active two-terminal
   equivalent per harmonic order and from it the residual current at any earthing impedance Z_E.
+- **Transformer node** – with the line currents of the HV/MV transformer: power and apparent impedance per harmonic
+  order and sequence before, during and after the fault, and the upstream impedance of transformer and HV network per
+  order from the fault-related change (split into both with HV voltages); the polarity of the current transformers
+  follows from it.
 - **Secondary substations** – earth potential rise and touch voltage per frequency, as measured and as the
   fault-related component (superposition removes the background present before the fault); PEN currents give the
   current into the LV network and the earthing impedance of the LV network.
-- **Earthing measurements** – reduction factor per harmonic and as an RMS value compared with the earthing
-  measurements in a [groundmeas](https://github.com/Ce1ectric/groundmeas) SQLite database; evaluated tests can be
-  entered in groundmeas.
+- **Earthing measurements** – reduction factor r = r·Z_E / Z_E per harmonic, over the frequency with a trend, and as
+  an RMS value compared with the earthing measurements in a [groundmeas](https://github.com/Ce1ectric/groundmeas)
+  SQLite database; evaluated tests can be entered in groundmeas.
 - **Report output** – figures in their final size for an A4 report (PDF/SVG/PNG) and tables as CSV, Markdown, Excel
   and Word.
 - **Signal explorer** – all channels of a recording with RMS values, harmonics and THD on hover, in the notebook and
@@ -170,7 +176,7 @@ GitHub offers them as APA and BibTeX under *Cite this repository*:
 @software{Ehlert_groundfault_2026,
   author  = {Ehlert, Christian},
   title   = {{groundfault}},
-  version = {2.0.1},
+  version = {3.0.0},
   month   = oct,
   year    = {2026},
   url     = {https://github.com/Ce1ectric/groundfault},

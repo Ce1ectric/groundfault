@@ -97,6 +97,8 @@ helpful); private helpers a one-line summary. The API reference shows every name
 * The notebooks in `notebooks/` are generated: change `tools/make_notebooks.py` and regenerate them with
   `python tools/make_notebooks.py --lang en --out notebooks/en --example --overwrite` (and the same with
   `--lang de --out notebooks/de`); a test checks that the committed notebooks are exactly the generator's output.
+  A cell added to a released notebook gets a key (`keyed("<key>", code(...))`, cell id `<name>-<key>`), so the
+  numbered ids of the existing cells stay the same – working copies are updated by matching the cell ids.
 * Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`,
   `test:`, `refactor:`, `chore:`).
 * No measurement data, network data, campaign configurations, logos or names of companies or persons in the

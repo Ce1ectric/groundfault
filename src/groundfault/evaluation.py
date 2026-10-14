@@ -9,8 +9,10 @@
 3. Divide the steady-state interval into 200-ms windows (N_win = T_win·f_s samples) and compute, for *all*
    channels and from the **same** window, the true RMS value and the complex phasors of the orders 1…H (DC
    removal, Hann window, DFT at the multiples m·f1).
-4. Take the window with the largest residual earth-fault current (the *max window*) and derive the assessment
-   quantities: angle method (active and reactive residual current Iw, Iv from the angle between the fault
+4. Leave out disturbed states – an active residual current increase or a step of the reactive component (network or
+   coil switching, [`groundfault.disturbances`][groundfault.disturbances]) – so that only the undisturbed state is
+   the reference. Of its windows take the one with the largest residual earth-fault current (the *max window*) and
+   derive the assessment quantities: angle method (active and reactive residual current Iw, Iv from the angle between the fault
    current and the zero-sequence voltage), polarity check (Iw > 0), harmonic content I_H = √(I_RES² − I_G²)
    with a check against the root sum of squares of the harmonics, measurement uncertainty (currents are
    increased by m_I, voltages are reduced by m_U) and, optionally, the scaling of the harmonic content to the
@@ -18,9 +20,10 @@
 5. Voltage analysis pre-fault / fault / post-fault: line-to-earth and line-to-line voltages, zero, positive and
    negative sequence per harmonic, THD, U_H5g (5th harmonic, negative sequence), U_H7m (7th harmonic, positive
    sequence) and complex sequence phasors referred to U_L1-L2 (input of the equivalent-source method).
-6. Optional: station (earth potential rise, touch voltage, r·Z_E, shield current) and transformer (P, Q per
-   order).
-7. Plausibility checks and statistics over all steady-state windows.
+6. Optional: station (earth potential rise, touch voltage, r·Z_E, shield current) and transformer node (power,
+   apparent and upstream impedance per order and sequence before, during and after the fault,
+   [`groundfault.transformer`][groundfault.transformer]).
+7. Plausibility checks and statistics over the undisturbed windows of the steady-state interval.
 
 The [`Result`][groundfault.evaluation.Result] holds the tables, scalar values, hints and the content of the result file
 (JSON without raw data, [`Result.save_json`][groundfault.evaluation.Result.save_json]), which
@@ -41,12 +44,15 @@ import numpy as np
 import pandas as pd
 
 from . import __version__
+from . import disturbances as dist
+from . import transformer as trafo
 from . import dsp
 from . import formulas as fml
 from . import i18n
 from .i18n import tr
 from .layout import ENGLISH, GERMAN, detect_layout
-from .legacy import RESULT_FORMAT, check_keys, check_option, is_legacy_result, translate_result
+from .legacy import (RESULT_FORMAT, RESULT_VERSION, check_keys, check_option, is_legacy_result, translate_result,
+                     update_result)
 from .comtrade import Recording
 from .channels import RoleAssignment, canonical_role, detect_roles
 from .symmetrical import fortescue, line_to_line
@@ -312,6 +318,15 @@ i18n.register({
     "evaluation.factor_invalid": {
         "en": "{name} must be a factor > 0 (1 = no factor) – got {value!r}.",
         "de": "{name} muss ein Faktor > 0 sein (1 = kein Faktor) – erhalten: {value!r}."},
+    "evaluation.bool_invalid": {
+        "en": "{name} must be True or False – got {value!r}.",
+        "de": "{name} muss True oder False sein – erhalten: {value!r}."},
+    "evaluation.share_invalid": {
+        "en": "{name} must be a share between 0 and 1 (e.g. 0.05 = 5 %) – got {value!r}.",
+        "de": "{name} muss ein Anteil zwischen 0 und 1 sein (z. B. 0.05 = 5 %) – erhalten: {value!r}."},
+    "evaluation.sign_invalid": {
+        "en": "{name} must be None (automatic), +1 or −1 – got {value!r}.",
+        "de": "{name} muss None (automatisch), +1 oder −1 sein – erhalten: {value!r}."},
 })
 
 #: Formulas in the column ``equation`` of the table ``assessment_quantities`` (language-neutral)
@@ -386,9 +401,13 @@ class Settings:
         Interval of the measured THD the scaling refers to: ``"pre_fault"``, ``"post_fault"`` or ``"mean"`` (mean
         of both).
     transformer_voltage : str
-        Voltage set for the transformer power: ``"mv"`` (medium voltage) or ``"hv"`` (high voltage).
-    transformer_sign : float
-        +1: consumer (load) reference-arrow system as measured; −1 reverses the signs of P and Q.
+        Side of the transformer currents, i.e. the voltage set of the transformer node: ``"mv"`` (medium voltage,
+        default; with HV voltages the upstream impedance is split into HV network and transformer) or ``"hv"``.
+    transformer_sign : float or None
+        Polarity of the transformer currents: None (default) – from the angle of the upstream impedance during the
+        fault (inductive in the consumer reference arrow system; generator reference arrow system → reversed, see
+        [`groundfault.transformer`][groundfault.transformer]); +1: consumer reference arrow system as measured; −1:
+        reversed (signs of P and Q and of the currents).
     ires_limits : tuple of float
         Limits of the residual current in A, defined by the user (e.g. from the operator's specification or the
         applicable standard): the station voltages are extrapolated to them, and the largest is the reference
@@ -399,6 +418,15 @@ class Settings:
     f_factor : float or None
         Factor F of the permissible earth potential rise F·U_Tp (ratio of the permissible earth potential rise to the
         permissible touch voltage), defined by the user. None (default): not set.
+    exclude_disturbances : bool
+        Leave disturbed states of the steady-state interval out of the reference (default True): windows during an
+        active residual current increase or after a step of the reactive component (a network section trips, a
+        coil is switched) are not searched for the max window and are not part of the statistics and the checks over
+        the interval ([`groundfault.disturbances`][groundfault.disturbances]). False: they are only reported.
+    disturbance_threshold : float
+        Smallest step of the active or reactive component (without U0: of |I_H1|) that counts as a disturbance, as a
+        share of |I_H1| of the undisturbed state (default 0.05, at least
+        [`STEP_MIN_A`][groundfault.disturbances.STEP_MIN_A]).
 
     Raises
     ------
@@ -406,8 +434,9 @@ class Settings:
         For an unknown value of a text option (``window``, ``dc``, ``f1_method``, ``thd_reference``,
         ``transformer_voltage``), also for a value of the predecessor tool such as ``"mittel"`` (the message names
         the allowed values and the current name); for limits that are not a sequence of positive currents, a
-        ``u_tp``/``f_factor`` that is not positive, an uncertainty margin outside 0 ≤ m < 1 or a
-        ``pq_safety_factor`` that is not > 0.
+        ``u_tp``/``f_factor`` that is not positive, an uncertainty margin outside 0 ≤ m < 1, a
+        ``pq_safety_factor`` that is not > 0, an ``exclude_disturbances`` that is not a bool, a
+        ``disturbance_threshold`` outside 0 < x < 1 or a ``transformer_sign`` other than None, +1 and −1.
 
     Notes
     -----
@@ -435,12 +464,15 @@ class Settings:
     u_thd95_volt: Optional[float] = None       # alternatively harmonic voltage (L-L) in V
     pq_safety_factor: float = 1.0          # factor k_s on the 95 % quantile (1 = none)
     thd_reference: str = "mean"                  # reference of the measured THD: "pre_fault"|"post_fault"|"mean"
-    transformer_voltage: str = "mv"                 # voltage set for the transformer power: "mv" | "hv"
-    transformer_sign: float = 1.0              # +1: consumer reference-arrow system as measured
+    transformer_voltage: str = "mv"                 # side of the transformer currents: "mv" | "hv"
+    transformer_sign: Optional[float] = None   # None: automatic (upstream impedance), +1 as measured, −1 reversed
     # limits – defined by the user (groundfault contains none)
     ires_limits: Tuple[float, ...] = ()          # residual-current limits in A (extrapolation); () = none
     u_tp: Optional[float] = None                 # permissible touch voltage U_Tp in V
     f_factor: Optional[float] = None             # factor F of the permissible earth potential rise F·U_Tp
+    # disturbed states (active residual current increase, steps of the reactive component) are not the reference
+    exclude_disturbances: bool = True
+    disturbance_threshold: float = dist.THRESHOLD    # smallest step as a share of |I_H1| of the undisturbed state
 
     def __post_init__(self):
         _check_settings(self)
@@ -496,6 +528,17 @@ def _check_settings(e: Settings) -> None:
             raise ValueError(tr("evaluation.uncertainty_invalid", name=name, value=value))
     if not _positive(e.pq_safety_factor):
         raise ValueError(tr("evaluation.factor_invalid", name="pq_safety_factor", value=e.pq_safety_factor))
+    if not isinstance(e.exclude_disturbances, (bool, np.bool_)):
+        raise ValueError(tr("evaluation.bool_invalid", name="exclude_disturbances", value=e.exclude_disturbances))
+    try:
+        ok = not isinstance(e.disturbance_threshold, bool) and 0.0 < float(e.disturbance_threshold) < 1.0
+    except (TypeError, ValueError):
+        ok = False
+    if not ok:
+        raise ValueError(tr("evaluation.share_invalid", name="disturbance_threshold", value=e.disturbance_threshold))
+    if e.transformer_sign is not None and (isinstance(e.transformer_sign, (bool, np.bool_)) or
+                                           e.transformer_sign not in (1, -1)):
+        raise ValueError(tr("evaluation.sign_invalid", name="transformer_sign", value=e.transformer_sign))
 
 
 @dataclass
@@ -732,12 +775,13 @@ class Result:
         Window analyses of the intervals (true RMS values ``rms`` and phasors ``X`` per window and channel, the
         frequency estimation ``f1``); ``pre_fault`` and ``post_fault`` are None if the interval was not given.
     max_index : int
-        Index of the max window (largest residual current) in ``steady_state``.
+        Index of the max window (largest residual current among the undisturbed windows) in ``steady_state``.
     polarity : int
         +1, or −1 if the fault-current phasors were rotated by 180° (Iw < 0).
     tables : dict of pandas.DataFrame
         Result tables, e.g. ``assessment_quantities``, ``harmonics``, ``coil_currents``, ``voltage_metrics``,
-        ``station_voltages``, ``station_currents``, ``transformer_power``, ``plausibility`` and ``statistics``.
+        ``station_voltages``, ``station_currents``, ``transformer_node``, ``transformer_power_change``,
+        ``transformer_impedance``, ``transformer_power``, ``plausibility`` and ``statistics``.
     values : dict
         Scalar values (``IRES``, ``IG``, ``Iw``, ``Iv``, ``IH_total`` …) and nested structures (``voltage``, ``station``
         …). ``Iv`` is the detuning current from the angle method, Iv = I_H1·sin(φ_U0 − φ_I1) = ΣI_coil − I_C, > 0
@@ -747,6 +791,13 @@ class Result:
         Hints and warnings in the output language.
     result_set : dict
         Content of the result file ([`save_json`][groundfault.evaluation.Result.save_json]).
+    disturbances : Disturbances or None
+        Disturbed states found in the steady-state interval
+        ([`groundfault.disturbances.detect`][groundfault.disturbances.detect]); None without a fault-current channel.
+    reference : numpy.ndarray of bool or None
+        Windows of ``steady_state`` used as the reference (finite values, undisturbed unless
+        ``Settings.exclude_disturbances`` is False); see
+        [`reference_windows`][groundfault.evaluation.Result.reference_windows].
     """
     name: str
     recording_info: dict
@@ -762,8 +813,19 @@ class Result:
     values: Dict[str, object] = field(default_factory=dict)
     hints: List[str] = field(default_factory=list)
     result_set: Dict[str, object] = field(default_factory=dict)
+    disturbances: Optional[dist.Disturbances] = None
+    reference: Optional[np.ndarray] = None
 
     # ------------------------------------------------------------- convenience
+    @property
+    def reference_windows(self) -> np.ndarray:
+        """Boolean mask of the windows of ``steady_state`` that form the reference: finite values and – unless
+        ``Settings.exclude_disturbances`` is False – no disturbed state. The max window, the statistics and the
+        checks over the interval use these windows."""
+        if self.reference is not None:
+            return self.reference
+        return ~self.steady_state.nan_window
+
     @property
     def t_max_window(self) -> float:
         """Centre of the max window in s from the start of the recording."""
@@ -912,22 +974,60 @@ def evaluate(rec: Recording, intervals: Intervals, settings: Optional[Settings] 
         if b is not None and b.nan_window.any():
             hints.append(tr("evaluation.nan_windows", count=int(b.nan_window.sum()), interval=b.name))
 
-    # ---------------------------------------------------------------- max window
+    # ---------------------------------------------------------------- disturbed states and max window
     ires = roles.main("i_res")
+    use = ~st.nan_window
+    found = None
+    I1w = None
+    orient = True
+    min_step = dist.STEP_MIN_A
     if ires is not None:
-        r = np.where(st.nan_window, -np.inf, st.rms[:, ires.index])
+        I1w, U0w, rmsw, coilw = dist.window_phasors(st, roles)
+    elif roles.capabilities()["transformer"] and roles.line_to_earth and (vf is not None or nf is not None):
+        # no fault-current channel: estimate the fault current from the negative-sequence current of the transformer
+        est = trafo.detection_input(st, vf if vf is not None else nf, roles, e,
+                                    other_block=nf if vf is not None else None)
+        if est is not None:
+            I1w, U0w, coilw, ph, _ = est
+            rmsw = None
+            orient = False
+            min_step = max(dist.STEP_MIN_A, trafo.NOISE_FACTOR * trafo.estimate_noise(I1w, U0w))
+            hints.append(tr("transformer.fault_current_estimated", phase="L%d" % (ph + 1),
+                            base=tr("transformer.base_pre_fault" if vf is not None else "transformer.base_post_fault")))
+    if I1w is not None:
+        found = dist.detect(st.t_mid, I1w, U0w, rmsw, coilw, threshold=e.disturbance_threshold, T_win=e.T_win,
+                            orient=orient, min_step_A=min_step)
+        if found.found:
+            parts = found.parts_text()
+            if not e.exclude_disturbances:
+                hints.append(tr("disturbances.not_excluded", parts=parts))
+                found.segments["used"] = True
+            elif (use & found.reference).any():
+                use = use & found.reference
+                hints.append(tr("disturbances.excluded", parts=parts, reference=found.reference_text()))
+            else:
+                hints.append(tr("disturbances.no_reference", parts=parts))
+                found.segments["used"] = True
+        hints.extend(found.notes())
+    if ires is not None and use.any():
+        r = np.where(use, st.rms[:, ires.index], -np.inf)
         wi = int(np.argmax(r))
     else:
         wi = 0
     if e.max_search_hop and ires is not None and e.max_search_hop < (e.T_hop or e.T_win):
         fine = _analyse("steady_state", *bl["steady_state"], rec, roles, e, T_hop=e.max_search_hop)
-        r = np.where(fine.nan_window, -np.inf, fine.rms[:, ires.index])
+        ok_f = ~fine.nan_window
+        if (use != ~st.nan_window).any():      # disturbed states excluded: only fine windows inside the reference
+            ok_f &= _covered(fine.t_mid, st.t_mid[use], e.T_win)
+        r = np.where(ok_f, fine.rms[:, ires.index], -np.inf)
         wf = int(np.argmax(r))
         # the max window of the finer grid replaces the max window of the standard grid (nearest centre)
         st.X[wi] = fine.X[wf]; st.rms[wi] = fine.rms[wf]; st.t_mid[wi] = fine.t_mid[wf]
     res = Result(name=name or os.path.splitext(os.path.basename(rec.cfg_path))[0], recording_info=rec.info(),
                    roles=roles, settings=e, intervals=intervals, steady_state=st, pre_fault=vf,
-                   post_fault=nf, max_index=wi, polarity=1, hints=hints)
+                   post_fault=nf, max_index=wi, polarity=1, hints=hints, disturbances=found, reference=use)
+    if found is not None:
+        res.tables["steady_state_segments"] = found.segments
     _assessment_quantities(res, z_fault_ohm)
     _voltage_analysis(res)
     _harmonic_scaling(res)
@@ -939,11 +1039,27 @@ def evaluate(rec: Recording, intervals: Intervals, settings: Optional[Settings] 
         except Exception as ex:                       # the additional evaluation must never stop the main one
             res.hints.append(tr("evaluation.station_failed", error=ex))
     if roles.capabilities()["transformer"]:
-        _transformer(res)
+        trafo.node_analysis(res)
     _plausibility(res, rec, bl)
     _statistics(res)
     _result_set(res, rec, z_fault_ohm, _campaign_metadata(rec, metadata), alignment)
     return res
+
+
+def _covered(t_mid: np.ndarray, t_ref: np.ndarray, T_win: float) -> np.ndarray:
+    """Windows (centres ``t_mid``, length ``T_win``) that lie completely inside the time span covered by the windows
+    with the centres ``t_ref`` (union of their spans)."""
+    half = T_win / 2.0
+    spans = []
+    for t in np.sort(np.asarray(t_ref, float)):
+        if spans and t - half <= spans[-1][1] + 1e-9:
+            spans[-1][1] = t + half
+        else:
+            spans.append([t - half, t + half])
+    out = np.zeros(len(t_mid), bool)
+    for a, b in spans:
+        out |= (t_mid - half >= a - 1e-9) & (t_mid + half <= b + 1e-9)
+    return out
 
 
 def _campaign_metadata(rec: Recording, metadata: Optional[dict]) -> dict:
@@ -1258,36 +1374,6 @@ def _station(res: Result) -> None:
     res.tables["station_metrics"] = pd.DataFrame([tag]) if tag else pd.DataFrame()
 
 
-def _transformer(res: Result) -> None:
-    """Transformer power P, Q (orders up to 13) and sequence currents per interval (table
-    ``transformer_power``)."""
-    roles, e = res.roles, res.settings
-    il = roles.line_currents
-    ul = (roles.line_to_earth if (e.transformer_voltage == "mv" or not roles.line_to_earth_hv)
-          else roles.line_to_earth_hv)
-    if il is None or ul is None:
-        return
-    rows = []
-    for name, b, win in (("pre_fault", res.pre_fault, None), ("fault", res.steady_state, res.max_index),
-                         ("post_fault", res.post_fault, None)):
-        if b is None:
-            continue
-        sl = slice(None) if win is None else slice(win, win + 1)
-        ok = ~b.nan_window[sl]
-        for m in b.orders:
-            if m > 13:
-                continue
-            U = [b.X[sl, k, b.ix(m)] for k in ul]
-            I = [b.X[sl, k, b.ix(m)] for k in il]
-            S = e.transformer_sign * sum(u * np.conj(i) for u, i in zip(U, I))     # (n_w,)
-            i0, i1, i2 = fortescue(*I)
-            rows.append(dict(interval=name, order=m, f_Hz=m * b.f1["f1_used"],
-                               P_kW=float(np.mean(S.real[ok])) / 1e3, Q_kvar=float(np.mean(S.imag[ok])) / 1e3,
-                               I_pos_A=float(np.median(np.abs(i1[ok]))), I_neg_A=float(np.median(np.abs(i2[ok]))),
-                               I_zero_A=float(np.median(np.abs(i0[ok])))))
-    res.tables["transformer_power"] = pd.DataFrame(rows)
-
-
 def _plausibility(res: Result, rec: Recording, bl) -> None:
     """Table ``plausibility``: checks of the measurement and of the evaluation (columns ``check``, ``status`` –
     OK, NOTE, WARNING, CORRECTED, UNCERTAIN or INFO –, ``value`` and ``comment``)."""
@@ -1305,8 +1391,22 @@ def _plausibility(res: Result, rec: Recording, bl) -> None:
         p(tr("evaluation.check_corrections", path=_corrections_file(rec)), "CORRECTED",
           "; ".join("%s × %s" % (kk, i18n.format_number(f, digits=6)) for kk, f in total.items()),
           tr("evaluation.corrections_comment"))
-    p(tr("evaluation.check_windows"), "OK" if len(st.t_mid) >= 3 else "NOTE",
-      "%d" % len(st.t_mid), tr("evaluation.windows_comment"))
+    ref_w = res.reference_windows
+    p(tr("evaluation.check_windows"), "OK" if int(ref_w.sum()) >= 3 else "NOTE",
+      "%d" % int(ref_w.sum()) if ref_w.sum() == len(st.t_mid) else "%d / %d" % (int(ref_w.sum()), len(st.t_mid)),
+      tr("evaluation.windows_comment"))
+    found = res.disturbances
+    if found is not None:
+        if not found.found:
+            p(tr("disturbances.check"), "OK", tr("disturbances.check_none", threshold=found.threshold_A),
+              tr("disturbances.comment_none" if found.with_u0 else "disturbances.comment_none_u0"))
+        elif e.exclude_disturbances and (ref_w & found.reference).any():
+            p(tr("disturbances.check"), "NOTE", found.parts_text(),
+              tr("disturbances.comment_excluded", reference=found.reference_text()))
+        else:
+            p(tr("disturbances.check"), "WARNING", found.parts_text(),
+              tr("disturbances.comment_not_excluded") if not e.exclude_disturbances
+              else tr("disturbances.no_reference", parts=found.parts_text()))
     f1 = st.f1
     p(tr("evaluation.check_f1"), "OK" if f1["plausible"] else "WARNING",
       tr("evaluation.value_f1", f1=f1["f1"], comparison=f1.get("f1_comparison", np.nan)), f1.get("note") or
@@ -1330,8 +1430,8 @@ def _plausibility(res: Result, rec: Recording, bl) -> None:
     # stationarity: the fundamental component of the fault current must be constant in the steady-state interval
     # (active residual current increase, coil adjustment or switching within the interval → adjust the interval)
     ires_k = roles.main("i_res")
-    if ires_k is not None and len(st.t_mid) >= 3:
-        ok = ~st.nan_window
+    if ires_k is not None and int(ref_w.sum()) >= 3:
+        ok = ref_w
         I1w = res.polarity * st.X[ok, ires_k.index, st.ix(1)]
         h1 = np.abs(I1w)
         if h1.size >= 3 and np.median(h1) > 0:
@@ -1466,6 +1566,8 @@ def _plausibility(res: Result, rec: Recording, bl) -> None:
         if i_sp > 1.0:
             p(tr("evaluation.check_transformer"), "INFO", tr("evaluation.value_transformer", i0=3 * i0_tr, i_coil=i_sp),
               tr("evaluation.transformer_comment"))
+    for r in trafo.plausibility_rows(res):
+        p(r["check"], r["status"], r["value"], r["comment"])
     # overload (saturation) in the steady-state block: "flat tops" – runs of identical raw values at the block
     # maximum/minimum. Recorders such as DANEO scale each file to its value range (|raw|max = 32767), so hitting
     # the limit alone is NOT proof of an overload.
@@ -1500,9 +1602,10 @@ def _flat_top_share(rec: Recording, j: int, i0: int, n: int, run_min: int) -> fl
 
 def _statistics(res: Result) -> None:
     """Table ``statistics``: statistics of the RMS values (and of the assessed orders of currents and earth
-    potentials) over all steady-state windows, with the value in the max window."""
+    potentials) over the reference windows of the steady-state interval (without disturbed states), with the value
+    in the max window."""
     st, roles, e = res.steady_state, res.roles, res.settings
-    ok = ~st.nan_window
+    ok = res.reference_windows
     rows = []
     for k in roles.channels:
         s = _qstat(st.rms[ok, k.index])
@@ -1533,7 +1636,7 @@ def _result_set(res: Result, rec: Recording, z_fault_ohm, metadata: dict, alignm
         for m in sorted(set(e.export_orders) | set(e.current_orders())):
             if m in st.orders:
                 harm["H%d" % m] = _magang(polk * st.X[wi, k.index, st.ix(m)])
-        ok = ~st.nan_window
+        ok = res.reference_windows
         signals[k.name] = {"role": k.role, "unit": k.unit, "short": k.short,
                            "rms_window": float(st.rms[wi, k.index]),
                            "rms_max": float(np.nanmax(st.rms[ok, k.index])),
@@ -1558,7 +1661,7 @@ def _result_set(res: Result, rec: Recording, z_fault_ohm, metadata: dict, alignm
     if getattr(rec, "corrections", None):
         meta["corrections"] = [dict(k) for k in rec.corrections]
     res.result_set = {
-        "format": RESULT_FORMAT, "version": 3,
+        "format": RESULT_FORMAT, "version": RESULT_VERSION,
         "meta": meta,
         "measurement": {"cfg_file": os.path.basename(rec.cfg_path), "fs_hz": rec.fs, "fs_source": rec.fs_source,
                     "n_samples": int(rec.n), "duration_s": rec.duration_s,
@@ -1580,10 +1683,18 @@ def _result_set(res: Result, rec: Recording, z_fault_ohm, metadata: dict, alignm
     }
     if "voltage" in res.values:
         res.result_set["voltage"] = res.values["voltage"]
+    if res.disturbances is not None:                    # disturbed states of the steady-state interval
+        d = res.disturbances
+        res.result_set["disturbances"] = _json_simple(dict(
+            excluded=bool(e.exclude_disturbances and d.found and bool((res.reference_windows & d.reference).any())),
+            threshold_A=d.threshold_A, with_u0=d.with_u0, reference_s=[list(x) for x in d.reference_intervals()],
+            disturbed_s=[list(x) for x in d.excluded_intervals()], events=d.events.to_dict(orient="records")))
     if "station_frequency" in res.values:                  # station: times, frequency sources, methods (traceability)
         res.result_set["station_frequency"] = _json_simple(res.values["station_frequency"])
     if "station_lv_network" in res.values:                  # LV network: PEN/shield channels used, counting direction
         res.result_set["station_lv_network"] = _json_simple(res.values["station_lv_network"])
+    if "transformer" in res.values:                         # transformer node: polarity, voltages, X_up/m, HV side
+        res.result_set["transformer"] = _json_simple(res.values["transformer"])
     # all tables (for campaign evaluations and report tables without raw data)
     for t, df in res.tables.items():
         if df is None or df.empty:
@@ -1640,7 +1751,8 @@ class ResultFile:
     Provides ``name``, ``values``, ``tables``, ``hints``, ``settings`` (``f_nominal``, ``T_win``, ``ires_limits``,
     ``u_tp``, ``f_factor`` – the limits as stored in the file, empty or None if it has none), ``measurement`` and
     ``z_fault_ohm`` – without the raw data. Result files of the predecessor tool (German keys) are translated when
-    they are read.
+    they are read; tables of result files of groundfault 2.0 get the current column names
+    ([`groundfault.legacy.update_result`][groundfault.legacy.update_result]).
 
     Parameters
     ----------
@@ -1662,6 +1774,8 @@ class ResultFile:
             d = translate_result(d)                     # result file of the predecessor tool (German keys)
         elif d.get("format") != RESULT_FORMAT:
             raise ValueError(tr("evaluation.not_a_result_file", path=path))
+        else:
+            d = update_result(d)                        # names of earlier groundfault versions
         _metadata_from_path(d, path)                    # campaign and site of files that lack them (early versions)
         self.path = path
         self.data = d
@@ -1670,6 +1784,8 @@ class ResultFile:
         self.values = {k: (np.nan if v is None else v) for k, v in d.get("values", {}).items()}
         if "voltage" in d:
             self.values["voltage"] = d["voltage"]
+        if "transformer" in d:                          # transformer node (polarity, X_up/m, HV side, ΔP1)
+            self.values["transformer"] = d["transformer"]
         self.tables: Dict[str, pd.DataFrame] = {}
         for t, records in (d.get("tables") or {}).items():
             self.tables[t] = _numeric_columns(pd.DataFrame(records))

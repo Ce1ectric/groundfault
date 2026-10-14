@@ -6,7 +6,8 @@ import os
 import numpy as np
 import pytest
 
-from groundfault import Intervals, corrections, demo, detect_roles, earthing, evaluate, open_recording, register, sites
+from groundfault import (Intervals, corrections, demo, detect_roles, earthing, evaluate, i18n, open_recording, register,
+                         sites)
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +53,23 @@ def test_reduction_factor_against_demo_database(campaign_en):
     assert sorted(mx.index) == sorted(st["orders"]) == [1, 5, 7, 11]
     for m, v in st["orders"].items():
         assert mx.at[m, "r"] == pytest.approx(abs(v["r"]), rel=0.03), m
+        # r = r·Z_E/Z_E, the span of the superposition methods contains r
+        assert mx.at[m, "r"] == pytest.approx(mx.at[m, "rZE_fault_Ohm"] / mx.at[m, "Z_E_injection_Ohm"], rel=1e-12)
+        assert mx.at[m, "r_min"] <= mx.at[m, "r"] <= mx.at[m, "r_max"]
     e = effective[effective["channel"] == "max(UE)"].iloc[0]
+    # trend of r and of both compared quantities (r·Z_E falls, Z_E rises with the frequency in the demo)
+    assert e["exponent_r_vs_f"] < 0 and e["exponent_rZE_fault"] < 0 < e["exponent_Z_E_injection"]
+    assert e["exponent_r_vs_f"] == pytest.approx(e["exponent_rZE_fault"] - e["exponent_Z_E_injection"], abs=1e-9)
+    from groundfault import interactive, report
+    with i18n.language("en"):
+        fig = report.reduction_factor(spectrum, effective, direct=True)
+        texts = [t.get_text() for ax in fig.axes for t in (ax.get_legend().get_texts() if ax.get_legend() else [])]
+        assert any(t.startswith("trend $r \\propto f^{\\,b}$, b = −0.2") for t in texts), texts
+        assert "r direct (as measured, with background)" in texts
+        assert any("$r\\,Z_\\mathrm{E} = U_\\mathrm{E}/I_\\mathrm{F}$" in t for t in texts)
+        fi = interactive.reduction_factor(spectrum, effective)
+        assert any(t.name.startswith("trend r ∝ f<sup>b</sup>, b = ") for t in fi.data)
+    report.plt.close("all")
     # no range and no limits given: no classification, no relevance – groundfault has no defaults for them
     assert e["classification_r_50Hz"] == "–" and e["trend_r_vs_f"] == "falling"
     assert e["assessment_relevance"] == "–" and np.isnan(e["reference_current_A"]) and np.isnan(e["F_times_U_Tp_V"])

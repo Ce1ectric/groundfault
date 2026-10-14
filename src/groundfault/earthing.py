@@ -57,7 +57,7 @@ from .legacy import check_option
 from .station import MAX_PROBE
 
 __all__ = ["default_db_path", "Database", "frequency_response", "compare", "reduction_factor", "check_lv_network",
-           "reduction_hints", "export_fault_test", "export_to_groundmeas", "plan_overview", "plan_items",
+           "power_fit", "reduction_hints", "export_fault_test", "export_to_groundmeas", "plan_overview", "plan_items",
            "exclude_own", "entry_tag", "entry_tags", "location_rows", "location_from_site",
            "R_IMPLAUSIBLE", "RELEVANCE_THRESHOLD_PCT", "SHIELD_SMALL", "TREND_EXPONENT",
            "METHOD_FACTOR", "ASSET_TYPES", "UNIT_CHOICES", "UNCERTAIN_MODES", "EXISTING", "COORDINATE_TOLERANCE_M",
@@ -151,8 +151,8 @@ i18n.register({
         "en": "; one is above and one below F·U_Tp – the assessment depends on the method.",
         "de": "; einer liegt über, einer unter F·U_Tp – die Bewertung hängt vom Verfahren ab."},
     "earthing.z_values": {
-        "en": "Z_E from the fault test ({quantity}/I_F) {z_fault} Ω, from the earthing measurement {z_injection} Ω",
-        "de": "Z_E aus dem Erdschluss ({quantity}/I_F) {z_fault} Ω, aus der Erdungsmessung {z_injection} Ω"},
+        "en": "r·Z_E from the fault test ({quantity}/I_F) {z_fault} Ω, Z_E from the earthing measurement {z_injection} Ω",
+        "de": "r·Z_E aus dem Erdschluss ({quantity}/I_F) {z_fault} Ω, Z_E aus der Erdungsmessung {z_injection} Ω"},
     "earthing.hint_r_below": {
         "en": "Reduction factor {name}: r = {r} at 50 Hz is below the typical range {low}–{high} ({values}). The fault "
               "test gives a much smaller earth potential rise than the earthing measurement suggests. If the return "
@@ -253,11 +253,11 @@ i18n.register({
         "de": "Auch gegen den Erdschluss selbst verletzt (Strom ins Ortsnetz größer als der Fehlerstrom): PEN-Zangen "
               "(Übersetzung, Lage) prüfen."},
     "earthing.hint_lv_satisfied": {
-        "en": "Against the fault test itself (Z_E,fault = max(U_E)/I_F) the parallel connection is satisfied – the "
+        "en": "Against the fault test itself (r·Z_E = max(U_E)/I_F) the parallel connection is satisfied – the "
               "contradiction lies with the earthing measurement (measured value too high, e.g. a methodological error "
               "of the fall-of-potential method, or a different switching state such as disconnected PEN conductors or "
               "cable shields). Record it as a finding.",
-        "de": "Gegen den Erdschluss selbst (Z_E,Erdschluss = max(U_E)/I_F) ist die Parallelschaltung erfüllt – der "
+        "de": "Gegen den Erdschluss selbst (r·Z_E = max(U_E)/I_F) ist die Parallelschaltung erfüllt – der "
               "Widerspruch liegt bei der Erdungsmessung (zu hoher Messwert, z. B. methodischer Fehler des "
               "Strom-Spannungs-Verfahrens, oder ein anderer Schaltzustand wie getrennte PEN-Leiter oder Kabelschirme). "
               "Als Befund festhalten."},
@@ -954,7 +954,7 @@ def compare(station_frequency: pd.DataFrame, db_response: Optional[pd.DataFrame]
                 k = rows.loc[j.idxmin()]
                 d = dict(channel=MAX_PROBE, probe=p["probe"], role="u_e", distance_fault_m=p["distance"],
                          order=p["m"], f_Hz=p["f"], injection_id=int(mid), distance_injection_m=d_inj,
-                         distance_match=distance_match, Z_injection_Ohm=k["Z_Ohm"],
+                         distance_match=distance_match, Z_E_injection_Ohm=k["Z_Ohm"],
                          injection_angle_deg=k["angle_deg"], uncertain=p["uncertain"])
                 for meth_, z in (("fault", p["z_fault"]), ("direct", p["z_d"])):
                     d["Z_%s_Ohm" % meth_] = z
@@ -969,7 +969,7 @@ def compare(station_frequency: pd.DataFrame, db_response: Optional[pd.DataFrame]
                 d = dict(channel=r["channel"], probe=r["channel"], role=r["role"], distance_fault_m=dist,
                          order=int(r["order"]), f_Hz=float(r["f_Hz"]), injection_id=int(k["measurement_id"]),
                          distance_injection_m=k["distance_m"], distance_match=distance_match,
-                         Z_injection_Ohm=k["Z_Ohm"], injection_angle_deg=k["angle_deg"],
+                         Z_E_injection_Ohm=k["Z_Ohm"], injection_angle_deg=k["angle_deg"],
                          uncertain=_yes(r.get("uncertain")))
                 for meth_ in ("fault", "direct"):
                     z = r.get("Z_%s_Ohm" % meth_, np.nan)
@@ -1091,11 +1091,20 @@ def _check_r_typical(r_typical) -> Optional[Tuple[float, float]]:
     return low, high
 
 
+def _single_methods(r) -> List[float]:
+    """Finite values U/I_F of the single superposition methods (inception, clearance, voltage) of a row of
+    ``station_frequency``."""
+    v = [_num_(r.get("Z_%s_Ohm" % m)) for m in ("inception", "clearance", "voltage")]
+    return [x for x in v if np.isfinite(x)]
+
+
 def _probe_series(g: pd.DataFrame) -> List[dict]:
-    """Rows of one probe of ``station_frequency`` → per order: probe, distance, I_F, V/A (fault-related, direct),
-    uncertainty."""
+    """Rows of one probe of ``station_frequency`` → per order: probe, distance, I_F, V/A (fault-related, direct, span
+    of the single superposition methods), uncertainty."""
     return [dict(m=int(r["order"]), f=float(r["f_Hz"]), i_f=_num_(r.get("I_F_A")),
-                 z_fault=_num_(r.get("Z_fault_Ohm")), z_d=_num_(r.get("Z_direct_Ohm")), probe=str(r["channel"]),
+                 z_fault=_num_(r.get("Z_fault_Ohm")), z_d=_num_(r.get("Z_direct_Ohm")),
+                 z_lo=min(_single_methods(r), default=np.nan), z_hi=max(_single_methods(r), default=np.nan),
+                 probe=str(r["channel"]),
                  role=str(r.get("role", "")), distance=_distance(r.get("distance_m")),
                  unc_=_num_(r.get("uncertainty_pct")), spread=_num_(r.get("method_spread_pct")),
                  uncertain=_yes(r.get("uncertain")))
@@ -1113,13 +1122,30 @@ def _max_series(probes: pd.DataFrame) -> List[dict]:
     return out
 
 
-def _exponent(f, y) -> float:
-    """Exponent b of the regression line log y = a + b·log f (y ∝ f^b); NaN with fewer than two frequencies."""
+def power_fit(f, y) -> Tuple[float, float]:
+    """Power law y = c·f^b fitted as the regression line log y = log c + b·log f.
+
+    Parameters
+    ----------
+    f, y : sequence of float
+        Frequencies in Hz and values (only finite, positive pairs are used).
+
+    Returns
+    -------
+    c, b : float
+        Factor and exponent; NaN with fewer than two frequencies.
+    """
     f = np.asarray(f, float); y = np.asarray(y, float)
     ok = np.isfinite(f) & np.isfinite(y) & (f > 0) & (y > 0)
     if np.unique(f[ok]).size < 2:
-        return float("nan")
-    return float(np.polyfit(np.log(f[ok]), np.log(y[ok]), 1)[0])
+        return float("nan"), float("nan")
+    b, log_c = np.polyfit(np.log(f[ok]), np.log(y[ok]), 1)
+    return float(np.exp(log_c)), float(b)
+
+
+def _exponent(f, y) -> float:
+    """Exponent b of the regression line log y = a + b·log f (y ∝ f^b); NaN with fewer than two frequencies."""
+    return power_fit(f, y)[1]
 
 
 def _number(x, digits: int = 3) -> str:
@@ -1187,13 +1213,15 @@ def _rf_spectrum(channel: str, series: List[dict], mid: int, rows: pd.DataFrame,
         u_m = z_inj * p["i_f"] * s_ref if ok else np.nan
         out.append(dict(channel=channel, probe=p["probe"], distance_fault_m=p["distance"], injection_id=mid,
                         distance_injection_m=d_inj, distance_match=comparison, order=p["m"], f_Hz=p["f"],
-                        I_F_A=p["i_f"], UE_per_A_fault=p["z_fault"],
-                        UE_per_A_direct=p["z_d"], UE_per_A_injection=z_inj,
+                        I_F_A=p["i_f"], rZE_fault_Ohm=p["z_fault"],
+                        rZE_direct_Ohm=p["z_d"], Z_E_injection_Ohm=z_inj,
                         injection_frequency=origin, r=r, r_direct=p["z_d"] / z_inj if ok else np.nan,
+                        r_min=float(np.fmin(p["z_lo"], p["z_fault"])) / z_inj if ok else np.nan,
+                        r_max=float(np.fmax(p["z_hi"], p["z_fault"])) / z_inj if ok else np.nan,
                         r_to_r_50Hz=np.nan,
                         share_shield=abs(ks) if ks is not None else np.nan, r_shield=r_s,
-                        UE_per_A_earth_current=p["z_fault"] / r_s if with_s else np.nan,
-                        Z_E_fault_to_injection=r / r_s if with_s else np.nan,
+                        Z_E_earth_current_Ohm=p["z_fault"] / r_s if with_s else np.nan,
+                        Z_E_earth_current_to_injection=r / r_s if with_s else np.nan,
                         U_E_fault_at_reference_current_V=u_f, U_E_injection_at_reference_current_V=u_m,
                         deviation_at_reference_current_V=u_m - u_f,
                         assessment_relevance_pct=100.0 * abs(u_m - u_f) / limit_ if limit_ > 0 else np.nan,
@@ -1247,12 +1275,12 @@ def _rf_effective(channel: str, series: List[dict], mid: int, rows: pd.DataFrame
     return dict(channel=channel, probe=series[0]["probe"], distance_fault_m=series[0]["distance"], injection_id=mid,
                 distance_injection_m=d_inj, distance_match=comparison, orders=", ".join(str(m) for m in ords),
                 I_F_coverage_pct=100.0 * s["f"] / i_f_all ** 2 if i_f_all > 0 else np.nan,
-                UE_per_A_fault_eff=math.sqrt(s["u"]) / f_eff, UE_per_A_injection_eff=math.sqrt(s["z"]) / f_eff,
+                rZE_fault_eff_Ohm=math.sqrt(s["u"]) / f_eff, Z_E_injection_eff_Ohm=math.sqrt(s["z"]) / f_eff,
                 r_eff=r_eff, r_eff_direct=math.sqrt(s["u_d"] / s["z"]) if np.isfinite(s["u_d"]) else np.nan,
                 r_eff_rms=r_b, r_eff_shield=r_eff_s,
                 share_shield_eff=math.sqrt(s["k"]) / f_eff if bool(k_s) and np.isfinite(s["k"]) else np.nan,
-                UE_per_A_earth_current_eff=math.sqrt(s["u"] / s["e"]) if with_s and s["e"] > 0 else np.nan,
-                Z_E_fault_to_injection_eff=r_eff / r_eff_s if with_s else np.nan,
+                Z_E_earth_current_eff_Ohm=math.sqrt(s["u"] / s["e"]) if with_s and s["e"] > 0 else np.nan,
+                Z_E_earth_current_to_injection_eff=r_eff / r_eff_s if with_s else np.nan,
                 uncertain_share_pct=100.0 * s["z_unc"] / s["z"])
 
 
@@ -1262,9 +1290,9 @@ def _classify(g: pd.DataFrame, r_typical: Optional[Tuple[float, float]]) -> dict
     Trend: regression line log r over log f at the reliable orders (earthing measurement measured at this frequency,
     fault-test value not uncertain; with fewer than two of them all orders with r)."""
     low, high = r_typical if r_typical is not None else (np.nan, np.nan)
-    out = dict(r_50Hz=np.nan, Z_E_fault_50Hz_Ohm=np.nan, Z_E_injection_50Hz_Ohm=np.nan,
+    out = dict(r_50Hz=np.nan, rZE_fault_50Hz_Ohm=np.nan, Z_E_injection_50Hz_Ohm=np.nan,
                classification_r_50Hz="–", r_typical_min=float(low), r_typical_max=float(high),
-               trend_r_vs_f="–", exponent_r_vs_f=np.nan, exponent_Z_fault=np.nan, exponent_Z_injection=np.nan,
+               trend_r_vs_f="–", exponent_r_vs_f=np.nan, exponent_rZE_fault=np.nan, exponent_Z_E_injection=np.nan,
                trend_orders="")
     if g.empty:
         return out
@@ -1272,8 +1300,8 @@ def _classify(g: pd.DataFrame, r_typical: Optional[Tuple[float, float]]) -> dict
     g1 = g[(g["order"] == 1) & np.isfinite(r)]
     if len(g1):
         x = g1.iloc[0]
-        out.update(r_50Hz=float(x["r"]), Z_E_fault_50Hz_Ohm=float(x["UE_per_A_fault"]),
-                   Z_E_injection_50Hz_Ohm=float(x["UE_per_A_injection"]),
+        out.update(r_50Hz=float(x["r"]), rZE_fault_50Hz_Ohm=float(x["rZE_fault_Ohm"]),
+                   Z_E_injection_50Hz_Ohm=float(x["Z_E_injection_Ohm"]),
                    classification_r_50Hz=_classify_r(float(x["r"]), r_typical))
     measured = g["_measured"].map(_yes).astype(bool) if "_measured" in g else pd.Series(False, index=g.index)
     certain = ~g["uncertain"].map(_yes).astype(bool)
@@ -1283,8 +1311,8 @@ def _classify(g: pd.DataFrame, r_typical: Optional[Tuple[float, float]]) -> dict
     if choice["f_Hz"].nunique() >= 2:
         b = _exponent(choice["f_Hz"], choice["r"])
         out.update(exponent_r_vs_f=b,
-                   exponent_Z_fault=_exponent(choice["f_Hz"], choice["UE_per_A_fault"]),
-                   exponent_Z_injection=_exponent(choice["f_Hz"], choice["UE_per_A_injection"]),
+                   exponent_rZE_fault=_exponent(choice["f_Hz"], choice["rZE_fault_Ohm"]),
+                   exponent_Z_E_injection=_exponent(choice["f_Hz"], choice["Z_E_injection_Ohm"]),
                    trend_orders=", ".join(str(int(m)) for m in sorted(choice["order"])),
                    trend_r_vs_f=("falling" if b <= -TREND_EXPONENT else
                                  "rising" if b >= TREND_EXPONENT else "constant"))
@@ -1298,20 +1326,27 @@ def reduction_factor(tables, db_response: Optional[pd.DataFrame], tolerance_hz: 
                      r_typical: Optional[Tuple[float, float]] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Reduction factor from the staged fault test and the earthing measurement of the same station.
 
-    1. Normalise the earth potential rise to 1 A: fault test ΔU_E,m/I_F,m (fault-related component, table
-       ``station_frequency``), earthing measurement U_E/I_test = ``earthing_impedance`` at the same frequency
-       (measured ± ``tolerance_hz`` or interpolated linearly between two measured frequencies, never
-       extrapolated).
-    2. r_m = |ΔU_E,m/I_F,m| / |U_E,m/I_test,m| – magnitudes only (the phasors of step 1 carry the angle, it does not
-       count for r). Column ``r_to_r_50Hz``: trend over the frequency referred to 50 Hz.
+    The fault test gives the earth potential rise per ampere of fault current, ΔU_E/I_F = r·Z_E: only the earth
+    current I_E = r·I_F flows into the earthing system, the rest returns through cable shields and earth wires. The
+    earthing measurement with current injection gives the earthing impedance Z_E itself. Their ratio is the reduction
+    factor: r = (r·Z_E)/Z_E.
+
+    1. Normalise the earth potential rise to 1 A: fault test r·Z_E,m = ΔU_E,m/I_F,m (fault-related component, table
+       ``station_frequency``; column ``rZE_fault_Ohm``, as measured ``rZE_direct_Ohm``), earthing measurement
+       Z_E,m = U_E/I_test (``Z_E_injection_Ohm``, from ``earthing_impedance`` at the same frequency – measured ±
+       ``tolerance_hz`` or interpolated linearly between two measured frequencies, never extrapolated).
+    2. r_m = |r·Z_E,m| / |Z_E,m| – magnitudes only (the phasors of step 1 carry the angle, it does not count for r).
+       ``r_min``/``r_max``: the same with the smallest and largest of the single superposition methods (inception,
+       clearance, voltage reference) – their span. Column ``r_to_r_50Hz``: trend over the frequency referred to
+       50 Hz.
     3. RMS value over all harmonics with both values (spectrally weighted with the fault current):
        r_eff = √Σ|ΔU_E,m|² / √Σ(|Z_test,m|·|I_F,m|)². Second method for comparison (``r_eff_rms``): RMS values as
        measured (U_E,eff/I_F,eff in the max window, table ``station_voltages``) divided by |Z_test| at 50 Hz – it
        contains the background and assumes a frequency-independent earthing impedance.
     4. Cross-check from the shield current (if measured): share |ΔI_S,m|/|I_F,m| and
        r_S,m = |I_F,m − ΔI_S,m|/|I_F,m| – valid only if the shield-current channels capture all return
-       conductors. With it, Z_E from the fault test with the earth current (``UE_per_A_earth_current`` =
-       |ΔU_E|/|I_E|, I_E = I_F − I_S) and its ratio to the earthing measurement (``Z_E_fault_to_injection`` =
+       conductors. With it, Z_E from the fault test with the earth current (``Z_E_earth_current_Ohm`` =
+       |ΔU_E|/|I_E|, I_E = I_F − I_S) and its ratio to the earthing measurement (``Z_E_earth_current_to_injection`` =
        r/r_S; 1 = both methods agree, smaller = earthing measurement higher, e.g. a methodological error of the
        fall-of-potential method).
 
@@ -1344,10 +1379,11 @@ def reduction_factor(tables, db_response: Optional[pd.DataFrame], tolerance_hz: 
     Returns
     -------
     spectrum, effective : pandas.DataFrame
-        ``spectrum``: one row per probe, earthing measurement and harmonic order – ``r``, ``r_direct``,
+        ``spectrum``: one row per probe, earthing measurement and harmonic order – ``rZE_fault_Ohm``,
+        ``rZE_direct_Ohm``, ``Z_E_injection_Ohm``, ``r``, ``r_direct``, ``r_min``, ``r_max``,
         ``r_to_r_50Hz``, ``injection_frequency`` (how the value of the earthing measurement was obtained: measured
-        at …/interpolated …), ``share_shield``, ``r_shield``, ``UE_per_A_earth_current``,
-        ``Z_E_fault_to_injection``, the voltages at the reference current and ``assessment_relevance_pct`` per
+        at …/interpolated …), ``share_shield``, ``r_shield``, ``Z_E_earth_current_Ohm``,
+        ``Z_E_earth_current_to_injection``, the voltages at the reference current and ``assessment_relevance_pct`` per
         order. ``effective``: one row per probe and earthing measurement with the RMS values (``r_eff``,
         ``r_eff_direct``, ``r_eff_rms``, ``r_eff_shield`` …), the classification, the trend and the relevance for
         the assessment with the parameters used (``reference_current_A``, ``U_Tp_V``, ``F_factor``,
@@ -1372,8 +1408,9 @@ def reduction_factor(tables, db_response: Optional[pd.DataFrame], tolerance_hz: 
     **Classification** (effective table): r at 50 Hz against the range ``r_typical`` given by the user –
     ``classification_r_50Hz`` is ``"below"``, ``"typical"``, ``"above"``, ``"implausible"`` (above
     [`R_IMPLAUSIBLE`][groundfault.earthing.R_IMPLAUSIBLE], also without a range) or ``"–"`` (no range given); the
-    range used is in ``r_typical_min`` and ``r_typical_max``. Trend over the frequency as the exponent b in r ∝ f^b (``exponent_r_vs_f``,
-    likewise for both impedances), fitted at the reliable orders (``trend_orders``: earthing measurement measured at
+    range used is in ``r_typical_min`` and ``r_typical_max``. Trend over the frequency as the exponent b in r ∝ f^b
+    (``exponent_r_vs_f``; likewise for r·Z_E and Z_E: ``exponent_rZE_fault``, ``exponent_Z_E_injection``), fitted at
+    the reliable orders (``trend_orders``: earthing measurement measured at
     that frequency, fault-test value not uncertain; with fewer than two of them all orders with r) – ``trend_r_vs_f`` is
     ``"falling"`` (b ≤ −[`TREND_EXPONENT`][groundfault.earthing.TREND_EXPONENT]; expected, because the inductive
     coupling of the return conductors increases with the frequency, f → ∞: r → 0), ``"constant"``, ``"rising"`` or
@@ -1414,7 +1451,7 @@ def reduction_factor(tables, db_response: Optional[pd.DataFrame], tolerance_hz: 
                 for _, g in probes.groupby("channel", sort=False)]
         cand = [e for e in cand if e is not None]
         if cand:
-            eff.append(max(cand, key=lambda e: e["UE_per_A_fault_eff"]))
+            eff.append(max(cand, key=lambda e: e["rZE_fault_eff_Ohm"]))
     for channel, g in sf[sf["role"] == "u_e"].groupby("channel", sort=False):
         series = _probe_series(g)
         for mid, (rows, d_inj, comparison) in _injection_probes(inj, series[0]["distance"], False).items():
@@ -1427,7 +1464,7 @@ def reduction_factor(tables, db_response: Optional[pd.DataFrame], tolerance_hz: 
     for e in eff:
         g = spec[(spec["channel"] == e["channel"]) & (spec["injection_id"] == e["injection_id"])]
         e.update(_classify(g, r_typical))
-        u_f, u_m = e["UE_per_A_fault_eff"] * i_ref, e["UE_per_A_injection_eff"] * i_ref
+        u_f, u_m = e["rZE_fault_eff_Ohm"] * i_ref, e["Z_E_injection_eff_Ohm"] * i_ref
         p, step_ = _relevance(u_f, u_m, limit_, relevance_threshold_pct)
         e.update(reference_current_A=i_ref, U_E_fault_at_reference_current_V=u_f,
                  U_E_injection_at_reference_current_V=u_m, deviation_at_reference_current_V=u_m - u_f,
@@ -1468,7 +1505,7 @@ def check_lv_network(tables, db_response: Optional[pd.DataFrame], tolerance_hz: 
     per_order, effective : pandas.DataFrame
         ``per_order``: one row per probe, earthing measurement and order (``Z_E_LV_Ohm``, ``Z_E_injection_Ohm``,
         ``injection_frequency``, ``Z_LV_to_Z_E``, ``injection_comparison``, ``comparison_uncertainty_pct``,
-        ``Z_E_fault_Ohm``, ``parallel_check``, ``uncertain``). ``effective``: RMS values per probe and earthing
+        ``rZE_fault_Ohm``, ``parallel_check``, ``uncertain``). ``effective``: RMS values per probe and earthing
         measurement (``Z_E_LV_eff_Ohm``, ``Z_E_injection_eff_Ohm``, ``Z_LV_to_Z_E_eff``, ``injection_comparison``:
         ``"satisfied"`` or ``"below (see orders)"``). Both are empty without the LV-network table or an earthing
         measurement.
@@ -1517,7 +1554,7 @@ def check_lv_network(tables, db_response: Optional[pd.DataFrame], tolerance_hz: 
                     distance_match=comparison, order=int(r["order"]), f_Hz=f, Z_E_LV_Ohm=z_lv,
                     Z_E_injection_Ohm=z_inj, injection_frequency=origin, Z_LV_to_Z_E=rat,
                     injection_comparison=status, comparison_uncertainty_pct=u,
-                    Z_E_fault_Ohm=_num_(r.get("Z_E_fault_Ohm")),
+                    rZE_fault_Ohm=_num_(r.get("rZE_fault_Ohm")),
                     parallel_check=r.get("parallel_check", "–"),
                     uncertain=_yes(r.get("uncertain"))))
                 i_lv = _num_(r.get("I_LV_A"))
@@ -1653,7 +1690,7 @@ def reduction_hints(reduction_eff: Optional[pd.DataFrame] = None,
                 classification = "–"                  # no range in the row: no hint about the range
             low, high = range_ or ("–", "–")
             assess = _assessment_text(r)
-            z_f, z_m = _num_(r.get("Z_E_fault_50Hz_Ohm")), _num_(r.get("Z_E_injection_50Hz_Ohm"))
+            z_f, z_m = _num_(r.get("rZE_fault_50Hz_Ohm")), _num_(r.get("Z_E_injection_50Hz_Ohm"))
             values = tr("earthing.z_values", quantity="max(U_E)" if r.get("channel") == MAX_PROBE else "U_E",
                         z_fault=_number(z_f), z_injection=_number(z_m))
             if classification == "below":

@@ -21,9 +21,9 @@ from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 from . import i18n
 from .i18n import tr
 
-__all__ = ["LEGACY_RESULT_FORMAT", "RESULT_FORMAT", "is_legacy_result", "translate_result", "translate_key",
-           "translate_columns", "KEYS", "VALUES", "PREFIX_VALUES", "FORMER_OPTION_VALUES", "FORMER_OPTION_KEYS",
-           "check_option", "check_keys"]
+__all__ = ["LEGACY_RESULT_FORMAT", "RESULT_FORMAT", "RESULT_VERSION", "is_legacy_result", "translate_result",
+           "translate_key", "translate_columns", "update_result", "KEYS", "VALUES", "PREFIX_VALUES", "RENAMED",
+           "FORMER_OPTION_VALUES", "FORMER_OPTION_KEYS", "check_option", "check_keys"]
 
 i18n.register({
     "legacy.invalid_option": {"en": "{option}={value} is not allowed – allowed: {allowed}{former}",
@@ -38,6 +38,27 @@ LEGACY_RESULT_FORMAT = "erdschluss-ergebnis"
 """``format`` field of result files written by the predecessor tool."""
 RESULT_FORMAT = "groundfault-result"
 """``format`` field of result files written by groundfault."""
+RESULT_VERSION = 4
+"""``version`` field of the result files written by this version of groundfault (3.0: 4; 2.0: 3)."""
+
+RENAMED: Dict[str, str] = {
+    # station evaluation, LV network: the fault test gives r·Z_E = U_E/I_F, not the earthing impedance itself
+    "Z_E_fault_Ohm": "rZE_fault_Ohm", "Z_E_fault_eff_Ohm": "rZE_fault_eff_Ohm",
+    "Z_LV_to_Z_E_fault": "Z_LV_to_rZE_fault",
+    "Z_total_fault_Ohm": "Z_E_earth_current_Ohm", "Z_total_fault_eff_Ohm": "Z_E_earth_current_eff_Ohm",
+    # reduction factor and comparison with the earthing measurement
+    "UE_per_A_fault": "rZE_fault_Ohm", "UE_per_A_direct": "rZE_direct_Ohm", "UE_per_A_fault_eff": "rZE_fault_eff_Ohm",
+    "UE_per_A_injection": "Z_E_injection_Ohm", "UE_per_A_injection_eff": "Z_E_injection_eff_Ohm",
+    "UE_per_A_earth_current": "Z_E_earth_current_Ohm", "UE_per_A_earth_current_eff": "Z_E_earth_current_eff_Ohm",
+    "Z_E_fault_to_injection": "Z_E_earth_current_to_injection",
+    "Z_E_fault_to_injection_eff": "Z_E_earth_current_to_injection_eff",
+    "Z_E_fault_50Hz_Ohm": "rZE_fault_50Hz_Ohm", "exponent_Z_fault": "exponent_rZE_fault",
+    "exponent_Z_injection": "exponent_Z_E_injection", "Z_injection_Ohm": "Z_E_injection_Ohm",
+}
+"""Column names of groundfault 2.0 (result format version 3) → current name (3.0). The ratio U_E/I_F of the fault
+test contains the reduction factor and is therefore called r·Z_E (``rZE_…``); Z_E from the fault test with the earth
+current I_E = I_F − I_S is ``Z_E_earth_current…``. [`update_result`][groundfault.legacy.update_result] applies it
+when an older result file is read."""
 
 KEYS: Dict[str, str] = {'Abdeckung_I_F_proz': 'I_F_coverage_pct',
  'Abstand_Einspeisung_m': 'distance_injection_m',
@@ -225,11 +246,11 @@ KEYS: Dict[str, str] = {'Abdeckung_I_F_proz': 'I_F_coverage_pct',
  'Trigger_s': 'trigger_s',
  'Typ': 'type',
  'UE_bei_%gA_V': 'UE_at_%gA_V',
- 'UE_je_A_Erdschluss_direkt': 'UE_per_A_direct',
- 'UE_je_A_Erdschluss_eff': 'UE_per_A_fault_eff',
- 'UE_je_A_Erdschluss_fehlerbedingt': 'UE_per_A_fault',
- 'UE_je_A_Erdungsmessung': 'UE_per_A_injection',
- 'UE_je_A_Erdungsmessung_eff': 'UE_per_A_injection_eff',
+ 'UE_je_A_Erdschluss_direkt': 'rZE_direct_Ohm',
+ 'UE_je_A_Erdschluss_eff': 'rZE_fault_eff_Ohm',
+ 'UE_je_A_Erdschluss_fehlerbedingt': 'rZE_fault_Ohm',
+ 'UE_je_A_Erdungsmessung': 'Z_E_injection_Ohm',
+ 'UE_je_A_Erdungsmessung_eff': 'Z_E_injection_eff_Ohm',
  'UH5g_vor': 'UH5g_pre',
  'UH7m_vor': 'UH7m_pre',
  'UH_LL_vor_V': 'UH_LL_pre_V',
@@ -291,7 +312,7 @@ KEYS: Dict[str, str] = {'Abdeckung_I_F_proz': 'I_F_coverage_pct',
  'Z_E_Ortsnetz_Unsicherheit_proz': 'Z_E_LV_uncertainty_pct',
  'Z_E_Ortsnetz_Winkel_deg': 'Z_E_LV_angle_deg',
  'Z_E_Ortsnetz_eff_Ohm': 'Z_E_LV_eff_Ohm',
- 'Z_Erdungsmessung_Ohm': 'Z_injection_Ohm',
+ 'Z_Erdungsmessung_Ohm': 'Z_E_injection_Ohm',
  'Z_ON': 'Z_LV',
  'Z_ON_sonde': 'Z_LV_probe',
  'Z_Ortsnetz_zu_Z_E': 'Z_LV_to_Z_E',
@@ -303,8 +324,8 @@ KEYS: Dict[str, str] = {'Abdeckung_I_F_proz': 'I_F_coverage_pct',
  'Z_fehler': 'Z_fault',
  'Z_fehlerbedingt_Ohm': 'Z_fault_Ohm',
  'Z_fehlerbedingt_Winkel_deg': 'Z_fault_angle_deg',
- 'Z_gesamt_Erdschluss_Ohm': 'Z_total_fault_Ohm',
- 'Z_gesamt_Erdschluss_eff_Ohm': 'Z_total_fault_eff_Ohm',
+ 'Z_gesamt_Erdschluss_Ohm': 'Z_E_earth_current_Ohm',
+ 'Z_gesamt_Erdschluss_eff_Ohm': 'Z_E_earth_current_eff_Ohm',
  'Z_spannung_Ohm': 'Z_voltage_Ohm',
  'Zeile': 'line',
  'Zeit': 'time',
@@ -580,17 +601,17 @@ KEYS.update({
 })
 # erdschluss 1.5.0: probe maximum, checks against the fault test, classification and assessment relevance
 KEYS.update({
-    "Sonde": "probe", "Z_E_Erdschluss_Ohm": "Z_E_fault_Ohm", "Z_E_Erdschluss_eff_Ohm": "Z_E_fault_eff_Ohm",
-    "Z_Ortsnetz_zu_Z_E_Erdschluss": "Z_LV_to_Z_E_fault", "Pruefung_Erdungsstrom": "earth_current_check",
+    "Sonde": "probe", "Z_E_Erdschluss_Ohm": "rZE_fault_Ohm", "Z_E_Erdschluss_eff_Ohm": "rZE_fault_eff_Ohm",
+    "Z_Ortsnetz_zu_Z_E_Erdschluss": "Z_LV_to_rZE_fault", "Pruefung_Erdungsstrom": "earth_current_check",
     "Vergleich_Erdungsmessung": "injection_comparison", "Vergleich_Unsicherheit_proz": "comparison_uncertainty_pct",
     "Anteil_Schirmstrom": "share_shield", "Anteil_Schirmstrom_eff": "share_shield_eff",
-    "UE_je_A_Erdungsstrom": "UE_per_A_earth_current", "UE_je_A_Erdungsstrom_eff": "UE_per_A_earth_current_eff",
-    "Z_E_Erdschluss_zu_Erdungsmessung": "Z_E_fault_to_injection",
-    "Z_E_Erdschluss_zu_Erdungsmessung_eff": "Z_E_fault_to_injection_eff", "r_zu_r_50Hz": "r_to_r_50Hz",
-    "r_50Hz": "r_50Hz", "Z_E_Erdschluss_50Hz_Ohm": "Z_E_fault_50Hz_Ohm",
+    "UE_je_A_Erdungsstrom": "Z_E_earth_current_Ohm", "UE_je_A_Erdungsstrom_eff": "Z_E_earth_current_eff_Ohm",
+    "Z_E_Erdschluss_zu_Erdungsmessung": "Z_E_earth_current_to_injection",
+    "Z_E_Erdschluss_zu_Erdungsmessung_eff": "Z_E_earth_current_to_injection_eff", "r_zu_r_50Hz": "r_to_r_50Hz",
+    "r_50Hz": "r_50Hz", "Z_E_Erdschluss_50Hz_Ohm": "rZE_fault_50Hz_Ohm",
     "Z_E_Erdungsmessung_50Hz_Ohm": "Z_E_injection_50Hz_Ohm", "Einordnung_r_50Hz": "classification_r_50Hz",
     "Verlauf_r_ueber_f": "trend_r_vs_f", "Exponent_r_ueber_f": "exponent_r_vs_f",
-    "Exponent_Z_Erdschluss": "exponent_Z_fault", "Exponent_Z_Erdungsmessung": "exponent_Z_injection",
+    "Exponent_Z_Erdschluss": "exponent_rZE_fault", "Exponent_Z_Erdungsmessung": "exponent_Z_E_injection",
     "Verlauf_Ordnungen": "trend_orders", "U_E_Erdschluss_bei_Bezugsstrom_V": "U_E_fault_at_reference_current_V",
     "U_E_Erdungsmessung_bei_Bezugsstrom_V": "U_E_injection_at_reference_current_V",
     "Abweichung_bei_Bezugsstrom_V": "deviation_at_reference_current_V", "F_mal_U_Tp_V": "F_times_U_Tp_V",
@@ -908,6 +929,36 @@ def translate_result(data: Mapping[str, Any]) -> Dict[str, Any]:
     """
     out = _translate(dict(data))
     out["format"] = data.get("format", LEGACY_RESULT_FORMAT)
+    return out
+
+
+def update_result(data: Mapping[str, Any]) -> Dict[str, Any]:
+    """Bring a result file of an earlier groundfault version up to date: column names of the tables that were renamed
+    ([`RENAMED`][groundfault.legacy.RENAMED]).
+
+    Parameters
+    ----------
+    data : mapping
+        Parsed JSON of a result file (format ``groundfault-result``).
+
+    Returns
+    -------
+    dict
+        The same content; the tables carry the current column names. Files of the current version are returned
+        unchanged.
+    """
+    out = dict(data)
+    try:
+        version = int(out.get("version") or 0)
+    except (TypeError, ValueError):
+        version = 0
+    if version >= RESULT_VERSION:
+        return out
+    tables = out.get("tables")
+    if isinstance(tables, dict):
+        out["tables"] = {t: [{RENAMED.get(k, k): v for k, v in row.items()} if isinstance(row, dict) else row
+                             for row in rows] if isinstance(rows, list) else rows
+                         for t, rows in tables.items()}
     return out
 
 

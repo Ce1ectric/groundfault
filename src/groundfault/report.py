@@ -60,11 +60,13 @@ from .earthing import QUANTITY_EPR, QUANTITY_TOUCH, SOURCE_FAULT_TEST, SOURCE_GR
 from .station import MAX_PROBE
 
 __all__ = ["ReportStyle", "STYLE", "set_style", "used_font", "activate_style", "figure", "save",
-           "CM", "COLORS", "GREY", "GRID", "ROLE_COLORS", "INTERVAL_COLORS", "COLOR_MAX", "COLOR_TYPICAL",
+           "CM", "COLORS", "GREY", "GRID", "ROLE_COLORS", "INTERVAL_COLORS", "COLOR_DISTURBED", "COLOR_MAX",
+           "COLOR_TYPICAL",
            "instantaneous", "rms_trend", "harmonics_trend", "spectrum", "spectrum_comparison",
            "voltage_spectrum", "phasor_diagram", "source_fit", "source_plane", "ires_over_ze",
            "v_curve", "station_voltages", "station_frequency", "station_background", "station_colors", "probe_label",
-           "earthing_comparison", "reduction_factor", "typical_band", "lv_network", "transformer_power", "number",
+           "earthing_comparison", "reduction_factor", "typical_band", "lv_network", "transformer_power",
+           "transformer_impedance", "number",
            "format_table", "export_table", "export_tables", "docx_tables", "report_tables", "table_title",
            "all_figures", "slug"]
 
@@ -83,6 +85,8 @@ ROLE_COLORS = {"u_l1e": COLORS[0], "u_l2e": COLORS[1], "u_l3e": COLORS[2], "i_l1
 """Fixed colour per quantity (the colour follows the quantity, not the order in the figure)."""
 INTERVAL_COLORS = {"pre_fault": "#9ec5ee", "steady_state": "#a8e0c8", "post_fault": "#f7c3a6"}
 """Background colours of the analysis intervals."""
+COLOR_DISTURBED = "#c0392b"
+"""Disturbed states in the steady-state interval (hatched; active residual current increase, network change)."""
 COLOR_MAX = "#111111"
 """Probe maximum max(UE) – the same colour in all figures."""
 COLOR_TYPICAL = "#c9c9c9"
@@ -102,6 +106,7 @@ i18n.register({
     "report.interval_pre_fault": {"en": "pre-fault", "de": "vor"},
     "report.interval_steady_state": {"en": "steady state", "de": "stationär"},
     "report.interval_post_fault": {"en": "post-fault", "de": "nach"},
+    "report.interval_disturbed": {"en": "disturbed", "de": "gestört"},
     "report.before_fault": {"en": "before the fault", "de": "vor dem Fehler"},
     "report.during_fault": {"en": "during the fault", "de": "Erdschluss"},
     "report.after_fault": {"en": "after the fault", "de": "nach dem Fehler"},
@@ -111,6 +116,13 @@ i18n.register({
     "report.sub_neg": {"en": "neg", "de": "Gegen"},
     "report.sub_zero": {"en": "zero", "de": "Null"},
     "report.sub_lv_current": {"en": "LV", "de": "ON"},
+    "report.sub_upstream": {"en": "up", "de": "vor"},
+    "report.sub_hv": {"en": "HV", "de": "HS"},
+    "report.not_significant": {"en": "not significant", "de": "nicht signifikant"},
+    "report.transformer_share": {"en": "transformer", "de": "Trafo"},
+    "report.hv_share": {"en": "HV network", "de": "HS-Netz"},
+    "report.no_upstream": {"en": "No upstream impedance in the result (pre-fault or post-fault interval missing).",
+                           "de": "Keine Vorimpedanz im Ergebnis (Vor- oder Nachfehlerbereich fehlt)."},
     "report.sub_lv_impedance": {"en": "LV", "de": "Ortsnetz"},
     # ---- axis labels, legend entries and annotations
     "report.rms": {"en": "RMS value", "de": "Effektivwert"},
@@ -139,6 +151,8 @@ i18n.register({
     "report.injection_interpolated": {"en": "Earthing measurement interpolated", "de": "Erdungsmessung interpoliert"},
     "report.fault_probe": {"en": "Fault test {channel}{distance}, fault-related",
                            "de": "Erdschluss {channel}{distance}, fehlerbedingt"},
+    "report.fault_probe_symbol": {"en": "Fault test {channel}{distance}: {symbol}, fault-related",
+                                  "de": "Erdschluss {channel}{distance}: {symbol}, fehlerbedingt"},
     "report.fault_groundmeas": {"en": "Fault test from groundmeas (ID {id}{distance})",
                                 "de": "Erdschluss aus groundmeas (ID {id}{distance})"},
     "report.fault_quotient": {"en": "Fault test {name}: {quotient}", "de": "Erdschluss {name}: {quotient}"},
@@ -148,8 +162,12 @@ i18n.register({
     "report.from_shield_current": {"en": "from the shield current {quotient}", "de": "aus dem Schirmstrom {quotient}"},
     "report.rms_over_harmonics": {"en": "RMS value over the harmonics", "de": "Effektivwert über die Harmonischen"},
     "report.typical_at_50hz": {"en": "typical at 50 Hz ({low}–{high})", "de": "üblich bei 50 Hz ({low}–{high})"},
-    "report.total_earthing": {"en": "Total earthing from the fault test {quotient}",
-                              "de": "Gesamterdung aus dem Erdschluss {quotient}"},
+    "report.fault_rze": {"en": "Fault test {symbol} = {quotient}", "de": "Erdschluss {symbol} = {quotient}"},
+    "report.trend_r": {"en": "trend {formula}, b = {b} (orders {orders})",
+                       "de": "Verlauf {formula}, b = {b} (Ordnungen {orders})"},
+    "report.r_direct": {"en": "r direct (as measured, with background)", "de": "r direkt (wie gemessen, mit Grundlast)"},
+    "report.span_methods": {"en": "span of the superposition methods", "de": "Spanne der Überlagerungsverfahren"},
+    "report.injection_ze": {"en": "{label}: {symbol}", "de": "{label}: {symbol}"},
     "report.lv_current": {"en": "{symbol} into the LV network (fault-related)",
                           "de": "{symbol} ins Ortsnetz (fehlerbedingt)"},
     "report.before_star_point": {"en": "before the transformer star point (LV feeders)",
@@ -238,6 +256,8 @@ i18n.register({
     "report.title_plausibility": {"en": "Plausibility checks", "de": "Plausibilitätsprüfungen"},
     "report.title_statistics": {"en": "Statistics over the steady-state interval",
                                 "de": "Statistik über den stationären Bereich"},
+    "report.title_steady_state_segments": {"en": "States in the steady-state interval (undisturbed and disturbed)",
+                                           "de": "Zustände im stationären Bereich (ungestört und gestört)"},
     "report.title_harmonics": {"en": "Harmonics in the max window", "de": "Harmonische im Max-Fenster"},
     "report.title_coil_currents": {"en": "Coil currents", "de": "Spulenströme"},
     "report.title_voltage_metrics": {"en": "Voltages: characteristic values", "de": "Spannungen: Kennwerte"},
@@ -255,6 +275,27 @@ i18n.register({
                                            "de": "Hochrechnung auf die Grenzwerte des Reststroms"},
     "report.title_transformer_power": {"en": "Transformer: harmonic power and sequence currents",
                                        "de": "Trafo: Oberschwingungsleistung und Sequenzströme"},
+    "report.title_transformer_summary": {"en": "Transformer node: upstream impedance and power change",
+                                         "de": "Trafoknoten: Vorimpedanz und Leistungsänderung"},
+    "report.tr_quantity": {"en": "Quantity", "de": "Größe"},
+    "report.tr_polarity": {"en": "Transformer currents", "de": "Trafoströme"},
+    "report.tr_consumer": {"en": "consumer reference arrow system", "de": "Verbraucherzählpfeilsystem"},
+    "report.tr_generator": {"en": "generator reference arrow system (reversed)",
+                            "de": "Erzeugerzählpfeilsystem (umgekehrt)"},
+    "report.tr_x1_up": {"en": "X_up/m in Ω (transformer + HV network)", "de": "X_vor/m in Ω (Trafo + HS-Netz)"},
+    "report.tr_x1_count": {"en": "significant orders/sequences", "de": "signifikante Ordnungen/Systeme"},
+    "report.tr_x1_transformer": {"en": "X_T/m in Ω (transformer)", "de": "X_T/m in Ω (Trafo)"},
+    "report.tr_x1_hv": {"en": "X_HV/m in Ω (HV network)", "de": "X_HS/m in Ω (HS-Netz)"},
+    "report.tr_dp1": {"en": "ΔP at 50 Hz in kW (fault − pre-fault)", "de": "ΔP bei 50 Hz in kW (Erdschluss − Vorfehler)"},
+    "report.tr_dq1": {"en": "ΔQ at 50 Hz in kvar (fault − pre-fault)",
+                      "de": "ΔQ bei 50 Hz in kvar (Erdschluss − Vorfehler)"},
+    "report.title_transformer_node": {"en": "Transformer node per state, order and sequence",
+                                      "de": "Trafoknoten je Zustand, Ordnung und System"},
+    "report.title_transformer_power_change": {"en": "Transformer node: power change during and after the fault",
+                                              "de": "Trafoknoten: Leistungsänderung im und nach dem Erdschluss"},
+    "report.title_transformer_impedance": {
+        "en": "Transformer node: upstream impedance from the fault-related change",
+        "de": "Trafoknoten: Vorimpedanz aus der fehlerbedingten Änderung"},
     "report.title_of": {"en": "{title} – {name}", "de": "{title} – {name}"},
     "report.sheet_table": {"en": "Table", "de": "Tabelle"},
 })
@@ -652,7 +693,8 @@ def rms_trend(res, rec=None, channels: Optional[Sequence[str]] = ("i_res", "i_co
     height_per_panel_cm : float
         Height per panel in cm.
     show_intervals : bool
-        Shade the analysis intervals (pre-fault, steady state, post-fault) and the max window.
+        Shade the analysis intervals (pre-fault, steady state, post-fault) and the max window; disturbed states of
+        the steady-state interval ([`groundfault.disturbances`][groundfault.disturbances]) are hatched.
 
     Returns
     -------
@@ -671,6 +713,7 @@ def rms_trend(res, rec=None, channels: Optional[Sequence[str]] = ("i_res", "i_co
     idx = sorted({k.index for r in role_list for k in roles.with_role(r)})
     t_r, R = rec.rms_trend(channels=idx, window_s=window_s)
     pos = {j: s for s, j in enumerate(idx)}
+    disturbed_handle = None
     with _rc():
         for ax, r in zip(axes[:, 0], role_list):
             ks = roles.with_role(r)
@@ -685,13 +728,21 @@ def rms_trend(res, rec=None, channels: Optional[Sequence[str]] = ("i_res", "i_co
                             ax.text(0.5 * (b[0] + b[1]), 0.97, tr(_INTERVAL_SHORT[name]),
                                     transform=ax.get_xaxis_transform(), ha="center", va="top",
                                     fontsize=STYLE.font_size_small, color="#333333")
+                handle = _shade_disturbed(ax, _disturbed_ranges(res))
+                if handle is not None and ax is axes[0, 0]:
+                    disturbed_handle = handle
                 if r == "i_res":
                     tm = res.t_max_window; T = res.settings.T_win
                     ax.axvspan(tm - T / 2, tm + T / 2, color="#111111", alpha=0.18, lw=0, zorder=0.5)
             ax.set_ylabel(r"%s in A" % {"i_res": r"$I_\mathrm{RES}$", "i_coil": _coil_symbol(),
                                         "i_shield": r"$I_\mathrm{S}$"}.get(r, "$I$")
                           if not r.startswith("u") else r"$U$ in V")
-            _legend(ax, len(ks))
+            if ax is axes[0, 0] and disturbed_handle is not None:
+                lines, labels = ax.get_legend_handles_labels()
+                _legend(ax, 2, handles=lines + [disturbed_handle], labels=labels + [disturbed_handle.get_label()],
+                        ncol=min(len(lines) + 1, 5))
+            else:
+                _legend(ax, len(ks))
         axes[-1, 0].set_xlim(*(t_range or (0.0, rec.duration_s)))
         axes[-1, 0].set_xlabel("$t$ in s")
     return _finish(fig, axes)
@@ -704,6 +755,32 @@ def _recording_from(res):
     if not p:
         raise ValueError(tr("report.no_recording_path"))
     return open_recording(p, emit_warnings=False)
+
+
+def _disturbed_ranges(res) -> List[Tuple[float, float]]:
+    """Disturbed time ranges (t0, t1) of the steady-state interval of a result, adjacent ranges merged (empty
+    without)."""
+    d = getattr(res, "disturbances", None)
+    if d is None or not d.found:
+        return []
+    out: List[List[float]] = []
+    for t0, t1, _ in sorted(d.excluded_intervals()):
+        if out and t0 <= out[-1][1] + 1e-9:
+            out[-1][1] = max(out[-1][1], t1)
+        else:
+            out.append([t0, t1])
+    return [(a, b) for a, b in out]
+
+
+def _shade_disturbed(ax, ranges) -> Optional[object]:
+    """Hatch the disturbed time ranges; returns a legend handle (None without ranges)."""
+    import matplotlib.patches as mpatches
+    for t0, t1 in ranges:
+        ax.axvspan(t0, t1, facecolor="none", edgecolor=COLOR_DISTURBED, hatch="///", lw=0, alpha=0.3, zorder=0.4)
+    if not ranges:
+        return None
+    return mpatches.Patch(facecolor="none", edgecolor=COLOR_DISTURBED, hatch="///", alpha=0.6, lw=0,
+                          label=tr("report.interval_disturbed"))
 
 
 def harmonics_trend(res, role: str = "i_res", orders: Sequence[int] = (1, 3, 5, 7),
@@ -726,13 +803,14 @@ def harmonics_trend(res, role: str = "i_res", orders: Sequence[int] = (1, 3, 5, 
     Returns
     -------
     matplotlib.figure.Figure
-        The dashed line marks the max window.
+        The dashed line marks the max window; disturbed states (not part of the reference) are hatched.
     """
     st = res.steady_state; k = res.roles.main(role)
     fig, axes = figure(width, height_cm)
     ax = axes[0, 0]
     ok = ~st.nan_window
     with _rc():
+        disturbed_handle = _shade_disturbed(ax, _disturbed_ranges(res))
         ax.plot(st.t_mid[ok], st.rms[ok, k.index], color="#111111", lw=STYLE.line_width,
                 label=tr("report.rms"), marker="o", ms=2.5)
         for i, m in enumerate(o for o in orders if o in st.orders):
@@ -742,7 +820,11 @@ def harmonics_trend(res, role: str = "i_res", orders: Sequence[int] = (1, 3, 5, 
         ax.axvline(res.t_max_window, color=GREY, lw=0.6, ls="--")
         ax.set_xlabel("$t$ in s"); ax.set_ylabel(r"$I$ in A")
         ax.set_ylim(bottom=0)
-        _legend(ax, 2, ncol=3)
+        if disturbed_handle is not None:
+            lines, labels = ax.get_legend_handles_labels()
+            _legend(ax, 2, ncol=3, handles=lines + [disturbed_handle], labels=labels + [disturbed_handle.get_label()])
+        else:
+            _legend(ax, 2, ncol=3)
     return _finish(fig, axes)
 
 
@@ -1277,7 +1359,98 @@ def transformer_power(res, orders: Sequence[int] = (5, 7, 11, 13), width="full",
             ax.set_xticks(x); ax.set_xticklabels(["%g" % round(m * f1) for m in orders])
             ax.set_xlabel("$f$ in Hz"); ax.grid(axis="x", visible=False)
         axes[0, 0].set_ylabel(r"$P$ in kW"); axes[0, 1].set_ylabel(r"$Q$ in kvar")
-        _legend(axes[0, 0], len(bl), loc="lower left", bbox_to_anchor=(0.0, 1.0))
+        if len(bl) >= 2:                # above both panels: a legend of panel (a) would push panel (b) aside
+            fig.legend(*axes[0, 0].get_legend_handles_labels(), loc="outside upper left", ncol=len(bl),
+                       borderaxespad=0.15)
+    return _finish(fig, axes)
+
+
+def transformer_impedance(res, orders: Sequence[int] = (5, 7, 11, 13), width="full", height_cm: float = 11.0):
+    """Impedance at the transformer node – two panels, one above the other.
+
+    (a) apparent impedance |U_m/I_m| of the natural sequence of each order (5, 11 negative, 7, 13 positive sequence)
+    before, during and after the fault (logarithmic axis); (b) upstream impedance |Z_up| (transformer and HV network
+    seen from the MV busbar) from the fault-related change over the frequency, positive and negative sequence (small
+    open markers: not significant; the axis is scaled to the significant orders), with the line m·X_up,1 and – with HV
+    voltages – the shares of the transformer and the HV network.
+
+    Parameters
+    ----------
+    res : Result
+        Evaluation result with the transformer node (tables ``transformer_node`` and ``transformer_impedance``,
+        [`groundfault.transformer.node_analysis`][groundfault.transformer.node_analysis]).
+    orders : sequence of int
+        Orders of panel (a).
+    width : {"full", "half"} or float
+        Figure width (see [`figure`][groundfault.report.figure]).
+    height_cm : float
+        Figure height in cm.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If the result has no transformer node or no upstream impedance.
+    """
+    node = res.tables.get("transformer_node")
+    zi = res.tables.get("transformer_impedance")
+    if node is None or node.empty:
+        raise ValueError(tr("report.no_transformer"))
+    if zi is None or zi.empty:
+        raise ValueError(tr("report.no_upstream"))
+    fig, axes = figure(width, height_cm, nrows=2)
+    natural = {1: "pos", 2: "neg", 0: "zero"}
+    bl = [b for b in ("pre_fault", "fault", "post_fault") if b in set(node["interval"])]
+    x = np.arange(len(orders)); bw = 0.8 / len(bl)
+    colors = {"pre_fault": COLORS[0], "fault": COLORS[7], "post_fault": COLORS[1]}
+    f1 = res.steady_state.f1["f1_used"]
+    up = tr("report.sub_upstream")
+    with _rc():
+        ax = axes[0, 0]
+        for i, b in enumerate(bl):
+            sub = node[node["interval"] == b].set_index(["order", "sequence"])
+            v = [sub.at[(m, natural[m % 3]), "Z_Ohm"] if (m, natural[m % 3]) in sub.index else np.nan
+                 for m in orders]
+            ax.bar(x - 0.4 + bw * (i + 0.5), v, width=bw * 0.92, color=colors[b], label=tr(_INTERVAL_LEGEND[b]))
+        ax.set_xticks(x); ax.set_xticklabels(["%g" % round(m * f1) for m in orders])
+        ax.set_xlabel("$f$ in Hz"); ax.grid(axis="x", visible=False)
+        _log_y(ax)
+        ax.set_ylabel(r"$|U_m/I_m|$ in Ω")
+        _legend(ax, len(bl), loc="lower left", bbox_to_anchor=(0.0, 1.0))
+        ax = axes[1, 0]
+        n_series = 0
+        z = zi[zi["order"] >= 2]
+        for seq, mk, col, key in (("pos", "o", COLORS[0], "report.positive_sequence"),
+                                  ("neg", "s", COLORS[1], "report.negative_sequence")):
+            d = z[z["sequence"] == seq]
+            if d.empty:
+                continue
+            sig = d["significant"].astype(bool)
+            ax.plot(d.loc[sig, "f_Hz"], d.loc[sig, "Z_up_Ohm"], mk, color=col, ms=4.5, label=tr(key))
+            ax.plot(d.loc[~sig, "f_Hz"], d.loc[~sig, "Z_up_Ohm"], mk, color=col, ms=3, mfc="none", alpha=0.35)
+            n_series += 1
+        x1 = (res.values.get("transformer") or {}).get("X1_up_Ohm")
+        if x1 is not None and np.isfinite(x1) and not z.empty:
+            ff = np.array([z["f_Hz"].min(), z["f_Hz"].max()])
+            ax.plot(ff, x1 * ff / f1, "--", color=GREY, lw=0.8,
+                    label="$m\\cdot X_{\\mathrm{%s},1}$" % up)
+            n_series += 1
+        if "Z_transformer_Ohm" in z:
+            d = z[z["significant"].astype(bool)]
+            ax.plot(d["f_Hz"], d["Z_transformer_Ohm"], "^", color=COLORS[2], ms=4, label=tr("report.transformer_share"))
+            ax.plot(d["f_Hz"], d["Z_hv_Ohm"], "v", color=COLORS[6], ms=4, label=tr("report.hv_share"))
+            n_series += 2
+        ax.set_xlabel("$f$ in Hz")
+        ax.set_ylabel("$|Z_\\mathrm{%s}|$ in Ω" % up)
+        top = z.loc[z["significant"].astype(bool), "Z_up_Ohm"].max()
+        if np.isfinite(top) and top > 0:              # scale of the significant orders (the others may scatter)
+            ax.set_ylim(0, 1.6 * top)
+        else:
+            ax.set_ylim(bottom=0)
+        _legend(ax, n_series, ncol=n_series, loc="lower left", bbox_to_anchor=(0.0, 1.0))
     return _finish(fig, axes)
 
 
@@ -1658,9 +1831,11 @@ def earthing_comparison(long_df: pd.DataFrame, ratio: Optional[pd.DataFrame] = N
                 for mid, s in sub[sub["distance_m"] == a].groupby("measurement_id"):
                     s = s.sort_values("f_Hz")
                     date = ", " + s["date"].iloc[0] if "date" in s and s["date"].iloc[0] else ""
+                    label = tr("report.injection_at_distance", distance=_distance_text(a), id=int(mid), date=date)
+                    if grp != _TOUCH_QUANTITY:
+                        label = tr("report.injection_ze", label=label, symbol="$Z_\\mathrm{E}$")
                     ax.plot(s["f_Hz"], s["Z_Ohm"], color="#4d4d4d", ls=ticks[j % 4], marker="s", ms=3.0,
-                            lw=STYLE.line_width, label=tr("report.injection_at_distance", distance=_distance_text(a),
-                                                          id=int(mid), date=date))
+                            lw=STYLE.line_width, label=label)
             e = gf[(gf["quantity"] == grp) & (gf["type"] == "fault")]
             has_uncertain = False
             for channel, g in e.groupby("channel", sort=False):
@@ -1669,9 +1844,12 @@ def earthing_comparison(long_df: pd.DataFrame, ratio: Optional[pd.DataFrame] = N
                 hi = np.fmax(pd.to_numeric(g["Z_max_Ohm"], errors="coerce").to_numpy(float), y)
                 lo = np.where(np.isfinite(lo), lo, y); hi = np.where(np.isfinite(hi), hi, y)
                 a = _distance_text(g["distance_m"].iloc[0])
+                label = (tr("report.fault_probe", channel=channel, distance=" (%s)" % a if a else "")
+                         if grp == _TOUCH_QUANTITY else
+                         tr("report.fault_probe_symbol", channel=channel, distance=" (%s)" % a if a else "",
+                            symbol="$r\\,Z_\\mathrm{E}$"))
                 ax.errorbar(g["f_Hz"], y, yerr=np.vstack([y - lo, hi - y]), color=colors[channel], marker="o", ms=3.2,
-                            lw=STYLE.line_width, elinewidth=0.8, capsize=0,
-                            label=tr("report.fault_probe", channel=channel, distance=" (%s)" % a if a else ""))
+                            lw=STYLE.line_width, elinewidth=0.8, capsize=0, label=label)
                 u = _uncertain_mask(g)
                 _mark_uncertain(ax, g["f_Hz"].to_numpy(float)[u], y[u], colors[channel])
                 has_uncertain = has_uncertain or bool(u.any())
@@ -1687,7 +1865,8 @@ def earthing_comparison(long_df: pd.DataFrame, ratio: Optional[pd.DataFrame] = N
                 ax.plot(s["f_Hz"], s["Z_Ohm"], ls="none", marker="x", ms=4.5, mew=1.0, color="#111111",
                         label=tr("report.fault_groundmeas", id=int(mid), distance=", " + a if a else ""))
             _log_y(ax)
-            ax.set_ylabel(r"$%s/I$ in V/A" % ("U_\\mathrm{T}" if grp == _TOUCH_QUANTITY else "U_\\mathrm{E}"))
+            ax.set_ylabel(r"$U_\mathrm{T}/I$ in V/A" if grp == _TOUCH_QUANTITY
+                          else r"$r\,Z_\mathrm{E}$, $Z_\mathrm{E}$ in V/A")
             labels.append((ax, _cap(tr(_COMPARISON_QUANTITIES[grp]))))
             handles, texts = ax.get_legend_handles_labels()
             if has_uncertain:
@@ -1779,18 +1958,20 @@ def typical_band(r_typical: Optional[Tuple[float, float]] = None,
 def reduction_factor(spectrum: pd.DataFrame, effective: Optional[pd.DataFrame] = None, width="full",
                      height_cm: Optional[float] = None, probes: str = "maximum", shield_current: bool = True,
                      impedances: bool = True, r_typical: Optional[Tuple[float, float]] = None,
-                     remote_probes_only: Optional[bool] = None):
-    """Reduction factor per harmonic (magnitude) – result of
+                     remote_probes_only: Optional[bool] = None, direct: bool = False, trend: bool = True):
+    """Reduction factor over the frequency (magnitude) – result of
     [`groundfault.earthing.reduction_factor`][groundfault.earthing.reduction_factor].
 
-    Top: r = fault test ÷ earthing measurement: ● r per order (earthing measurement measured at this frequency),
-    ○ earthing measurement interpolated, ⊗ uncertain fault-test value; dashed in the same colour the RMS value
-    r_eff over all harmonics; grey bar at 50 Hz: the typical range given by the user (``r_typical``); ◆ grey: cross-check
-    from the shield current (r = |I_F − I_S|/|I_F|, only meaningful if all return conductors are measured).
-    Logarithmic if the values differ by more than a factor of 20. Bottom (``impedances``, V/A, logarithmic): the
-    two compared impedances: fault test U_E/I_F (●), fault test with the earth current U_E/I_E (◇, if the shield
-    current is measured) and earthing measurement (■ grey, □ interpolated) – they should differ only by the
-    reduction factor.
+    Top: r = r·Z_E/Z_E (fault test ÷ earthing measurement) over f, drawn like the impedances: ● r per order
+    (earthing measurement measured at this frequency), ○ earthing measurement interpolated, ⊗ uncertain fault-test
+    value, bar = span of the superposition methods (``r_min`` … ``r_max``); dotted the trend r ∝ f^b fitted at the
+    reliable orders (``trend``, from ``effective``); dashed in the same colour the RMS value r_eff over all
+    harmonics; grey bar at 50 Hz: the typical range given by the user (``r_typical``); ◆ grey: cross-check from the
+    shield current (r = |I_F − I_S|/|I_F|, only meaningful if all return conductors are measured). With ``direct``
+    also r from the values as measured (open circles, with background). Logarithmic if the values differ by more than
+    a factor of 20. Bottom (``impedances``, V/A, logarithmic): the two compared quantities – fault test
+    r·Z_E = U_E/I_F (●), fault test with the earth current Z_E = U_E/I_E (◇, if the shield current is measured) and
+    earthing measurement Z_E (■ grey, □ interpolated); they differ by the reduction factor.
 
     Parameters
     ----------
@@ -1817,6 +1998,10 @@ def reduction_factor(spectrum: pd.DataFrame, effective: Optional[pd.DataFrame] =
         one no bar.
     remote_probes_only : bool, optional
         Earlier interface: True → ``probes="remote"``, False → ``probes="all"``.
+    direct : bool
+        Also draw r from the values as measured (``r_direct``, with background).
+    trend : bool
+        Draw the trend r ∝ f^b (needs ``effective``).
 
     Returns
     -------
@@ -1827,6 +2012,7 @@ def reduction_factor(spectrum: pd.DataFrame, effective: Optional[pd.DataFrame] =
     ValueError
         If there is no reduction factor (no earthing measurement at the frequencies of the fault test).
     """
+    from .earthing import power_fit
     band = typical_band(r_typical, effective)
     if remote_probes_only is not None:                    # earlier interface
         probes = "remote" if remote_probes_only else "all"
@@ -1847,15 +2033,32 @@ def reduction_factor(spectrum: pd.DataFrame, effective: Optional[pd.DataFrame] =
         f1 = float(f1.iloc[0]) if len(f1) else 50.0
         if band:
             ax.vlines(f1, band[0], band[1], colors=COLOR_TYPICAL, lw=7.0, zorder=1)
+        has_span = has_direct = False
         for (channel, mid), g in sp.groupby(["channel", "injection_id"], sort=False):
             g = g.sort_values("f_Hz"); c = colors.get(channel, GREY)
             y = g["r"].to_numpy(float); f = g["f_Hz"].to_numpy(float)
             interp = _interpolated(g)
             ax.plot(f, y, color=c, lw=STYLE.line_width, marker=None, label=_pair_text(channel, g))
+            if {"r_min", "r_max"} <= set(g.columns):              # span of the superposition methods
+                lo = np.fmin(pd.to_numeric(g["r_min"], errors="coerce").to_numpy(float), y)
+                hi = np.fmax(pd.to_numeric(g["r_max"], errors="coerce").to_numpy(float), y)
+                lo = np.where(np.isfinite(lo), lo, y); hi = np.where(np.isfinite(hi), hi, y)
+                if np.any(hi - lo > 0.01 * np.abs(y)):                # visible span
+                    ax.errorbar(f, y, yerr=np.vstack([y - lo, hi - y]), fmt="none", ecolor=c, elinewidth=0.8,
+                                capsize=0, zorder=2)
+                    has_span = True
+                    all_y += list(lo) + list(hi)
+                    y_max = max(y_max, float(np.nanmax(hi)))
             ax.plot(f[~interp], y[~interp], ls="none", marker="o", ms=3.4, color=c, zorder=3)
             ax.plot(f[interp], y[interp], ls="none", marker="o", ms=3.4, mfc="white", mec=c, mew=0.8, zorder=3)
             u = _uncertain_mask(g)
             _mark_uncertain(ax, f[u], y[u], c)
+            if direct and "r_direct" in g:
+                yd = pd.to_numeric(g["r_direct"], errors="coerce").to_numpy(float)
+                ax.plot(f, yd, ls="none", marker="o", ms=3.2, mfc="white", mec=c, mew=0.8, alpha=0.8, zorder=2)
+                has_direct = bool(np.isfinite(yd).any()) or has_direct
+                all_y += list(yd)
+                y_max = max(y_max, float(np.nanmax(yd)) if np.isfinite(yd).any() else 0.0)
             y_max = max(y_max, float(np.nanmax(y)))
             all_y += list(y)
             if effective is not None and not effective.empty:
@@ -1866,6 +2069,16 @@ def reduction_factor(spectrum: pd.DataFrame, effective: Optional[pd.DataFrame] =
                     ax.text(f_max, r_eff, " $r_\\mathrm{eff}$ = %s" % number(r_eff, 2), color=c, va="bottom",
                             ha="right", fontsize=STYLE.font_size_small)
                     y_max = max(y_max, r_eff)
+                orders_ = str(e["trend_orders"].iloc[0]) if not e.empty and "trend_orders" in e else ""
+                chosen = [int(x) for x in orders_.replace(" ", "").split(",") if x.isdigit()]
+                if trend and len(chosen) >= 2:                   # r ∝ f^b at the reliable orders
+                    gt = g[g["order"].isin(chosen)]
+                    c_, b_ = power_fit(gt["f_Hz"], gt["r"])
+                    if np.isfinite(b_):
+                        ft = np.geomspace(float(gt["f_Hz"].min()), float(gt["f_Hz"].max()), 50)
+                        ax.plot(ft, c_ * ft ** b_, color=c, lw=0.9, ls=":", zorder=2,
+                                label=tr("report.trend_r", formula="$r \\propto f^{\\,b}$", b=number(b_, 2),
+                                         orders=orders_))
             if interp.any():
                 extra = [(Line2D([], [], ls="none", marker="o", ms=3.4, mfc="white", mec="#333333", mew=0.8),
                           tr("report.injection_interpolated"))]
@@ -1888,6 +2101,12 @@ def reduction_factor(spectrum: pd.DataFrame, effective: Optional[pd.DataFrame] =
         handles, texts = ax.get_legend_handles_labels()
         for gr, tx in extra:
             handles.append(gr); texts.append(tx)
+        if has_span:
+            handles.append(Line2D([], [], color="#333333", lw=0.8, marker="|", ms=8, mew=0.8))
+            texts.append(tr("report.span_methods"))
+        if has_direct:
+            handles.append(Line2D([], [], ls="none", marker="o", ms=3.2, mfc="white", mec="#333333", mew=0.8))
+            texts.append(tr("report.r_direct"))
         if _uncertain_mask(sp).any():
             handles.append(_uncertain_handle()); texts.append(tr("report.uncertain_background_methods"))
         handles.append(Line2D([], [], color="#333333", lw=0.9, ls="--")); texts.append(tr("report.rms_over_harmonics"))
@@ -1903,30 +2122,32 @@ def reduction_factor(spectrum: pd.DataFrame, effective: Optional[pd.DataFrame] =
             for (channel, mid), g in all_.groupby(["channel", "injection_id"], sort=False):
                 g = g.sort_values("f_Hz"); c = colors.get(channel, GREY)
                 left = _pair_text(channel, g).split(" ↔ ")[0]
-                y = pd.to_numeric(g["UE_per_A_fault"], errors="coerce").to_numpy(float)
+                y = pd.to_numeric(g["rZE_fault_Ohm"], errors="coerce").to_numpy(float)
                 az.plot(g["f_Hz"], y, color=c, marker="o", ms=3.4, lw=STYLE.line_width,
-                        label=tr("report.fault_quotient", name=left, quotient="$U_\\mathrm{E}/I_\\mathrm{F}$"))
+                        label=tr("report.fault_quotient", name=left,
+                                 quotient="$r\\,Z_\\mathrm{E} = U_\\mathrm{E}/I_\\mathrm{F}$"))
                 u = _uncertain_mask(g)
                 _mark_uncertain(az, g["f_Hz"].to_numpy(float)[u], y[u], c)
-                if "UE_per_A_earth_current" in g and pd.to_numeric(g["UE_per_A_earth_current"],
+                if "Z_E_earth_current_Ohm" in g and pd.to_numeric(g["Z_E_earth_current_Ohm"],
                                                                    errors="coerce").notna().any():
-                    ie = pd.to_numeric(g["UE_per_A_earth_current"], errors="coerce").to_numpy(float)
+                    ie = pd.to_numeric(g["Z_E_earth_current_Ohm"], errors="coerce").to_numpy(float)
                     if np.nanmax(np.abs(ie / y - 1.0)) > 0.05:            # only if visibly different
                         az.plot(g["f_Hz"], ie, color=c, ls=":", lw=0.9, marker="D", ms=3.0, mfc="white", mec=c,
                                 mew=0.8, label=tr("report.fault_quotient", name=left,
-                                                  quotient="$U_\\mathrm{E}/I_\\mathrm{E}$"))
+                                                  quotient="$Z_\\mathrm{E} = U_\\mathrm{E}/I_\\mathrm{E}$"))
             for mid, g in sp.groupby("injection_id", sort=False):
                 g = g.drop_duplicates("order").sort_values("f_Hz")
                 interp = _interpolated(g)
-                y = g["UE_per_A_injection"].to_numpy(float); f = g["f_Hz"].to_numpy(float)
+                y = g["Z_E_injection_Ohm"].to_numpy(float); f = g["f_Hz"].to_numpy(float)
                 d = _distance_text(g["distance_injection_m"].iloc[0])
                 az.plot(f, y, color="#4d4d4d", ls="--", lw=STYLE.line_width, marker=None,
-                        label=tr("report.injection_id", id=int(mid), distance=" (%s)" % d if d else ""))
+                        label=tr("report.injection_ze", symbol="$Z_\\mathrm{E}$",
+                                 label=tr("report.injection_id", id=int(mid), distance=" (%s)" % d if d else "")))
                 az.plot(f[~interp], y[~interp], ls="none", marker="s", ms=3.0, color="#4d4d4d", zorder=3)
                 az.plot(f[interp], y[interp], ls="none", marker="s", ms=3.0, mfc="white", mec="#4d4d4d", mew=0.8,
                         zorder=3)
             _log_y(az)
-            az.set_ylabel(r"$|Z|$ in V/A")
+            az.set_ylabel(r"$r\,Z_\mathrm{E}$, $Z_\mathrm{E}$ in V/A")
             handles, texts = az.get_legend_handles_labels()
             if _uncertain_mask(all_).any():
                 handles.append(_uncertain_handle()); texts.append(tr("report.uncertain"))
@@ -1941,10 +2162,10 @@ def lv_network(lv_table: pd.DataFrame, check: Optional[pd.DataFrame] = None, wid
     """Earthing impedance of the LV network and parallel-connection check (table ``station_lv_network`` and –
     with an earthing measurement – [`groundfault.earthing.check_lv_network`][groundfault.earthing.check_lv_network]).
 
-    Top (V/A, logarithmic): Z_E,LV = ΔU_E/I_LV (●), total earthing from the fault test max(U_E)/I_F (◇; with a
-    shield current also ΔU_E/I_E, △, if visibly different) and earthing measurement (■). As a parallel branch,
-    Z_E,LV must lie above the total earthing from the fault test; if it lies below the earthing measurement, that
-    measurement probably measures too much. Bottom (A, logarithmic): fault-related current into the LV network
+    Top (V/A, logarithmic): Z_E,LV = ΔU_E/I_LV (●), from the fault test r·Z_E = max(U_E)/I_F (◇; with a shield
+    current also Z_E = ΔU_E/I_E, △, if visibly different) and earthing measurement (■). As a parallel branch,
+    Z_E,LV must lie above r·Z_E (and above Z_E); if it lies below the earthing measurement, that measurement
+    probably measures too much. Bottom (A, logarithmic): fault-related current into the LV network
     (●, mean; ▲ before, ▼ after the transformer star point), fault current I_F (□) and earth current I_E (◇, with a
     shield current) – I_LV must lie below them.
 
@@ -2000,22 +2221,25 @@ def lv_network(lv_table: pd.DataFrame, check: Optional[pd.DataFrame] = None, wid
                     label="$Z_\\mathrm{E,%s}$ %s" % (tr("report.sub_lv_impedance"), name))
             u = _uncertain_mask(g)
             _mark_uncertain(ax, g["f_Hz"].to_numpy(float)[u], y[u], c)
-            z_f = pd.to_numeric(g["Z_E_fault_Ohm"], errors="coerce") if "Z_E_fault_Ohm" in g else None
+            z_f = pd.to_numeric(g["rZE_fault_Ohm"], errors="coerce") if "rZE_fault_Ohm" in g else None
             if z_f is not None and z_f.notna().any():
                 ax.plot(g["f_Hz"], z_f, color=c, ls=":", lw=0.9, marker="D", ms=3.0, mfc="white", mec=c, mew=0.8,
-                        label=tr("report.total_earthing", quotient="$%s/I_\\mathrm{F}$" % reference))
+                        label=tr("report.fault_rze", symbol="$r\\,Z_\\mathrm{E}$",
+                                 quotient="$%s/I_\\mathrm{F}$" % reference))
             with_s = str(g["total_earthing_reference"].iloc[0]).startswith("I_E")
-            z_g = pd.to_numeric(g["Z_total_fault_Ohm"], errors="coerce")
+            z_g = pd.to_numeric(g["Z_E_earth_current_Ohm"], errors="coerce")
             if with_s and (z_f is None or not z_f.notna().any() or np.nanmax(np.abs(z_g / z_f - 1.0)) > 0.05):
                 ax.plot(g["f_Hz"], z_g, color=c, ls=":", lw=0.9, marker="^", ms=3.0, mfc="white", mec=c, mew=0.8,
-                        label=tr("report.total_earthing", quotient="$%s/I_\\mathrm{E}$" % reference))
+                        label=tr("report.fault_rze", symbol="$Z_\\mathrm{E}$",
+                                 quotient="$%s/I_\\mathrm{E}$" % reference))
         if check is not None and not check.empty:
             pr = check if (check["channel"] == MAX_PROBE).any() else _remote_probes(check)
             for (channel, mid), g in pr.groupby(["channel", "injection_id"], sort=False):
                 g = g.sort_values("f_Hz")
                 ax.plot(g["f_Hz"], g["Z_E_injection_Ohm"], color="#4d4d4d", marker="s", ms=3.0, ls="--",
-                        lw=STYLE.line_width, label=tr("report.injection_id", id=int(mid), distance=" (%s)"
-                                                      % _distance_text(g["distance_injection_m"].iloc[0])))
+                        lw=STYLE.line_width, label=tr("report.injection_ze", symbol="$Z_\\mathrm{E}$",
+                                                      label=tr("report.injection_id", id=int(mid), distance=" (%s)"
+                                                               % _distance_text(g["distance_injection_m"].iloc[0]))))
         _log_y(ax)
         ax.set_ylabel(r"$|Z|$ in V/A")
         handles, texts = ax.get_legend_handles_labels()
@@ -2453,7 +2677,8 @@ _TABLE_TITLES = ("voltages", "residual_current", "split_50hz", "epr", "shield_cu
                  "reduction_factor_eff", "lv_network_check", "lv_network_check_eff", "plausibility", "statistics",
                  "harmonics", "coil_currents", "voltage_metrics", "voltage_pre_fault", "voltage_fault",
                  "voltage_post_fault", "station_metrics", "station_voltages", "station_currents",
-                 "station_currents_frequency", "station_extrapolation", "transformer_power")
+                 "station_currents_frequency", "station_extrapolation", "transformer_power", "transformer_node",
+                 "transformer_power_change", "transformer_impedance", "transformer_summary", "steady_state_segments")
 
 
 def table_title(name: str, names: Iterable[str] = ()) -> str:
@@ -2508,6 +2733,14 @@ def table_title(name: str, names: Iterable[str] = ()) -> str:
 _SEQUENCE_LABELS = {"pos": "report.positive_sequence", "neg": "report.negative_sequence"}
 
 
+def _num(x) -> float:
+    """Float of a value of a result (None and non-numbers → NaN)."""
+    try:
+        return float(x) if x is not None else float("nan")
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[float] = None,
                   orders: Sequence[int] = (1, 3, 5, 7)) -> Dict[str, pd.DataFrame]:
     """Tables in the layout of earlier test reports (one column per measurement).
@@ -2538,6 +2771,8 @@ def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[floa
         * ``epr_<measurement>`` – largest measured earth potential rise and r·Z_E per 100 A (stations),
         * ``shield_current_<measurement>`` – shield current and reduction factor per harmonic (stations),
         * ``transformer`` – harmonic power and sequence currents at the transformer,
+        * ``transformer_summary`` – transformer node: polarity of the currents, upstream impedance X_up/m (with HV
+          voltages split into transformer and HV network) and change of the fundamental power during the fault,
         * ``assessment_quantities`` – measured and assessment value of each measurement,
         * ``equivalent_sources`` – source impedance and voltage per order (with ``series``).
 
@@ -2638,6 +2873,24 @@ def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[floa
                           tr("report.i_positive_sequence"): s["I_pos_A"]})
     if z:
         tab["transformer"] = pd.DataFrame(z)
+    # ---- transformer node: upstream impedance, polarity and power change at the fundamental per measurement
+    z = {}
+    for nm, e in results.items():
+        v = e.values.get("transformer")
+        if not v:
+            continue
+        z.setdefault(tr("report.tr_polarity"), {})[nm] = tr("report.tr_consumer" if (v.get("sign") or 1) > 0
+                                                            else "report.tr_generator")
+        z.setdefault(tr("report.tr_x1_up"), {})[nm] = _num(v.get("X1_up_Ohm"))
+        z.setdefault(tr("report.tr_x1_count"), {})[nm] = v.get("X1_up_count") or 0
+        if v.get("X1_transformer_Ohm") is not None:
+            z.setdefault(tr("report.tr_x1_transformer"), {})[nm] = _num(v.get("X1_transformer_Ohm"))
+            z.setdefault(tr("report.tr_x1_hv"), {})[nm] = _num(v.get("X1_hv_Ohm"))
+        if v.get("dP1_fault_kW") is not None:
+            z.setdefault(tr("report.tr_dp1"), {})[nm] = _num(v.get("dP1_fault_kW"))
+            z.setdefault(tr("report.tr_dq1"), {})[nm] = _num(v.get("dQ1_fault_kvar"))
+    if z:
+        tab["transformer_summary"] = pd.DataFrame(z).T.rename_axis(tr("report.tr_quantity")).reset_index()
     # ---- assessment quantities of all measurements side by side
     z = {}
     for nm, e in results.items():
@@ -2758,4 +3011,6 @@ def all_figures(res, folder: str, rec=None, prefix: str = "", formats: Optional[
         save_(lv_network(res.tables["station_lv_network"]), "station_lv_network")
     if res.tables.get("transformer_power") is not None and not res.tables["transformer_power"].empty:
         save_(transformer_power(res), "transformer_power")
+    if res.tables.get("transformer_impedance") is not None and not res.tables["transformer_impedance"].empty:
+        save_(transformer_impedance(res), "transformer_impedance")
     return paths

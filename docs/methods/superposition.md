@@ -232,6 +232,16 @@ setting) with the factor s = I_limit/I_F,RMS (RMS value of the fault current in 
 | `U_proportional_V` | \( s\,U_\text{RMS} \) – the measured RMS value scaled, including the background |
 | `U_fault_V` | \( \sqrt{\sum_m \lvert s\,\Delta\underline{U}_m\rvert^2} \) – only the fault-related component, over the evaluated orders |
 | `U_background_plus_fault_V` | \( \sqrt{\sum_m \lvert \underline{U}_{\text{background},m} + s\,\Delta\underline{U}_m\rvert^2 + U_\text{rest}^2} \) – scaled fault-related component plus the unchanged background, added as phasors per order (both referred to I_F); U_rest² is the mean square of the pre-fault RMS values minus the squared background of the evaluated orders (not negative) |
+| `U_background_plus_fault_in_phase_V` | \( \sqrt{\sum_m \left(\lvert \underline{U}_{\text{background},m}\rvert + s\,\lvert\Delta\underline{U}_m\rvert\right)^2 + U_\text{rest}^2} \) – upper bound: background and scaled fault-related component in phase at every order |
+
+The phasor sum `U_background_plus_fault_V` keeps the phase relation between background and fault-related component
+that the test happened to have. At a real fault it is another one: a fault on another line conductor turns the fault
+current by ±120° against the network voltage, and the load and with it the background change. A background in
+antiphase makes the measured voltage even smaller than the fault-related component alone – for example a background of
+100 mV and a fault-related component of 150 mV in antiphase give 50 mV in the test. The fault-related component
+\( \Delta\underline{U}_m \) itself does not depend on this, as it is the difference of phasors; the in-phase sum is the
+largest voltage that background and fault can give together, the phasor sum of the test one possible case, and
+`U_fault_V` the voltage without background.
 
 ## PEN currents and the current into the LV network
 

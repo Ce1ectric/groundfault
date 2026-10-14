@@ -9,7 +9,10 @@ frequency – the comparable quantity is therefore the **fault-related component
 
 For every probe (earth potential rise ``u_e``, touch voltage ``u_t``) and every order m with an appreciable fault
 current, [`frequency_selective`][groundfault.station.frequency_selective] determines the transfer ratio Z_m = U_m/I_F,m
-(V/A, "r·Z_E") in several independent ways:
+in V/A (columns ``Z_<method>_Ohm``) in several independent ways. For an earth-potential probe it is r·Z_E – the
+earthing impedance times the reduction factor, because only the earth current I_E = r·I_F flows into the earthing
+system; the reduction factor r follows from the comparison with an earthing measurement
+([`groundfault.earthing.reduction_factor`][groundfault.earthing.reduction_factor]):
 
 ``direct``
     U_m/I_F,m in the max window of the evaluation – as measured, *including* the background.
@@ -23,8 +26,12 @@ current, [`frequency_selective`][groundfault.station.frequency_selective] determ
     the reference instant.
 ``voltage``  (superposition, voltage reference – only with a voltage measurement)
     The phase reference is the fundamental component of U_L1-L2 of each window; the background comes from the
-    pre-fault and post-fault intervals of the evaluation, the fault component from a least-squares fit over all
-    windows of the steady-state interval.
+    pre-fault and post-fault intervals of the evaluation, the fault component from a least-squares fit over the
+    undisturbed windows of the steady-state interval (see [`groundfault.disturbances`][groundfault.disturbances]).
+
+The time-reference methods use the windows next to fault inception and clearance, independently of the steady-state
+interval. An active residual current increase or a network switching during these windows does not bias them: the
+ratio ΔU/I_F of a linear earthing system stays the same when the fault current changes.
 
 The result (``fault``) is the mean of the available superposition methods. How reliable it is follows from two
 independent checks and an estimate of the error of the frequency reference:
@@ -607,8 +614,8 @@ def _voltage_reference(res, chan_u: List[int], ires: int, orders: Sequence[int])
     """Superposition with the phase reference U_L1-L2 of each window (blocks of the evaluation).
 
     Background from the pre-fault and the post-fault interval (mean of the available ones), fault component from a
-    least-squares fit over all windows of the steady-state interval. None without line-to-earth voltages, without
-    pre-/post-fault interval or if an order is missing in the blocks."""
+    least-squares fit over the reference windows of the steady-state interval (without disturbed states). None
+    without line-to-earth voltages, without pre-/post-fault interval or if an order is missing in the blocks."""
     le = res.roles.line_to_earth
     if not le or res.pre_fault is None and res.post_fault is None:
         return None
@@ -620,7 +627,9 @@ def _voltage_reference(res, chan_u: List[int], ires: int, orders: Sequence[int])
         rot = np.exp(-1j * np.outer(phi, np.asarray([float(m) for m in orders])))
         ix = [b.ix(m) for m in orders]
         X = b.X[:, chan, :][:, :, ix] * rot[:, None, :]
-        return X[~b.nan_window]
+        # steady state: the reference windows (without disturbed states), otherwise all windows with values
+        ok = res.reference_windows if b is st and hasattr(res, "reference_windows") else ~b.nan_window
+        return X[ok]
 
     background = {}                                                   # interval name → mean background phasors
     for name in ("pre_fault", "post_fault"):
@@ -634,7 +643,7 @@ def _voltage_reference(res, chan_u: List[int], ires: int, orders: Sequence[int])
     U = _rotated(st, chan_u)                                          # (n_w, k, n_ord)
     I = _rotated(st, [ires])[:, 0, :] * res.polarity               # (n_w, n_ord)
     u_bg = np.mean(list(background.values()), axis=0)
-    # least-squares fit over all windows: U_w − U_background = Z·I_w  →  Z = Σ(ΔU·I*)/Σ|I|²
+    # least-squares fit over the windows: U_w − U_background = Z·I_w  →  Z = Σ(ΔU·I*)/Σ|I|²
     num = np.sum((U - u_bg[None]) * np.conj(I)[:, None, :], axis=0)
     den = np.sum(np.abs(I) ** 2, axis=0)
     Z = num / np.where(den > 0, den, np.nan)[None, :]
@@ -726,7 +735,7 @@ def _lv_network(res, probes, currents, orders: Sequence[int], results: Dict[str,
     Rows per probe exist for the earth-potential probes (``u_e``).
 
     Parallel-branch check (column ``parallel_check``): the LV network is one branch of the total earthing, so
-    |Z_E,LV| ≥ |Z_E,fault| = |ΔU_E/I_F| (naive, with the fault current) – equivalent to |I_LV| ≤ |I_F|, independent
+    |Z_E,LV| ≥ |r·Z_E| = |ΔU_E/I_F| (naive, with the fault current) – equivalent to |I_LV| ≤ |I_F|, independent
     of the probe. With shield currents, additionally the stricter condition against the earth current
     (``earth_current_check``): |Z_E,LV| ≥ |ΔU_E/I_E|, I_E = I_F − I_S (sum of all shield-current channels, each
     rotated to the direction of I_F), equivalent to |I_LV| ≤ |I_E|. A condition only counts as violated if the
@@ -826,7 +835,7 @@ def _lv_network(res, probes, currents, orders: Sequence[int], results: Dict[str,
             z_total = z_fault / k_e_m if np.isfinite(z_fault) and np.isfinite(k_e_m) and abs(k_e_m) > 0 else np.nan
             ratio = (float(abs(k_lv_m) / abs(k_e_m)) if np.isfinite(k_lv_m) and np.isfinite(k_e_m) and abs(k_e_m) > 0
                      else np.nan)
-            ratio_naive = float(abs(k_lv_m)) if np.isfinite(k_lv_m) else np.nan     # I_LV/I_F = Z_E,fault/Z_E,LV
+            ratio_naive = float(abs(k_lv_m)) if np.isfinite(k_lv_m) else np.nan     # I_LV/I_F = r·Z_E/Z_E,LV
             u_naive = math.sqrt(u_lv ** 2 + 2 * m_I ** 2)
             u_check = math.sqrt(u_lv ** 2 + u_shield(m) ** 2 + 2 * m_I ** 2)
             row = dict(channel=channel, probe=probe.short if probe is not None else "",
@@ -847,11 +856,11 @@ def _lv_network(res, probes, currents, orders: Sequence[int], results: Dict[str,
                        Z_E_LV_angle_deg=float(np.degrees(np.angle(z_lv))) if np.isfinite(z_lv) else np.nan,
                        Z_E_LV_uncertainty_pct=math.sqrt(u_probe ** 2 + u_lv ** 2 + m_U ** 2 + m_I ** 2)
                        if np.isfinite(u_probe) else math.sqrt(u_lv ** 2 + m_U ** 2 + m_I ** 2),
-                       Z_E_fault_Ohm=float(abs(z_fault)) if np.isfinite(z_fault) else np.nan,
-                       Z_LV_to_Z_E_fault=1.0 / ratio_naive if np.isfinite(ratio_naive) and ratio_naive > 0 else np.nan,
+                       rZE_fault_Ohm=float(abs(z_fault)) if np.isfinite(z_fault) else np.nan,
+                       Z_LV_to_rZE_fault=1.0 / ratio_naive if np.isfinite(ratio_naive) and ratio_naive > 0 else np.nan,
                        parallel_check=check_status(ratio_naive, u_naive),
                        total_earthing_reference=reference,
-                       Z_total_fault_Ohm=float(abs(z_total)) if np.isfinite(z_total) else np.nan,
+                       Z_E_earth_current_Ohm=float(abs(z_total)) if np.isfinite(z_total) else np.nan,
                        I_LV_to_I_E=ratio, earth_current_check=check_status(ratio, u_check),
                        check_uncertainty_pct=u_check,
                        uncertain=bool(uncertain_probe or u_lv > UNCERTAIN_PCT
@@ -878,11 +887,11 @@ def _lv_network(res, probes, currents, orders: Sequence[int], results: Dict[str,
                        orders=", ".join(str(m) for m in ords_eff), I_F_eff_A=f_eff, I_LV_eff_A=lv_eff,
                        share_I_LV_eff=ratio_naive, U_E_fault_eff_V=u_eff,
                        Z_E_LV_eff_Ohm=u_eff / lv_eff if lv_eff > 0 else np.nan,
-                       Z_E_fault_eff_Ohm=u_eff / f_eff if f_eff > 0 else np.nan,
+                       rZE_fault_eff_Ohm=u_eff / f_eff if f_eff > 0 else np.nan,
                        parallel_check=("satisfied" if ratio_naive <= 1.0 else "violated (see orders)")
                        if np.isfinite(ratio_naive) else "–",
                        total_earthing_reference=reference,
-                       Z_total_fault_eff_Ohm=u_eff / e_eff if e_eff > 0 else np.nan,
+                       Z_E_earth_current_eff_Ohm=u_eff / e_eff if e_eff > 0 else np.nan,
                        I_LV_to_I_E_eff=ratio,
                        earth_current_check=("satisfied" if ratio <= 1.0 else "violated (see orders)")
                        if np.isfinite(ratio) else "–",
@@ -983,8 +992,11 @@ def frequency_selective(res, rec, shift=None, orders: Optional[Sequence[int]] = 
         and as RMS values.
     ``station_extrapolation``
         Earth potential rise/touch voltage at the limit currents (``Settings.ires_limits``, defined by the user):
-        proportional (as before), background plus fault-related component, fault-related component only. Empty
-        without limits (with a hint).
+        proportional (``U_proportional_V``, as before), fault-related component only (``U_fault_V``), background plus
+        fault-related component with the phase relation of the test (``U_background_plus_fault_V``) and as an upper
+        bound with both in phase at every order (``U_background_plus_fault_in_phase_V`` = √Σ(|U_bg,m| +
+        k·|ΔU_m|)² – at a real fault the phase relation differs: another faulted line turns the fault current by
+        ±120° against the network voltage, the load is another). Empty without limits (with a hint).
 
     ``res.values["station_frequency"]`` records the instants of fault inception and clearance, the frequencies and
     their sources and the window counts of the methods; ``res.values["station_lv_network"]`` the PEN and shield
@@ -1158,13 +1170,19 @@ def frequency_selective(res, rec, shift=None, orders: Optional[Sequence[int]] = 
                 row["U_fault_V"] = float(np.sqrt(np.sum(np.abs(scale * dU[ok]) ** 2)))
                 if U_background is not None:
                     total_sq = float(np.sum(np.abs(U_background[n][ok] + scale * dU[ok]) ** 2))
+                    # upper bound: background and fault-related component in phase at every order (at a real fault
+                    # their phase relation differs from the test – another faulted line, another load)
+                    upper_sq = float(np.sum((np.abs(U_background[n][ok]) + scale * np.abs(dU[ok])) ** 2))
                     # the background at the remaining frequencies (orders without appreciable fault current,
                     # interharmonics) is added unchanged: RMS value before the fault minus the orders covered
                     pre = res.pre_fault
                     if pre is not None and (~pre.nan_window).any():
                         pre_ms = float(np.nanmean(pre.rms[~pre.nan_window, k.index] ** 2))
-                        total_sq += max(0.0, pre_ms - float(np.sum(np.abs(U_background[n][ok]) ** 2)))
+                        rest = max(0.0, pre_ms - float(np.sum(np.abs(U_background[n][ok]) ** 2)))
+                        total_sq += rest
+                        upper_sq += rest
                     row["U_background_plus_fault_V"] = math.sqrt(total_sq)
+                    row["U_background_plus_fault_in_phase_V"] = math.sqrt(upper_sq)
             extrapolation.append(row)
     res.tables["station_extrapolation"] = pd.DataFrame(extrapolation)
 

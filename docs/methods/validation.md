@@ -15,7 +15,7 @@ contain what makes real recordings difficult:
 |---|---|
 | substation (`make_substation_recording`, `make_substation_series`) | 20-kV network with a fault in L3 (or another phase) through an additional impedance: line-to-earth voltages E_x + U0 with U0 from the closed-form solution; fundamental component of the fault current with prescribed active current and detuning; harmonics 3, 5, 7, 11, 13 from active two-terminal equivalents whose source voltage is the pre-fault voltage of the faulted phase, with a source drift in magnitude and phase between the tests; coil currents including their harmonics and a decaying DC component at switch-on; the transient at fault inception; an active residual current increase or a coil adjustment during the fault; the decaying neutral displacement voltage after the clearance; noise and DC offsets of the clamps; a second CT with ratio and phase error; a reversed clamp; different time origins; recorder-export or structured channel names; optionally a decaying DC component in the fault current |
 | station (`make_station_recording`) | earth potential rise U_E = r·Z_E·I_F per order with Z_E,m = R_E + j·m·X_E1 and a reduction factor per order; probes measuring a share of the earth potential; touch voltage U_E/F; shield current (1 − r)·I_F; a background per order – constant, fluctuating, or changing at the clearance; a linearly drifting network frequency; with or without line-to-earth voltages; optionally an LV network in parallel to the station earth electrode, measured at two PEN points with a (fluctuating) load unbalance, a reversed or wrongly scaled clamp or a single measuring point |
-| transformer (`make_transformer_recording`) | line currents and voltages with given powers per order and the zero-sequence current of the coil |
+| transformer (`make_transformer_recording`) | line currents of the transformer, MV and HV voltages with given powers per order, an upstream impedance (transformer + HV network) through which the fault draws positive- and negative-sequence currents of every order, the zero-sequence current of the coil; optionally reversed currents (generator reference arrow system) and an active residual current increase |
 | RMS export (`rms_file_from_instantaneous`) | RMS values of 100-ms windows of an instantaneous-value recording, as recorders export them |
 | groundmeas database (`make_groundmeas_db`) | an earthing measurement (current injection) matching the station model, per order and probe; a factor makes it deliberately too high |
 | campaign (`make_campaign`) | all of the above as a complete campaign in the English or German folder layout |
@@ -77,6 +77,9 @@ number. Examples from the test suite (`tests/`):
 | null test | flags a fluctuating background as uncertain, a constant one with voltage measurement not | `test_station.py::test_null_test_flags_fluctuating_background` |
 | LV network | RMS values of synthetic time series instead of the root sum of squares of the orders | `test_lv_network.py::test_lv_network_rms_values_recomputed_in_time_domain` |
 | reduction factor | from the earth potential rise and from the shield current; r_eff against the RMS values of synthetic time series | `test_lv_network.py::test_reduction_factor_per_harmonic_and_effective` |
+| transformer node: power | sum over the sequences against the sum over the phases (identity), the true powers of the demo per order before and during the fault | `test_transformer.py::test_sequence_power_identity`, `::test_power_per_state_and_sequence` |
+| transformer node: upstream impedance | the true impedance of the demo per order from fault − pre-fault and from fault − post-fault, positive and negative sequence; the split into transformer and HV network; the same result with currents in the generator reference arrow system | `test_transformer.py::test_upstream_impedance_per_order`, `::test_hv_side_splits_transformer_and_hv_network`, `::test_generator_reference_and_estimated_fault_current` |
+| fault current estimated from the transformer currents | the true active and reactive residual current (times the share of the transformer); the active residual current increase found without a fault-current channel | `test_transformer.py::test_fault_current_estimate_phase_factor`, `::test_generator_reference_and_estimated_fault_current` |
 | groundmeas entry | written to a database, read back and compared with an earthing measurement: the ratio equals the reduction factor at all frequencies | `test_earthing.py::test_export_dry_run_and_write_with_read_back` |
 | trend of r over f | an exact power law | `test_earthing.py::test_trend_codes_against_exact_power_law` |
 | units of groundmeas values | a reference table of 322 spellings generated with groundmeas 1.6.1, and a direct comparison when groundmeas ≥ 1.6.1 is installed | `test_units.py` |
@@ -96,7 +99,7 @@ pytest -q
 ```text
 …
 SKIPPED [1] tests/test_units.py:63: could not import 'groundmeas.core.units': No module named 'groundmeas'
-490 passed, 1 skipped in 56.97s
+572 passed, 1 skipped in 63.26s
 ```
 
 They use synthetic recordings only and take about a minute. The skipped test compares the unit handling directly
