@@ -1,0 +1,135 @@
+site_name: groundfault
+site_description: Evaluation of staged earth-fault tests in compensated (resonant-earthed) medium-voltage networks
+site_url: https://ce1ectric.github.io/groundfault/
+repo_url: https://github.com/Ce1ectric/groundfault
+repo_name: Ce1ectric/groundfault
+edit_uri: edit/main/docs/
+exclude_docs: |
+  scripts/
+
+copyright: Copyright &copy; 2026 Christian Ehlert – MIT licence
+
+theme:
+  name: material
+  font: false              # system fonts: no requests to Google Fonts
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            members_order: source
+            filters: ["!^_"]
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: false
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - User guide:
+      - user-guide/index.md
+      - Campaigns, folders and files: user-guide/campaigns.md
+      - Notebooks: user-guide/notebooks.md
+      - Evaluating a recording: user-guide/evaluation.md
+      - Stations and the LV network: user-guide/station.md
+      - Earthing measurements (groundmeas): user-guide/earthing.md
+      - Campaign evaluation: user-guide/campaign.md
+      - Signal explorer: user-guide/explorer.md
+      - Corrections of the measuring chain: user-guide/corrections.md
+      - Reports and exports: user-guide/report.md
+      - Language and folder layout: user-guide/language.md
+      - Troubleshooting: user-guide/troubleshooting.md
+  - Methods:
+      - methods/index.md
+      - Signal processing: methods/signal-processing.md
+      - Assessment quantities: methods/assessment.md
+      - Superposition at the station: methods/superposition.md
+      - Reduction factor and LV network: methods/reduction-factor.md
+      - Equivalent-source method: methods/equivalent-source.md
+      - Validation: methods/validation.md
+  - API reference:
+      - reference/index.md
+      - groundfault: reference/groundfault.md
+      - comtrade: reference/comtrade.md
+      - channels: reference/channels.md
+      - evaluation: reference/evaluation.md
+      - station: reference/station.md
+      - earthing: reference/earthing.md
+      - equivalent_source: reference/equivalent_source.md
+      - formulas: reference/formulas.md
+      - campaign: reference/campaign.md
+      - dsp: reference/dsp.md
+      - symmetrical: reference/symmetrical.md
+      - rms: reference/rms.md
+      - diagnostics: reference/diagnostics.md
+      - report: reference/report.md
+      - interactive: reference/interactive.md
+      - explorer: reference/explorer.md
+      - corrections: reference/corrections.md
+      - sites: reference/sites.md
+      - register: reference/register.md
+      - layout: reference/layout.md
+      - units: reference/units.md
+      - i18n: reference/i18n.md
+      - legacy: reference/legacy.md
+      - demo: reference/demo.md
+  - About:
+      - Changelog: about/changelog.md
+      - Contributing: about/contributing.md
+      - Licence: about/license.md

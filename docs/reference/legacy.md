@@ -1,0 +1,3 @@
+# `groundfault.legacy`
+
+::: groundfault.legacy

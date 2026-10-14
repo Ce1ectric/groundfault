@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: groundfault
+abstract: >-
+  groundfault evaluates staged earth-fault tests in compensated (resonant-earthed) medium-voltage networks from
+  COMTRADE recordings: the residual earth-fault current and its harmonics, voltages and assessment quantities with
+  measurement uncertainty; the residual current at any earthing impedance from a series of tests with different fault
+  impedances (equivalent-source method); the earth potential rise and touch voltage at secondary substations per
+  frequency, as measured and fault-related by superposition, the current into the LV network and the earthing
+  impedance of the LV network; and the reduction factor compared with earthing measurements stored in a groundmeas
+  database. Jupyter notebooks serve as the user interface; output is available in English and German.
+authors:
+  - family-names: Ehlert
+    given-names: Christian
+version: "2.0.0"
+date-released: "2026-10-14"
+license: MIT
+repository-code: "https://github.com/Ce1ectric/groundfault"
+url: "https://ce1ectric.github.io/groundfault/"
+keywords:
+  - earth fault
+  - resonant earthing
+  - Petersen coil
+  - compensated network
+  - medium voltage
+  - COMTRADE
+  - residual earth-fault current
+  - harmonics
+  - earthing system
+  - earth potential rise
+  - touch voltage
+  - reduction factor
+  - power quality

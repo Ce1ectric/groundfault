@@ -1,0 +1,1950 @@
+{
+ "groundmeas": "1.6.1",
+ "spellings": {
+  "": null,
+  " ": null,
+  " mV": [
+   "mV",
+   "voltage",
+   0.001
+  ],
+  "%": null,
+  "(mA)": [
+   "mA",
+   "current",
+   0.001
+  ],
+  "A": [
+   "A",
+   "current",
+   1.0
+  ],
+  "A/V": null,
+  "GA": null,
+  "GHz": null,
+  "GOHM": [
+   "GΩ",
+   "resistance",
+   1000000000.0
+  ],
+  "GOhm": [
+   "GΩ",
+   "resistance",
+   1000000000.0
+  ],
+  "GOhm-m": null,
+  "GOhm_meter": null,
+  "GOhmm": null,
+  "GOhms": [
+   "GΩ",
+   "resistance",
+   1000000000.0
+  ],
+  "GV": null,
+  "GV/A": null,
+  "Ga": null,
+  "Gft": null,
+  "Ghz": null,
+  "Gm": null,
+  "Gohm": [
+   "GΩ",
+   "resistance",
+   1000000000.0
+  ],
+  "Gohm-m": null,
+  "Gohms": [
+   "GΩ",
+   "resistance",
+   1000000000.0
+  ],
+  "Gv": null,
+  "GΩ": [
+   "GΩ",
+   "resistance",
+   1000000000.0
+  ],
+  "GΩ m": null,
+  "GΩ*m": null,
+  "GΩ.m": null,
+  "GΩcm": null,
+  "GΩm": null,
+  "GΩ·m": null,
+  "GΩ": [
+   "GΩ",
+   "resistance",
+   1000000000.0
+  ],
+  "Hz": [
+   "Hz",
+   "frequency",
+   1.0
+  ],
+  "KA": [
+   "kA",
+   "current",
+   1000.0
+  ],
+  "KHz": [
+   "kHz",
+   "frequency",
+   1000.0
+  ],
+  "KOHM": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "KOhm": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "KOhm-m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KOhm_meter": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KOhmm": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KOhms": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "KV": [
+   "kV",
+   "voltage",
+   1000.0
+  ],
+  "KV/A": null,
+  "Ka": [
+   "kA",
+   "current",
+   1000.0
+  ],
+  "Kft": null,
+  "Khz": [
+   "kHz",
+   "frequency",
+   1000.0
+  ],
+  "Km": [
+   "km",
+   "distance",
+   1000.0
+  ],
+  "Kohm": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "Kohm-m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "Kohms": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "Kv": [
+   "kV",
+   "voltage",
+   1000.0
+  ],
+  "KΩ": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "KΩ m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KΩ*m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KΩ.m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KΩcm": null,
+  "KΩm": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KΩ·m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "KΩ": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "MA": null,
+  "MHz": null,
+  "MOHM": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "MOhm": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "MOhm-m": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MOhm_meter": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MOhmm": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MOhms": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "MV": null,
+  "MV/A": null,
+  "Ma": null,
+  "Mft": null,
+  "Mhz": null,
+  "Mm": null,
+  "Mohm": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "Mohm-m": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "Mohms": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "Mv": null,
+  "MΩ": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "MΩ m": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MΩ*m": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MΩ.m": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MΩcm": null,
+  "MΩm": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MΩ·m": [
+   "MΩm",
+   "resistivity",
+   1000000.0
+  ],
+  "MΩ": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "OHM": [
+   "Ω",
+   "resistance",
+   1.0
+  ],
+  "Ohm": [
+   "Ω",
+   "resistance",
+   1.0
+  ],
+  "Ohm-m": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "Ohm_meter": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "Ohmm": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "Ohms": [
+   "Ω",
+   "resistance",
+   1.0
+  ],
+  "Ohm·m": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "V": [
+   "V",
+   "voltage",
+   1.0
+  ],
+  "V ": [
+   "V",
+   "voltage",
+   1.0
+  ],
+  "V/A": [
+   "V/A",
+   "resistance",
+   1.0
+  ],
+  "Volt": [
+   "V",
+   "voltage",
+   1.0
+  ],
+  "V²": null,
+  "W": null,
+  "[ µV ]": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "[mV]": [
+   "mV",
+   "voltage",
+   0.001
+  ],
+  "a": [
+   "A",
+   "current",
+   1.0
+  ],
+  "ampere": [
+   "A",
+   "current",
+   1.0
+  ],
+  "amperes": [
+   "A",
+   "current",
+   1.0
+  ],
+  "amps": [
+   "A",
+   "current",
+   1.0
+  ],
+  "cA": null,
+  "cHz": null,
+  "cOHM": null,
+  "cOhm": null,
+  "cOhm-m": null,
+  "cOhm_meter": null,
+  "cOhmm": null,
+  "cOhms": null,
+  "cV": null,
+  "cV/A": null,
+  "ca": null,
+  "centimeter": [
+   "cm",
+   "distance",
+   0.01
+  ],
+  "cft": null,
+  "chz": null,
+  "cm": [
+   "cm",
+   "distance",
+   0.01
+  ],
+  "cohm": null,
+  "cohm-m": null,
+  "cohms": null,
+  "cv": null,
+  "cΩ": null,
+  "cΩ m": null,
+  "cΩ*m": null,
+  "cΩ.m": null,
+  "cΩcm": null,
+  "cΩm": null,
+  "cΩ·m": null,
+  "cΩ": null,
+  "ft": [
+   "ft",
+   "distance",
+   0.3048
+  ],
+  "hertz": [
+   "Hz",
+   "frequency",
+   1.0
+  ],
+  "hz": [
+   "Hz",
+   "frequency",
+   1.0
+  ],
+  "kA": [
+   "kA",
+   "current",
+   1000.0
+  ],
+  "kHz": [
+   "kHz",
+   "frequency",
+   1000.0
+  ],
+  "kOHM": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "kOhm": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "kOhm m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kOhm-m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kOhm_meter": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kOhmm": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kOhms": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "kV": [
+   "kV",
+   "voltage",
+   1000.0
+  ],
+  "kV/A": null,
+  "ka": [
+   "kA",
+   "current",
+   1000.0
+  ],
+  "kft": null,
+  "khz": [
+   "kHz",
+   "frequency",
+   1000.0
+  ],
+  "kilohertz": [
+   "kHz",
+   "frequency",
+   1000.0
+  ],
+  "kiloohm meter": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kilovolt": [
+   "kV",
+   "voltage",
+   1000.0
+  ],
+  "km": [
+   "km",
+   "distance",
+   1000.0
+  ],
+  "kohm": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "kohm-m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kohms": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "kv": [
+   "kV",
+   "voltage",
+   1000.0
+  ],
+  "kΩ": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "kΩ m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kΩ*m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kΩ.m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kΩcm": null,
+  "kΩm": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kΩ·m": [
+   "kΩm",
+   "resistivity",
+   1000.0
+  ],
+  "kΩ": [
+   "kΩ",
+   "resistance",
+   1000.0
+  ],
+  "m": [
+   "m",
+   "distance",
+   1.0
+  ],
+  "mA": [
+   "mA",
+   "current",
+   0.001
+  ],
+  "mA ": [
+   "mA",
+   "current",
+   0.001
+  ],
+  "mHz": null,
+  "mOHM": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "mOhm": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "mOhm-m": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mOhm_meter": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mOhmm": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mOhms": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "mV": [
+   "mV",
+   "voltage",
+   0.001
+  ],
+  "mV/A": [
+   "mV/A",
+   "resistance",
+   0.001
+  ],
+  "ma": [
+   "mA",
+   "current",
+   0.001
+  ],
+  "megaohm": [
+   "MΩ",
+   "resistance",
+   1000000.0
+  ],
+  "meters": [
+   "m",
+   "distance",
+   1.0
+  ],
+  "metre": [
+   "m",
+   "distance",
+   1.0
+  ],
+  "mft": null,
+  "mhz": null,
+  "microvolt": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "milliohm": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "mm": [
+   "mm",
+   "distance",
+   0.001
+  ],
+  "mohm": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "mohm-m": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mohms": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "mv": [
+   "mV",
+   "voltage",
+   0.001
+  ],
+  "mΩ": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "mΩ m": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mΩ*m": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mΩ.m": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mΩcm": null,
+  "mΩm": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mΩ·m": [
+   "mΩm",
+   "resistivity",
+   0.001
+  ],
+  "mΩ": [
+   "mΩ",
+   "resistance",
+   0.001
+  ],
+  "nA": [
+   "nA",
+   "current",
+   1e-09
+  ],
+  "nHz": null,
+  "nOHM": null,
+  "nOhm": null,
+  "nOhm-m": null,
+  "nOhm_meter": null,
+  "nOhmm": null,
+  "nOhms": null,
+  "nV": null,
+  "nV/A": null,
+  "na": [
+   "nA",
+   "current",
+   1e-09
+  ],
+  "nft": null,
+  "nhz": null,
+  "nm": null,
+  "nohm": null,
+  "nohm-m": null,
+  "nohms": null,
+  "nv": null,
+  "nΩ": null,
+  "nΩ m": null,
+  "nΩ*m": null,
+  "nΩ.m": null,
+  "nΩcm": null,
+  "nΩm": null,
+  "nΩ·m": null,
+  "nΩ": null,
+  "ohm": [
+   "Ω",
+   "resistance",
+   1.0
+  ],
+  "ohm cm": [
+   "Ωcm",
+   "resistivity",
+   0.01
+  ],
+  "ohm-m": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "ohms": [
+   "Ω",
+   "resistance",
+   1.0
+  ],
+  "uA": [
+   "μA",
+   "current",
+   1e-06
+  ],
+  "uHz": null,
+  "uOHM": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "uOhm": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "uOhm-m": null,
+  "uOhm_meter": null,
+  "uOhmm": null,
+  "uOhms": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "uV": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "uV/A": null,
+  "ua": [
+   "μA",
+   "current",
+   1e-06
+  ],
+  "uft": null,
+  "uhz": null,
+  "um": null,
+  "uohm": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "uohm-m": null,
+  "uohms": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "uv": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "uΩ": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "uΩ m": null,
+  "uΩ*m": null,
+  "uΩ.m": null,
+  "uΩcm": null,
+  "uΩm": null,
+  "uΩ·m": null,
+  "uΩ": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "v": [
+   "V",
+   "voltage",
+   1.0
+  ],
+  "volt": [
+   "V",
+   "voltage",
+   1.0
+  ],
+  "volts": [
+   "V",
+   "voltage",
+   1.0
+  ],
+  "xyz": null,
+  "{kV}": [
+   "kV",
+   "voltage",
+   1000.0
+  ],
+  "°": null,
+  "µA": [
+   "μA",
+   "current",
+   1e-06
+  ],
+  "µHz": null,
+  "µOHM": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "µOhm": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "µOhm-m": null,
+  "µOhm_meter": null,
+  "µOhmm": null,
+  "µOhms": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "µV": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "µV/A": null,
+  "µa": [
+   "μA",
+   "current",
+   1e-06
+  ],
+  "µft": null,
+  "µhz": null,
+  "µm": null,
+  "µohm": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "µohm-m": null,
+  "µohms": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "µv": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "µΩ": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "µΩ m": null,
+  "µΩ*m": null,
+  "µΩ.m": null,
+  "µΩcm": null,
+  "µΩm": null,
+  "µΩ·m": null,
+  "µΩ": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "Ω": [
+   "Ω",
+   "resistance",
+   1.0
+  ],
+  "Ω cm": [
+   "Ωcm",
+   "resistivity",
+   0.01
+  ],
+  "Ω m": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "Ω*m": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "Ω.m": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "Ωcm": [
+   "Ωcm",
+   "resistivity",
+   0.01
+  ],
+  "Ωm": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "Ω·m": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ],
+  "μA": [
+   "μA",
+   "current",
+   1e-06
+  ],
+  "μHz": null,
+  "μOHM": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "μOhm": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "μOhm-m": null,
+  "μOhm_meter": null,
+  "μOhmm": null,
+  "μOhms": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "μV": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "μV/A": null,
+  "μa": [
+   "μA",
+   "current",
+   1e-06
+  ],
+  "μft": null,
+  "μhz": null,
+  "μm": null,
+  "μohm": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "μohm-m": null,
+  "μohms": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "μv": [
+   "μV",
+   "voltage",
+   1e-06
+  ],
+  "μΩ": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "μΩ m": null,
+  "μΩ*m": null,
+  "μΩ.m": null,
+  "μΩcm": null,
+  "μΩm": null,
+  "μΩ·m": null,
+  "μΩ": [
+   "μΩ",
+   "resistance",
+   1e-06
+  ],
+  "Ω": [
+   "Ω",
+   "resistance",
+   1.0
+  ],
+  "Ωm": [
+   "Ωm",
+   "resistivity",
+   1.0
+  ]
+ },
+ "check_unit": [
+  [
+   "A",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "mA",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "V",
+   "prospective_touch_voltage",
+   true
+  ],
+  [
+   "mV",
+   "prospective_touch_voltage",
+   true
+  ],
+  [
+   "Ω",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "mOhm",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "Ωm",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "kA",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   null,
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "xyz",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "Hz",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "m",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "V/A",
+   "prospective_touch_voltage",
+   false
+  ],
+  [
+   "A",
+   "touch_voltage",
+   false
+  ],
+  [
+   "mA",
+   "touch_voltage",
+   false
+  ],
+  [
+   "V",
+   "touch_voltage",
+   true
+  ],
+  [
+   "mV",
+   "touch_voltage",
+   true
+  ],
+  [
+   "Ω",
+   "touch_voltage",
+   false
+  ],
+  [
+   "mOhm",
+   "touch_voltage",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "touch_voltage",
+   false
+  ],
+  [
+   "Ωm",
+   "touch_voltage",
+   false
+  ],
+  [
+   "kA",
+   "touch_voltage",
+   false
+  ],
+  [
+   "",
+   "touch_voltage",
+   false
+  ],
+  [
+   null,
+   "touch_voltage",
+   false
+  ],
+  [
+   "xyz",
+   "touch_voltage",
+   false
+  ],
+  [
+   "Hz",
+   "touch_voltage",
+   false
+  ],
+  [
+   "m",
+   "touch_voltage",
+   false
+  ],
+  [
+   "V/A",
+   "touch_voltage",
+   false
+  ],
+  [
+   "A",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "mA",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "V",
+   "earth_potential_rise",
+   true
+  ],
+  [
+   "mV",
+   "earth_potential_rise",
+   true
+  ],
+  [
+   "Ω",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "mOhm",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "Ωm",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "kA",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   null,
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "xyz",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "Hz",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "m",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "V/A",
+   "earth_potential_rise",
+   false
+  ],
+  [
+   "A",
+   "step_voltage",
+   false
+  ],
+  [
+   "mA",
+   "step_voltage",
+   false
+  ],
+  [
+   "V",
+   "step_voltage",
+   true
+  ],
+  [
+   "mV",
+   "step_voltage",
+   true
+  ],
+  [
+   "Ω",
+   "step_voltage",
+   false
+  ],
+  [
+   "mOhm",
+   "step_voltage",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "step_voltage",
+   false
+  ],
+  [
+   "Ωm",
+   "step_voltage",
+   false
+  ],
+  [
+   "kA",
+   "step_voltage",
+   false
+  ],
+  [
+   "",
+   "step_voltage",
+   false
+  ],
+  [
+   null,
+   "step_voltage",
+   false
+  ],
+  [
+   "xyz",
+   "step_voltage",
+   false
+  ],
+  [
+   "Hz",
+   "step_voltage",
+   false
+  ],
+  [
+   "m",
+   "step_voltage",
+   false
+  ],
+  [
+   "V/A",
+   "step_voltage",
+   false
+  ],
+  [
+   "A",
+   "transferred_potential",
+   false
+  ],
+  [
+   "mA",
+   "transferred_potential",
+   false
+  ],
+  [
+   "V",
+   "transferred_potential",
+   true
+  ],
+  [
+   "mV",
+   "transferred_potential",
+   true
+  ],
+  [
+   "Ω",
+   "transferred_potential",
+   false
+  ],
+  [
+   "mOhm",
+   "transferred_potential",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "transferred_potential",
+   false
+  ],
+  [
+   "Ωm",
+   "transferred_potential",
+   false
+  ],
+  [
+   "kA",
+   "transferred_potential",
+   false
+  ],
+  [
+   "",
+   "transferred_potential",
+   false
+  ],
+  [
+   null,
+   "transferred_potential",
+   false
+  ],
+  [
+   "xyz",
+   "transferred_potential",
+   false
+  ],
+  [
+   "Hz",
+   "transferred_potential",
+   false
+  ],
+  [
+   "m",
+   "transferred_potential",
+   false
+  ],
+  [
+   "V/A",
+   "transferred_potential",
+   false
+  ],
+  [
+   "A",
+   "earth_fault_current",
+   true
+  ],
+  [
+   "mA",
+   "earth_fault_current",
+   true
+  ],
+  [
+   "V",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "mV",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "Ω",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "mOhm",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "Ωm",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "kA",
+   "earth_fault_current",
+   true
+  ],
+  [
+   "",
+   "earth_fault_current",
+   false
+  ],
+  [
+   null,
+   "earth_fault_current",
+   false
+  ],
+  [
+   "xyz",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "Hz",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "m",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "V/A",
+   "earth_fault_current",
+   false
+  ],
+  [
+   "A",
+   "earthing_current",
+   true
+  ],
+  [
+   "mA",
+   "earthing_current",
+   true
+  ],
+  [
+   "V",
+   "earthing_current",
+   false
+  ],
+  [
+   "mV",
+   "earthing_current",
+   false
+  ],
+  [
+   "Ω",
+   "earthing_current",
+   false
+  ],
+  [
+   "mOhm",
+   "earthing_current",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "earthing_current",
+   false
+  ],
+  [
+   "Ωm",
+   "earthing_current",
+   false
+  ],
+  [
+   "kA",
+   "earthing_current",
+   true
+  ],
+  [
+   "",
+   "earthing_current",
+   false
+  ],
+  [
+   null,
+   "earthing_current",
+   false
+  ],
+  [
+   "xyz",
+   "earthing_current",
+   false
+  ],
+  [
+   "Hz",
+   "earthing_current",
+   false
+  ],
+  [
+   "m",
+   "earthing_current",
+   false
+  ],
+  [
+   "V/A",
+   "earthing_current",
+   false
+  ],
+  [
+   "A",
+   "shield_current",
+   true
+  ],
+  [
+   "mA",
+   "shield_current",
+   true
+  ],
+  [
+   "V",
+   "shield_current",
+   false
+  ],
+  [
+   "mV",
+   "shield_current",
+   false
+  ],
+  [
+   "Ω",
+   "shield_current",
+   false
+  ],
+  [
+   "mOhm",
+   "shield_current",
+   false
+  ],
+  [
+   "Ohm_meter",
+   "shield_current",
+   false
+  ],
+  [
+   "Ωm",
+   "shield_current",
+   false
+  ],
+  [
+   "kA",
+   "shield_current",
+   true
+  ],
+  [
+   "",
+   "shield_current",
+   false
+  ],
+  [
+   null,
+   "shield_current",
+   false
+  ],
+  [
+   "xyz",
+   "shield_current",
+   false
+  ],
+  [
+   "Hz",
+   "shield_current",
+   false
+  ],
+  [
+   "m",
+   "shield_current",
+   false
+  ],
+  [
+   "V/A",
+   "shield_current",
+   false
+  ],
+  [
+   "A",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "mA",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "V",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "mV",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "Ω",
+   "earthing_resistance",
+   true
+  ],
+  [
+   "mOhm",
+   "earthing_resistance",
+   true
+  ],
+  [
+   "Ohm_meter",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "Ωm",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "kA",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "",
+   "earthing_resistance",
+   false
+  ],
+  [
+   null,
+   "earthing_resistance",
+   false
+  ],
+  [
+   "xyz",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "Hz",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "m",
+   "earthing_resistance",
+   false
+  ],
+  [
+   "V/A",
+   "earthing_resistance",
+   true
+  ],
+  [
+   "A",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "mA",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "V",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "mV",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "Ω",
+   "earthing_impedance",
+   true
+  ],
+  [
+   "mOhm",
+   "earthing_impedance",
+   true
+  ],
+  [
+   "Ohm_meter",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "Ωm",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "kA",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "",
+   "earthing_impedance",
+   false
+  ],
+  [
+   null,
+   "earthing_impedance",
+   false
+  ],
+  [
+   "xyz",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "Hz",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "m",
+   "earthing_impedance",
+   false
+  ],
+  [
+   "V/A",
+   "earthing_impedance",
+   true
+  ],
+  [
+   "A",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "mA",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "V",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "mV",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "Ω",
+   "soil_resistivity",
+   true
+  ],
+  [
+   "mOhm",
+   "soil_resistivity",
+   true
+  ],
+  [
+   "Ohm_meter",
+   "soil_resistivity",
+   true
+  ],
+  [
+   "Ωm",
+   "soil_resistivity",
+   true
+  ],
+  [
+   "kA",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "",
+   "soil_resistivity",
+   false
+  ],
+  [
+   null,
+   "soil_resistivity",
+   false
+  ],
+  [
+   "xyz",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "Hz",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "m",
+   "soil_resistivity",
+   false
+  ],
+  [
+   "V/A",
+   "soil_resistivity",
+   true
+  ]
+ ],
+ "base": {
+  "earth_fault_current": "A",
+  "earth_potential_rise": "V",
+  "earthing_current": "A",
+  "earthing_impedance": "Ω",
+  "earthing_resistance": "Ω",
+  "prospective_touch_voltage": "V",
+  "shield_current": "A",
+  "soil_resistivity": "Ωm",
+  "step_voltage": "V",
+  "touch_voltage": "V",
+  "transferred_potential": "V"
+ },
+ "typical": {
+  "earth_fault_current": [
+   "A",
+   "mA",
+   "kA"
+  ],
+  "earth_potential_rise": [
+   "V",
+   "mV",
+   "kV"
+  ],
+  "earthing_current": [
+   "A",
+   "mA",
+   "kA"
+  ],
+  "earthing_impedance": [
+   "Ω",
+   "mΩ",
+   "kΩ"
+  ],
+  "earthing_resistance": [
+   "Ω",
+   "mΩ",
+   "kΩ"
+  ],
+  "prospective_touch_voltage": [
+   "V",
+   "mV",
+   "kV"
+  ],
+  "shield_current": [
+   "A",
+   "mA",
+   "kA"
+  ],
+  "soil_resistivity": [
+   "Ωm",
+   "kΩm",
+   "Ω",
+   "mΩ",
+   "kΩ"
+  ],
+  "step_voltage": [
+   "V",
+   "mV",
+   "kV"
+  ],
+  "touch_voltage": [
+   "V",
+   "mV",
+   "kV"
+  ],
+  "transferred_potential": [
+   "V",
+   "mV",
+   "kV"
+  ]
+ }
+}

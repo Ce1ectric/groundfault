@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+/site/
+/dist/
+/build/
+*.egg-info/
+.venv/
+.ipynb_checkpoints/
+*_executed.ipynb
+.DS_Store
+
+# never commit measurement data, databases or generated campaigns (the notebooks create a demo campaign next to
+# themselves when they are run inside the clone)
+*.cfg
+*.CFG
+*.dat
+*.DAT
+*.db
+*.db-wal
+*.db-shm
+*_explorer.html
+notebooks/**/campaigns/
+notebooks/**/01_Messkampagnen/
+notebooks/**/register.csv
+notebooks/**/Messregister.csv

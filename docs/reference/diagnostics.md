@@ -1,0 +1,3 @@
+# `groundfault.diagnostics`
+
+::: groundfault.diagnostics

@@ -1,0 +1,72 @@
+[project]
+name = "groundfault"
+version = "2.0.0"
+description = "Evaluation of staged earth-fault tests in compensated (resonant-earthed) medium-voltage networks"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Christian Ehlert" }]
+requires-python = ">=3.10"
+keywords = ["earth fault", "resonant earthing", "petersen coil", "comtrade", "harmonics", "earthing system",
+            "reduction factor", "power quality"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Natural Language :: German",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+interactive = ["plotly>=6.3", "ipywidgets>=8.0", "jinja2>=3.1"]
+export = ["openpyxl>=3.1", "python-docx>=1.1"]
+notebook = ["groundfault[interactive,export]", "jupyterlab>=4.0", "ipykernel>=6.4"]
+all = ["groundfault[interactive,export]"]
+dev = ["groundfault[interactive,export]", "pytest>=8.0", "ruff>=0.6", "nbformat>=5.9", "nbclient>=0.10",
+       "ipykernel>=6.4"]
+docs = ["mkdocs-material>=9.5", "mkdocstrings[python]>=0.26", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/Ce1ectric/groundfault"
+Documentation = "https://ce1ectric.github.io/groundfault/"
+Issues = "https://github.com/Ce1ectric/groundfault/issues"
+Changelog = "https://github.com/Ce1ectric/groundfault/blob/main/CHANGELOG.md"
+
+[build-system]
+requires = ["poetry-core>=2.2.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{ include = "groundfault", from = "src" }]
+include = [{ path = "CHANGELOG.md", format = "sdist" }, { path = "CITATION.cff", format = "sdist" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+# compact numeric code: several statements per line, lambdas and short names such as I and l are deliberate
+ignore = ["E501", "E702", "E731", "E741"]
+
+[tool.ruff.lint.per-file-ignores]
+# generated notebooks: imports after the fallback for an uninstalled clone, one shared import block
+"notebooks/**/*.ipynb" = ["E402", "F401"]
