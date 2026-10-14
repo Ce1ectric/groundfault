@@ -341,7 +341,7 @@ def test_export_to_groundmeas_with_sites_file_and_register(tmp_path):
     os.remove(p)
     no_file = earthing.export_to_groundmeas(_station_res(), k, db, template=False)
     assert no_file["sites_path"] is None
-    assert any(h == "keine %s – Ort aus dem Ordnernamen." % os.path.join("0_Notizen", "Messorte.csv")
+    assert any(h == "keine 0_Notizen/Messorte.csv – Ort aus dem Ordnernamen."     # forward slash on every OS
                for h in no_file["hints"])
     with pytest.raises(FileNotFoundError):
         earthing.export_to_groundmeas(_station_res(), k, str(tmp_path / "missing.db"))
