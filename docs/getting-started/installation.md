@@ -41,7 +41,7 @@ python -c "import groundfault; print(groundfault.__version__)"
 ```
 
 ```text
-2.0.0
+2.0.1
 ```
 
 ## Optional extras

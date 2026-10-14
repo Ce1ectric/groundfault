@@ -415,6 +415,19 @@ def test_register_and_readme(tmp_path):
     assert (df["status"] == "ok").all()
 
 
+def test_cfg_files_once_in_any_letter_case(tmp_path):
+    """Every configuration file once, whatever the letter case of its extension: one pass over the folder tree instead
+    of one search per letter case (on Windows a search for *.CFG also finds x.cfg, which listed every recording twice);
+    hidden files such as macOS' ._x.cfg and hidden folders are skipped."""
+    raw = tmp_path / "raw"
+    (raw / "SUB").mkdir(parents=True)
+    (raw / ".hidden").mkdir()
+    for name in ("SUB/a.cfg", "SUB/B.CFG", "SUB/c.Cfg", "SUB/._a.cfg", ".hidden/d.cfg", "SUB/a.dat"):
+        (raw / name).write_text("")
+    files = [os.path.relpath(f, str(raw)).replace(os.sep, "/") for f in register._cfg_files(str(raw))]
+    assert files == ["SUB/B.CFG", "SUB/a.cfg", "SUB/c.Cfg"]
+
+
 def test_register_written_on_windows(tmp_path):
     """Rows are matched by the path with forward slashes: a register written on Windows (backslashes) keeps its
     manual entries when it is refreshed on another operating system, and new rows use forward slashes."""

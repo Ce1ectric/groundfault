@@ -186,6 +186,21 @@ def _site(rel: str, lay: CampaignLayout) -> str:
     return ""
 
 
+def _cfg_files(folder: str) -> List[str]:
+    """Every COMTRADE configuration file below ``folder`` (``.cfg`` in any letter case), each exactly once and sorted.
+
+    One pass over the directory tree instead of one search per letter case: on a case-insensitive file system
+    (Windows) a search for ``*.CFG`` also finds ``x.cfg``, so two searches listed every recording twice. Hidden files
+    and folders (names starting with ``.``, e.g. ``._x.cfg`` written by macOS on foreign volumes) are skipped, as
+    before.
+    """
+    found = []
+    for dirpath, dirnames, filenames in os.walk(folder):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        found += [os.path.join(dirpath, f) for f in filenames if f.lower().endswith(".cfg") and not f.startswith(".")]
+    return sorted(found)
+
+
 def _campaign_folders(base: str, lay: CampaignLayout) -> List[str]:
     return [kd for kd in sorted(glob.glob(os.path.join(base, lay.campaigns, "*"))) if os.path.isdir(kd)]
 
@@ -223,8 +238,7 @@ def scan(base: str, with_roles: bool = True, presets: Optional[Mapping[str, Mapp
         m = re.match(r"(\d{4}-\d{2}-\d{2})_(.+)", campaign)
         date, location = (m.group(1), m.group(2)) if m else ("", campaign)
         raw = os.path.join(kd, lay.raw)
-        for cfg in sorted(glob.glob(os.path.join(raw, "**", "*.cfg"), recursive=True)
-                          + glob.glob(os.path.join(raw, "**", "*.CFG"), recursive=True)):
+        for cfg in _cfg_files(raw):
             rel = _posix(os.path.relpath(cfg, base))          # same key on every operating system
             name = os.path.basename(cfg)
             z = dict(campaign=campaign, date=date, location=location, site=_site(os.path.relpath(cfg, kd), lay),

@@ -1,6 +1,6 @@
 [project]
 name = "groundfault"
-version = "2.0.0"
+version = "2.0.1"
 description = "Evaluation of staged earth-fault tests in compensated (resonant-earthed) medium-voltage networks"
 readme = "README.md"
 license = "MIT"

@@ -2521,7 +2521,8 @@ def export_to_groundmeas(result, campaign_folder, db_path: Optional[str] = None,
     if template:
         new = _sites.write_template(campaign_folder, db_path)
         if new:
-            beforehand.append(tr("earthing.sites_created", path=os.path.relpath(new, str(campaign_folder))))
+            beforehand.append(tr("earthing.sites_created",
+                                 path=os.path.relpath(new, str(campaign_folder)).replace(os.sep, "/")))
     locations = _sites.load(campaign_folder)
     d = _data(result)
     meta, meas = d.get("meta", {}) or {}, d.get("measurement", {}) or {}
@@ -2532,7 +2533,8 @@ def export_to_groundmeas(result, campaign_folder, db_path: Optional[str] = None,
         beforehand.append(tr("earthing.site_missing", file=os.path.basename(locations.path), site=meta.get("site")))
     elif locations.path is None:
         beforehand.append(tr("earthing.no_sites_file",
-                             file=os.path.relpath(_sites.path_for(campaign_folder), str(campaign_folder))))
+                             file=os.path.relpath(_sites.path_for(campaign_folder),
+                                                  str(campaign_folder)).replace(os.sep, "/")))
     if options.get("fault_resistance_ohm") is None and meas.get("z_fault_ohm") is None:
         base = Path(campaign_folder).resolve().parent.parent
         rf = _rf_register(str(base), Path(campaign_folder).name, meas.get("cfg_file") or "")

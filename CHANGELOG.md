@@ -4,6 +4,16 @@ All notable changes to groundfault are documented in this file. The format is ba
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and groundfault adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-10-14
+
+### Fixed
+
+- The measurement register listed every recording twice on case-insensitive file systems (Windows): a second search
+  for `*.CFG` also found the `.cfg` files. Configuration files are now collected in one pass over the folder tree, in
+  any letter case and each once; hidden files are skipped as before.
+- Messages name files relative to the campaign folder with forward slashes on every operating system, e.g. the source
+  of an applied correction (`notes/corrections.csv, line 2`).
+
 ## [2.0.0] - 2026-10-14
 
 First public release. groundfault is the English, published successor of an in-house tool (version 1.x): API and
@@ -81,4 +91,5 @@ available.
   returns I_operating − I_resonance, so `formulas.detuning` and `formulas.sqrt2_method` give the sign of the angle
   method; the resonance-curve formulas of the predecessor used the opposite sign.
 
+[2.0.1]: https://github.com/Ce1ectric/groundfault/releases/tag/v2.0.1
 [2.0.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v2.0.0

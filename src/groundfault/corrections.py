@@ -324,7 +324,7 @@ class Corrections:
         """``notes/corrections.csv`` – the file relative to its campaign folder (for messages)."""
         if not self.path:
             return ENGLISH.corrections_file
-        return os.path.join(os.path.basename(os.path.dirname(self.path)), os.path.basename(self.path))
+        return os.path.basename(os.path.dirname(self.path)) + "/" + os.path.basename(self.path)   # same on every OS
 
     def _pairs(self, rec, hints: Optional[List[str]] = None):
         """(rule, channel index) of every rule of ``rec`` and every matching channel; a rule without a matching

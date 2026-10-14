@@ -37,7 +37,7 @@ i18n               output language (English/German): messages, column names, num
 legacy             reading result and campaign files of the predecessor tool (German keys)
 demo               synthetic recordings with known solution (tests, training)
 """
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 """Version of the package."""
 
 from .comtrade import Recording, ComtradeError, open_recording, write_comtrade  # noqa: E402

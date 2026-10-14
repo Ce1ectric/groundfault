@@ -170,7 +170,7 @@ GitHub offers them as APA and BibTeX under *Cite this repository*:
 @software{Ehlert_groundfault_2026,
   author  = {Ehlert, Christian},
   title   = {{groundfault}},
-  version = {2.0.0},
+  version = {2.0.1},
   month   = oct,
   year    = {2026},
   url     = {https://github.com/Ce1ectric/groundfault},
