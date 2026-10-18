@@ -571,7 +571,9 @@ vector group and the change of the fundamental power `dP1_fault_kW`, `dQ1_fault_
 [`transformer.power_overview`](../reference/transformer.md#groundfault.transformer.power_overview) shows P and Q per
 order and state side by side. `transformer_power` keeps the table of version 2: one row per interval and order up to
 13 with `P_kW`, `Q_kvar` and the sequence currents `I_pos_A`, `I_neg_A`, `I_zero_A` (the fault state is now the mean
-over the undisturbed windows of the steady-state interval).
+over the undisturbed windows of the steady-state interval). How to read the apparent and the upstream impedance, the
+resonance of the MV network and what the node says about the harmonic residual current:
+[Interpreting the results](../methods/transformer-node.md#interpreting-the-results).
 
 `res.values` holds the scalar results – among them `IRES`, `IG`, `Iw`, `Iv`, `IH_total`, `IH_sum`, `U0` (phasor),
 `faulted_phase`, `main_channel_i_res`, `polarity_margin_deg` and, if computed, `ires_low_frequency_A`,
@@ -618,9 +620,11 @@ results/SUB_0_10_000kHz/SUB_0_10_000kHz_result.json
 The JSON file (format `groundfault-result`, version 3) contains `meta` (start time, campaign, site, measurement, tool
 version, applied corrections), `measurement` (file, sampling rate, intervals, max window, f1, polarity, alignment,
 roles, main channels, settings), `signals` (per channel: role, RMS values and the phasors of the orders 1…25 in the max
-window), `assessment_quantities`, `hints`, `plausibility`, `voltage` (levels and sequence phasors per interval),
-`tables` (all tables), `statistics` and `values`; at a station also the times and frequency sources of the
-superposition and the PEN channels used.
+window), `assessment_quantities`, `hints`, `plausibility`, `voltage` (levels and sequence phasors per interval; during
+the fault also the mean over the reference windows, `fault_mean_phasor`, and with coil currents their mean phasors per
+channel over the same windows, `coil_mean_phasor`, and before the fault, `coil_pre_phasor` – the input of the
+optional [forecast](../forecast/index.md)), `tables` (all tables), `statistics` and `values`; at a station also the times and
+frequency sources of the superposition and the PEN channels used.
 
 [`load_result`](../reference/evaluation.md) returns a `ResultFile` with the interface the campaign evaluation, the
 report tables and the groundmeas functions need: `name`, `values`, `tables` (`table(name)`), `hints`, `settings`

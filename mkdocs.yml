@@ -104,6 +104,12 @@ nav:
       - Equivalent-source method: methods/equivalent-source.md
       - Transformer node: methods/transformer-node.md
       - Validation: methods/validation.md
+  - Forecast (optional):
+      - forecast/index.md
+      - Without an earth fault (V0–V3): forecast/without-fault.md
+      - Network model – equations (V6, V7): forecast/model.md
+      - Measurements for the model: forecast/recording.md
+      - Working with the network model: forecast/guide.md
   - API reference:
       - reference/index.md
       - groundfault: reference/groundfault.md
@@ -115,6 +121,7 @@ nav:
       - transformer: reference/transformer.md
       - earthing: reference/earthing.md
       - equivalent_source: reference/equivalent_source.md
+      - forecast: reference/forecast.md
       - formulas: reference/formulas.md
       - campaign: reference/campaign.md
       - dsp: reference/dsp.md

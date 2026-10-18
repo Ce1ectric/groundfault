@@ -17,6 +17,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODULES = sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(ROOT, "src", "groundfault",
                                                                                           "*.py"))
                  if not p.endswith("__init__.py"))
+#: the optional subpackage and its public modules (``forecast``, ``forecast.model`` …; private ones start with ``_``)
+SUBPACKAGES = ["forecast"]
+MODULES += sorted([pkg for pkg in SUBPACKAGES]
+                  + ["%s.%s" % (pkg, os.path.splitext(os.path.basename(p))[0]) for pkg in SUBPACKAGES
+                     for p in glob.glob(os.path.join(ROOT, "src", "groundfault", pkg, "*.py"))
+                     if not os.path.basename(p).startswith("_")])
 
 
 @pytest.mark.parametrize("name", MODULES)
@@ -26,7 +32,8 @@ def test_all_lists_existing_names(name):
 
 
 def test_names_in_the_documentation_are_public():
-    pattern = re.compile(r"(?<![\w.\"'/])(?:groundfault\.)?(%s)\.([A-Za-z]\w*)(?!\.md)" % "|".join(MODULES))
+    names = sorted(MODULES, key=len, reverse=True)                     # "forecast.model" before "forecast"
+    pattern = re.compile(r"(?<![\w.\"'/])(?:groundfault\.)?(%s)\.([A-Za-z]\w*)(?!\.md)" % "|".join(map(re.escape, names)))
     missing = set()
     for path in glob.glob(os.path.join(ROOT, "docs", "**", "*.md"), recursive=True):
         with open(path, encoding="utf-8") as f:
@@ -44,10 +51,11 @@ def _public(identifier):
     member of such a class."""
     parts = identifier.split(".")
     obj = importlib.import_module(parts[0])
-    for i, part in enumerate(parts[1:], 1):
+    for part in parts[1:]:
         if isinstance(obj, type(os)):
-            if part in MODULES and i == 1:
-                obj = importlib.import_module("groundfault." + part)
+            sub = obj.__name__ + "." + part
+            if sub.split(".", 1)[1] in MODULES:              # a public module (also of the subpackage)
+                obj = importlib.import_module(sub)
                 continue
             if part not in obj.__all__:
                 return False

@@ -33,8 +33,8 @@ import string
 from typing import Any, Dict, Iterable, Iterator, Mapping, Optional
 
 __all__ = ["SUPPORTED_LANGUAGES", "DEFAULT_LANGUAGE", "set_language", "get_language", "language", "register",
-           "tr", "has_message", "message_key", "missing_keys", "format_number", "format_text", "column_label",
-           "value_label", "localize", "normalize_language", "COLUMNS_DE", "VALUES_DE"]
+           "register_labels", "tr", "has_message", "message_key", "missing_keys", "format_number", "format_text",
+           "column_label", "value_label", "localize", "normalize_language", "COLUMNS_DE", "VALUES_DE"]
 
 SUPPORTED_LANGUAGES = ("en", "de")
 """Codes of the output languages: English and German."""
@@ -785,6 +785,9 @@ COLUMNS_DE.update({
     "R_up_Ohm": "R_vor_Ohm", "X_up_Ohm": "X_vor_Ohm", "X_up_per_order_Ohm": "X_vor_je_Ordnung_Ohm",
     "Z_up_post_Ohm": "Z_vor_nach_Ohm", "Z_up_post_angle_deg": "Z_vor_nach_Winkel_deg",
     "pos_neg_deviation_pct": "Abweichung_Mit_Gegen_proz", "dU_null_V": "dU_Nulltest_V", "dI_null_A": "dI_Nulltest_A",
+    "natural_sequence": "natuerliches_System", "transformer_divider": "trafo_spannungsteiler",
+    "dU_hv_V": "dU_HS_V", "k_angle_deg": "k_Winkel_deg", "X_hv_per_order_Ohm": "X_HS_je_Ordnung_Ohm",
+    "X_transformer_per_order_Ohm": "X_Trafo_je_Ordnung_Ohm",
     "significant": "signifikant", "Z_hv_Ohm": "Z_HS_Ohm", "Z_hv_angle_deg": "Z_HS_Winkel_deg", "X_hv_Ohm": "X_HS_Ohm",
     "uncertainty_hv_pct": "Unsicherheit_HS_proz", "Z_transformer_Ohm": "Z_Trafo_Ohm",
     "Z_transformer_angle_deg": "Z_Trafo_Winkel_deg", "X_transformer_Ohm": "X_Trafo_Ohm",
@@ -805,13 +808,51 @@ COLUMNS_DE.update({
     "I_low_frequency_A": "I_niederfrequent_A",
 })
 VALUES_DE["method"].update({"equation_error": "gleichungsfehler", "output_error": "ausgangsfehler",
-                            "rq0": "randlösung R_q = 0"})
+                            "rq0": "randlösung R_q = 0", "measured": "gemessene Quelle"})
+# measured source: single tests and comparison with the fitted source
+COLUMNS_DE.update({
+    "Zq_angle_deg": "Zq_Winkel_deg", "Zq_deviation_pct": "Zq_Abweichung_proz",
+    "Zq_angle_deviation_deg": "Zq_Winkelabweichung_deg", "Zq_measured": "Zq_gemessene_Quelle",
+    "Uq_measured_V": "Uq_gemessene_Quelle_V", "Uq_fitted_to_measured": "Uq_geschaetzt_zu_gemessen",
+    "Uq_fitted_angle_deg": "Uq_geschaetzt_Winkel_deg", "I_measured_source_A": "I_gemessene_Quelle_A",
+    "I_fitted_source_A": "I_geschaetzte_Quelle_A", "fitted_to_measured": "geschaetzt_zu_gemessen",
+    "interpolation": "Interpolation",
+    "I_from_others_A": "I_aus_uebrigen_A", "within_limit": "innerhalb_Grenze", "deviation_A": "Abweichung_A",
+})
 VALUES_DE["assessment"] = {"ok": "in Ordnung", "R_q < 0": "R_q < 0 (nicht möglich)"}     # pairwise solutions
 VALUES_DE["format"] = {"legacy_notebook": "Altformat (Notebook-Export)",                 # legacy input formats
                        "legacy_complex": "Altformat (komplexer Export)"}
 # role table: origin of a role
 VALUES_DE["source"].update({"automatic": "automatisch", "override": "vorgabe"})
 
+
+def register_labels(columns: Optional[Mapping[str, str]] = None,
+                    values: Optional[Mapping[str, Mapping[str, str]]] = None) -> None:
+    """Add German display names of table columns and code values – for parts of the package that are imported only
+    on demand (e.g. [`groundfault.forecast`][groundfault.forecast]).
+
+    Parameters
+    ----------
+    columns : mapping, optional
+        ``{column: German name}``.
+    values : mapping, optional
+        ``{column: {code: German text}}``.
+
+    Raises
+    ------
+    KeyError
+        If a column or a code of a column is registered already with another German name.
+    """
+    for key, text in (columns or {}).items():
+        if key in COLUMNS_DE and COLUMNS_DE[key] != text:
+            raise KeyError("column %r registered twice with different names (%r, %r)" % (key, COLUMNS_DE[key], text))
+        COLUMNS_DE[key] = text
+    for column, codes in (values or {}).items():
+        target = VALUES_DE.setdefault(column, {})
+        for code, text in codes.items():
+            if code in target and target[code] != text:
+                raise KeyError("code %r of column %r registered twice with different texts" % (code, column))
+            target[code] = text
 
 
 def column_label(name: str, lang: Optional[str] = None) -> str:

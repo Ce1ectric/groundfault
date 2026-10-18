@@ -4,6 +4,168 @@ All notable changes to groundfault are documented in this file. The format is ba
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and groundfault adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-10-18
+
+A minor version with an optional new part; the results of 3.0 are unchanged except the summary value X_up/m of the
+transformer node (see *Changed*), and result files gain three entries and a column.
+
+### Added
+
+- **Forecast** (`groundfault.forecast`), an optional subpackage that `import groundfault` does not load: a network
+  model of the earth-fault loop at a busbar per harmonic order and the forecast of the harmonic residual current from
+  harmonic voltages.
+  - `NetworkModel.add_test` calibrates with a staged fault test: Z_k = 3·p_k·ΔU_k/I_F from the changes of the busbar
+    voltages, with the pre-fault voltage of the faulted phase as the source (Thevenin). `add_fault` updates with an
+    earth fault recorded at the busbar without a fault current: Z_k = Z_0·p_k·ΔU_k/(p_0·ΔU_0) with Z_0 of the
+    calibration.
+  - **Node rule** with the coil currents: the fault current of a recorded earth fault per order,
+    I_F = 3·Y_0,net·ΔU_0 + ΔI_coil, with the zero-sequence admittance of the network without the coils from the tests
+    – also at the orders where saturating coils and transformers add harmonic currents. Every coil channel is
+    oriented by its 50-Hz current; a reversed channel is reported. Without coil currents: 3·|ΔU_0|/|Z_0| at the orders
+    without a source in the fault.
+  - **Source that arises with the fault**: tests with different series impedances (additional impedance plus line)
+    separate it from the source impedance by linear least squares; with one series impedance the measured current is
+    used (`constant`), with a hint when a forecast asks for a smaller one.
+  - **Fault behind a line** (`Line`, `LineSegment`): the series impedances of the line per segment enter the loop,
+    Z_qL = (2·Z_1L + Z_0L)/3, with the length as a fraction of a quarter wavelength as a validity hint – for tests in
+    the network, forecasts and checks. **Values per order**: R′, X′ of a segment at m·50 Hz (`orders`), totals per
+    order (`Line.from_impedances(…, orders=)`) or the loop contribution of the whole line (`loop`); the other orders use
+    the 50-Hz values (resistance constant, reactance ∝ m), and the forecast names them.
+  - `NetworkModel.line_from_fault`: the loop contribution of the line per order from a recorded earth fault behind it,
+    Z_qL,m = −U_ph,bus,m/I_F,m − Z_F, with the fault current from the node rule or the zero-sequence voltage – a
+    measurement of the line at the harmonic orders from the substation alone.
+  - `forecast` per order and in total (I_H, I_RES) from one value per order (e.g. 95 % quantiles), a time series
+    (quantiles of the totals), per phase, line-to-line or in percent; the magnitudes of the two sources are added; a
+    margin per order is a parameter without a default.
+  - Checks: `cross_check` between the tests (`loo`, `pairwise`, `chain`), `fault_check` at the recorded earth faults
+    with an estimated current, `verify` with another measurement such as a staged test in the network.
+  - Upstream split with the transformer node: the MV network Z_down = 1/(1/Z_1 − 1/Z_up) and forecasts for another
+    upstream impedance (`upstream=`).
+  - Input: `load_fault_data` (result files), `fault_data_from_values` (phasors of another tool),
+    `fault_data_from_measurement`; campaigns of a work folder: `campaign_tests` (the staged tests from the register),
+    `build_model`, `add_entries`, `check_data`, `forecast_folder`.
+  - Estimates without a calibration: `classical_bound` and `resonance_bound`.
+  - Model file (JSON, format `groundfault-network-model`, version 2) with `save` and `load`; `subset` selects earth
+    faults by name, kind or metadata.
+  - Tests against an independent three-phase nodal calculation of a synthetic network: limit cases (no earth
+    admittance, Z_F → ∞, stiff source, tuned coil), calibration, update, node rule, two-source fit, a fault behind a
+    line with and without shunt capacitance, `line_from_fault` and the classical estimate below the resonance.
+- The forecast notebook `forecast/network_model_forecast.ipynb` (German `Prognose/Netzmodell_Prognose.ipynb`),
+  written by `tools/make_notebooks.py --forecast` or `--forecast-only`: calibration from the campaigns of the register,
+  checks between the tests, recorded earth faults, checks with other measurements, forecast at the busbar and behind a
+  line, model file and tables in the forecast folder of the work folder (`forecast/`, German `05_Prognose/`).
+- `i18n.register_labels`: German column names and codes for the tables of an optional part; report titles of
+  registered messages `report.title_<name>`.
+- `demo.make_substation_recording`: positive- and negative-sequence impedances at the busbar (`DemoHarmonic.Z1`,
+  `Z2`), a source that exists only during the fault (`DemoHarmonic.Us`, optionally carried by the coil currents) and
+  recordings without a fault current (`fault_current=False`).
+- Result files: `voltage.fault_mean_phasor` and `voltage.coil_mean_phasor` – the busbar phasors and the coil currents
+  during the fault, averaged over the reference windows of the steady state (`voltage.fault_mean_windows`) – and
+  `voltage.coil_pre_phasor`, the coil currents before the fault (mean over the pre-fault interval).
+- Documentation: the section *Forecast* with the pages *Model and equations* (equivalent circuits, assumptions),
+  *Measurements for the model* (requirements for a disturbance recorder) and *Working with the network model*.
+- Transformer node: `transformer.voltage_divider` – the share k = Z_HV/(Z_T + Z_HV) of the HV network from the
+  fault-related change of the HV and MV voltages of the same recording, also without transformer currents (table
+  `transformer_divider`, `res.values["transformer_divider"]` in the result file, plausibility row); with the
+  currents also Z_HV = k·Z_up and Z_T = (1 − k)·Z_up – a second method beside Z_HV from HV voltage and current.
+- Documentation: the HV network with its line to the EHV/HV substation (capacitance at the far end, parallel path)
+  and the voltage divider, figure `forecast_hv_network`.
+- Documentation of the equivalent-source method: *Within and beyond the tested range* – with additional impedances
+  small compared with |Z_q| the fitted source voltage is poorly determined (error amplification
+  V = √(|I_1|² + |I_2|²)/|I_1 − I_2|); within the tested range the errors of U_q and Z_q compensate, beyond it (larger
+  earthing impedance, a line) they do not. Check the source voltage with the Thevenin check, compute with the measured
+  pre-fault level beyond the tested range, or choose the largest additional impedance of the order of |Z_q|; the
+  zero-sequence orders are the exception. The forecast documentation explains why one test is enough there.
+- **Measured source** in the equivalent-source method: `equivalent_source.measured_source(series)` takes the source
+  voltage as measured – the pre-fault voltage of the faulted phase – and Z_q = U_q/I_k − Z_k as the median over the
+  tests (default, `impedance="median"`) or from the test with the smallest additional impedance
+  (`impedance="smallest"`); the zero-sequence orders keep the fitted equivalent, a Z_q with a negative real part
+  becomes R_q = 0 with |Z_q| kept. `SourceSeries.loo_table(limit_pct=None, limit_A=None)` forecasts every test with
+  the model of the other tests (leave-one-out, both sources); the permissible deviations in % and in A are parameters
+  without a default. It also takes the measurements themselves – one test is enough; the zero-sequence orders then
+  stay in the remainder. `SourceSeries.single_test_table()` gives Z_q of every single test,
+  `equivalent_source.compare_sources(measured, fitted, Z_E)` the currents with both sources; `ires_at_impedance`, `ires_over_line`, `jackknife_table` and `monte_carlo` work with the measured source.
+  `fit_equivalent_source` gives a hint when the Thevenin check deviates by more than `thevenin_tolerance`
+  (`THEVENIN_TOLERANCE`, ±10 % / ±10°). `report.source_fit`, `report.ires_over_ze`, `report.report_tables`,
+  `interactive.source_fit` and `interactive.ires_ze` take a second series as `comparison` (dashed);
+  `report.source_plane` marks the single tests of a measured series.
+- Campaign notebook: the result I_RES(Z_E) – checks, section 4, report table and figures – uses the measured source
+  (`SOURCE = "measured"`, `SOURCE_IMPEDANCE = "median"`), the fitted one is shown for comparison; the checks show the
+  leave-one-out table with your permissible deviations `LOO_LIMIT_PCT` and `LOO_LIMIT_A` (`None`: without
+  assessment); section 3 shows the single tests and the comparison of both sources within and beyond the tested range.
+  A campaign with one substation test now gets the curve I_RES(Z_E) as well (measured source).
+- **MV network impedance from undisturbed operation**: `transformer.mv_network_impedance(recordings, orders, intervals)`
+  estimates the impedance of the MV network seen from the busbar, Z_MV = Σ ΔU·ΔU_HV*/Σ ΔI·ΔU_HV*, from the variations
+  of undisturbed operation with the HV voltage as instrumental variable – the MV network with its damping, which U/I of
+  the undisturbed node does not show. Pooled over recordings, with a bootstrap range, the strength of the instrument
+  (`corr_I_hv`), the polarity of the current transformers from the passivity of the result, an optional correction
+  with the HV network impedance (`Z_hv`: the instrument becomes the HV source voltage) and the check against a result
+  that is the upstream impedance (`IV_MIN_CORRELATION`, `IV_MAX_ANGLE_DEG`). `demo.make_undisturbed_transformer_recording`
+  writes a recording with independently fluctuating sources on both sides and known Z_MV.
+- `forecast.network_estimate`: the harmonic fault current from quantities of undisturbed operation and network data –
+  Z_1 = Z_up ∥ Z_MV per sequence, Z_0 capacitive from I_C with the damping d = I_w/I_C as a series resistance – without
+  a staged test (an estimate, not a bound; the orders with a source in the fault need a test or a recorded fault).
+- **Share of the HV-driven variation** (V3): `mv_network_impedance(…, Z_up=…)` gives `hv_share` =
+  |Z_MV/(Z_up + Z_MV)|²·Σ|ΔU + Z_up·ΔI|²/Σ|ΔU|², the share of the HV-driven variation in the variance of the busbar
+  voltage, per order and sequence; `min_hv_share` (a value you define, no default; needs `Z_up` and `Z_hv`, since the
+  share holds only with the corrected instrument) marks recordings below it as not reliable, with a hint. Where the
+  MV side drives most of the variation the estimate drifts towards −Z_up, and neither the correlation nor the angle
+  shows it until it drives nearly everything.
+- **Angle error of the current transformers** (V3): `mv_network_impedance(…, ct_angle_deg=…)` rotates the transformer
+  currents back by the angle error per order (one value, `{order: angle}` or the table of the reference clamp);
+  `transformer.ct_angle_from_reference(recording, channel, reference, orders)` gives the angle and ratio error of a
+  current channel against a reference clamp on the same conductor, with the reversed clamp recognised.
+- `transformer.mv_network_series(recordings, orders, …)`: a series of undisturbed recordings – e.g. one every hour of a
+  measuring day – each evaluated on its own (natural sequence), the polarity taken once from all of them, and the
+  pooled estimate of the reliable recordings per order.
+- Forecast without an earth fault, **V2**: `forecast.network_data_estimate` (the loop from network data with an assumed
+  damping G of the MV network, Z_MV = 1/(G + j·m·ω₁·C_1)) and `forecast.network_data_envelope` (the largest current
+  over a range of G – searched, since near the resonance a larger damping raises the current);
+  `forecast.estimates_without_fault` puts V0 to V3 side by side per order and fault impedance with I_H.
+  `groundfault.forecast.network_data`: `transformer_reactance`, `hv_network_reactance`, `at_order`,
+  `earth_capacitance`, `mv_network_from_data`, `resonance_order` – the impedances from rating plate, S″_k, I_C and C_1
+  (the R/X ratios and the damping are your assumptions).
+- The notebook `forecast/forecast_without_fault.ipynb` (German `Prognose/Prognose_ohne_Erdschluss.ipynb`), written with
+  `--forecast`: network data and resonance of the busbar, the angle error from a reference clamp, V3 per recording
+  with its checks and pooled, V0 to V3 side by side, export; with `DEMO = True` a measuring day of six demo
+  recordings. `demo.make_undisturbed_transformer_recording` gains `ct_angle_deg`, `reference_clamp` and `start`, and its
+  truth file the share `hv_share` per order and sequence.
+- Documentation: the forecast is arranged by the methods V0 to V8 (overview with the choice of a method, the page
+  *Without an earth fault* with the measuring day and an example); the methods page of the transformer node and
+  *Measurements for the model* describe the share of the HV-driven variation, the angle correction and the
+  undisturbed recordings.
+
+### Changed
+
+- Transformer node: the summary value `X1_up_Ohm` (and `X1_transformer_Ohm`, `X1_hv_Ohm`) is the mean over the
+  sequence **other than the natural one** of each order (m = 5, 11 …: positive, m = 7, 13 …: negative sequence);
+  without a significant order there over both sequences as before (`X1_up_other_sequence`). The natural sequence
+  carries the pre-fault harmonic – ten to a hundred times the other sequence – and its drift enters ΔU and ΔI. The
+  table `transformer_impedance` gains the column `natural_sequence`; `transformer.is_natural`.
+- Forecast: the upstream impedance Z_up of a transformer recording is taken per order from the sequence other than
+  the natural one (before: the natural sequence); an order without a significant value there gets no Z_up.
+
+### Fixed
+
+- Documentation of the transformer node: the HV network can form a parallel resonance with its capacitance, and
+  X_up/m is then not constant near it; this replaces the statement that X_HV/m can be half of U_n²/S_k,HV.
+- Documentation of the line model: a frequency-independent resistance and a reactance proportional to m err in
+  opposite directions – the resistance rises with frequency, the reactance of earth-return paths and of cables with
+  bonded sheaths rises less than proportionally –, so the forecast behind a line is not on the safe side by
+  construction; values per order can be given instead. New: the largest rise of an order behind a line
+  (series resonance of the fault loop, g_max = 1/|sin(φ_q − φ_z)|), the line impedance from a recorded fault behind a
+  line, and the time base needed to calibrate with a test in the network. Instrument transformers: the statement on
+  the frequency response of inductive voltage transformers is replaced by a reference to measurements and
+  IEC TR 61869-103.
+- Figure of the node rule (`forecast_node_rule`): the fault impedance lies in series with the parallel connection of
+  the network admittance and the coils – one loop with the source and the positive- and negative-sequence impedances;
+  before, it was drawn as a third parallel branch, which would let a current flow without earth admittance. The
+  equations were right.
+- `classical_bound` and `resonance_bound` are estimates, not upper bounds at every order: below the resonance of the
+  busbar the inductive Z_1 + Z_2 partly cancels the capacitive Z_0 (series resonance of the fault loop, for a cable
+  network near m ≈ 3), and the current can exceed the classical estimate severalfold (docstrings, documentation of the
+  forecast and of the transformer node).
+
 ## [3.0.0] - 2026-10-14
 
 A major version because of incompatible changes: columns of the station, reduction-factor and LV-network tables are
@@ -194,6 +356,7 @@ available.
   returns I_operating − I_resonance, so `formulas.detuning` and `formulas.sqrt2_method` give the sign of the angle
   method; the resonance-curve formulas of the predecessor used the opposite sign.
 
+[3.1.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.1.0
 [3.0.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.0.0
 [2.0.1]: https://github.com/Ce1ectric/groundfault/releases/tag/v2.0.1
 [2.0.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v2.0.0

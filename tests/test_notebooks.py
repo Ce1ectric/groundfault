@@ -30,7 +30,8 @@ def _code(nb):
 
 @pytest.mark.parametrize("lang", ["en", "de"])
 def test_demo_only_with_example(generator, lang):
-    for make in (generator.measurement_notebook, generator.campaign_notebook):
+    for make in (generator.measurement_notebook, generator.campaign_notebook, generator.forecast_notebook,
+                 generator.without_fault_notebook):
         for example in (False, True):
             demo = [re.match(r"DEMO\s*=\s*(\w+)", line).group(1) for cell in _code(make(lang, example))
                     for line in cell.splitlines() if re.match(r"DEMO\s*=", line)]
@@ -58,7 +59,9 @@ def test_options_interpreted_by_the_notebooks_are_checked(generator, lang):
               'legacy.check_keys("RESISTIVE"': ('RESISTIVE.get("from_ll"', dict(RESISTIVE=dict(U_thd95_V=300.0,
                                                                                                aus_ll=True))),
               'legacy.check_keys("MEASUREMENTS"': ('m["measurement"]', dict(m=dict(name="M1", messung="SUB_0", Z=0.0))),
-              'legacy.check_option("IG_CHOICE"': ('IG_CHOICE == "max"', dict(IG_CHOICE="maximal"))}
+              'legacy.check_option("IG_CHOICE"': ('IG_CHOICE == "max"', dict(IG_CHOICE="maximal")),
+              'legacy.check_option("SOURCE"': ('SOURCE == "measured"', dict(SOURCE="gemessen")),
+              'legacy.check_option("SOURCE_IMPEDANCE"': ('impedance=SOURCE_IMPEDANCE', dict(SOURCE_IMPEDANCE="null"))}
     for start, (use, values) in checks.items():
         cell, statement = _statement(cells, start)
         assert cell.index(start) < cell.index(use), start                  # checked before the value is used
@@ -77,7 +80,8 @@ USER_PARAMETERS = {"LIMITS": (), "U_TP": None, "F_FACTOR": None, "REFERENCE_CURR
 def test_no_limits_or_safety_factors_in_the_notebooks(generator, lang, example):
     """The notebooks contain no limits, U_Tp, F, reference current, uncertainty margins, safety factors or typical
     range of r – one configuration cell names them, not set, and the evaluation passes them on."""
-    for make, extra in ((generator.measurement_notebook, {"UNCERTAINTY_U": 0.0}), (generator.campaign_notebook, {})):
+    for make, extra in ((generator.measurement_notebook, {"UNCERTAINTY_U": 0.0}),
+                        (generator.campaign_notebook, {"LOO_LIMIT_PCT": None, "LOO_LIMIT_A": None})):
         nb = make(lang, example)
         cells = _code(nb)
         config = [c for c in cells if "LIMITS            =" in c]
@@ -97,6 +101,7 @@ def test_no_limits_or_safety_factors_in_the_notebooks(generator, lang, example):
     assert "reference_current_A=REFERENCE_CURRENT" in measurement and "r_typical=R_TYPICAL" in measurement
     campaign = "\n".join(_code(generator.campaign_notebook(lang, example)))
     assert "U_Tp=U_TP, F=F_FACTOR" in campaign and "uncertainty_I=UNCERTAINTY_I" in campaign
+    assert "MAIN.loo_table(LOO_LIMIT_PCT, LOO_LIMIT_A)" in campaign
 
 
 @pytest.mark.parametrize("lang", ["en", "de"])
@@ -137,11 +142,11 @@ def test_committed_notebooks_are_regenerated_identically(generator, tmp_path):
     gives files byte-identical to the committed ones: deterministic cell ids, the same bytes on every platform."""
     root = os.path.dirname(HERE)
     for lang in ("en", "de"):
-        generator.main(["--lang", lang, "--out", str(tmp_path / lang), "--example", "--overwrite"])
+        generator.main(["--lang", lang, "--out", str(tmp_path / lang), "--example", "--overwrite", "--forecast"])
     generated = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.ipynb"))
     committed = sorted(os.path.relpath(p, os.path.join(root, "notebooks")).replace(os.sep, "/")
                        for p in glob.glob(os.path.join(root, "notebooks", "**", "*.ipynb"), recursive=True))
-    assert generated == committed and len(generated) == 8
+    assert generated == committed and len(generated) == 16
     for rel in generated:
         new = (tmp_path / rel).read_bytes()
         with open(os.path.join(root, "notebooks", rel), "rb") as f:
@@ -155,10 +160,11 @@ def test_numbered_cell_ids_keep_their_cells(generator, lang):
     """Cells added after a release have a key instead of a number, so the numbered ids still denote the same cells
     and a working copy updated from an earlier version maps every cell to its counterpart: the section headings stay
     at the ids they had in 2.x, the numbers have no gaps, the cells of the transformer node have keys."""
-    sections = ((generator.measurement_notebook, 0, (2, 4, 6, 8, 20, 22, 24)),
-                (generator.campaign_notebook, 1, (2, 4, 6, 10, 12, 14, 16)))
-    for build, k, numbers in sections:
-        name = generator.NAMES[lang][k]
+    sections = ((generator.measurement_notebook, generator.NAMES[lang][0], (2, 4, 6, 8, 20, 22, 24)),
+                (generator.campaign_notebook, generator.NAMES[lang][1], (2, 4, 6, 10, 12, 14, 16)),
+                (generator.forecast_notebook, generator.FORECAST_NAMES[lang][0], (2, 4, 6, 8, 10, 12, 14)),
+                (generator.without_fault_notebook, generator.WITHOUT_FAULT_NAMES[lang], (2, 4, 6, 8, 10)))
+    for build, name, numbers in sections:
         cells = {c["id"]: c["source"] for c in build(lang, False).cells}
         for section, number in enumerate(numbers, start=1):
             assert cells["%s-%02d" % (name, number)].startswith("## %d · " % section)
@@ -195,3 +201,223 @@ def test_transformer_cell_runs(generator, lang, tmp_path):
         no_transformer = type("R", (), {"tables": {}})()
         exec(cell, dict(namespace, res=no_transformer))
         assert len(printed) == 1 and not plt.get_fignums()
+
+
+#: the parameters of the forecast notebook each user defines and their values in the published notebooks: not set
+FORECAST_PARAMETERS = {"MARGIN_A": 0.0, "FUNDAMENTAL_A": None, "LIMITS": ()}
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+@pytest.mark.parametrize("example", [False, True])
+def test_forecast_notebook_contains_no_margins_or_network_data(generator, lang, example):
+    """Margin, fundamental residual current and limits of the forecast notebook are not set; the harmonic voltages
+    are not set in the templates and marked demo values in the example notebooks."""
+    cells = _code(generator.forecast_notebook(lang, example))
+    config = [c for c in cells if "MARGIN_A      =" in c]
+    assert len(config) == 1
+    values = {}
+    for line in config[0].splitlines():
+        m = re.match(r"([A-Z_]+)\s*=\s*([^#]+?)\s*(#.*)?$", line)
+        if m and m.group(1) in FORECAST_PARAMETERS:
+            values[m.group(1)] = eval(m.group(2))
+    assert values == FORECAST_PARAMETERS
+    m = re.search(r"^VOLTAGES\s*=\s*(.+?)\s*#\s*(.*)$", config[0], re.M)
+    if example:
+        assert re.match(r"demo values|Demo-Werte", m.group(2)), m.group(0)
+    else:
+        assert m.group(1) == "None", m.group(0)
+    m = re.search(r"^LINE\s*=\s*(.+?)\s*#\s*(.*)$", config[0], re.M)
+    if example:
+        assert re.match(r"demo|Demo", m.group(2)), m.group(0)
+    else:
+        assert m.group(1) == "None", m.group(0)
+    text = "\n".join(cells)
+    assert "margin_A=MARGIN_A" in text and "fundamental_A=FUNDAMENTAL_A" in text
+    assert text.index('legacy.check_keys("FAULTS" if i < len(FAULTS) else "CHECKS"') < text.index(
+        'fc.add_entries(MODEL, WORK_FOLDER, TESTS, "test"')
+
+
+def _run_cells(cells, namespace):
+    """Run code cells of a notebook in-process (without IPython magics)."""
+    for cell in cells:
+        exec("\n".join(line for line in cell.splitlines() if not line.startswith("%")), namespace)
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_forecast_notebook_runs(generator, lang, tmp_path, monkeypatch):
+    """The example forecast notebook creates the demo campaign and a recorded earth fault with coil currents,
+    calibrates with the tests of the campaign from the register, checks, updates (node rule) and checks at the
+    recorded earth fault, forecasts at the busbar and behind the demo line; with a CSV time series it forecasts the
+    quantile, and it saves the model in the forecast folder."""
+    pytest.importorskip("IPython")
+    import matplotlib
+    import numpy as np
+    import pandas as pd
+    from groundfault import i18n
+    cells = _code(generator.forecast_notebook(lang, True))
+    monkeypatch.chdir(tmp_path)
+    shown = []
+    namespace = {"__name__": "notebook"}
+    try:
+        with matplotlib.rc_context():
+            _run_cells(cells[:2], namespace)                                    # setup and configuration
+            namespace.update(display=lambda *a, **k: shown.append(a[0]) if a else None)
+            _run_cells(cells[2:], namespace)
+            model, forecast = namespace["MODEL"], namespace["FORECAST"]
+            assert len(model.tests) == 3 and len(model.faults) == 1
+            assert [t["Z"] for t in namespace["TESTS"]] == [0.0, 2.5, 5.0]          # from the register
+            assert set(namespace["CROSS_CHECKS"]["mode"]) == {"loo", "pairwise", "chain"}
+            assert set(model.faults[0].current_method.values()) == {"node_rule"}   # coil currents in the demo
+            assert set(namespace["FAULT_CHECKS"]["mode"]) == {"fault_check"}
+            assert forecast is not None and len(forecast.currents) == 1 and forecast.line is None
+            assert len(namespace["FORECASTS"]) == 2 and len(set(namespace["FORECAST_TABLE"]["location"])) == 2
+            out = tmp_path / ("forecast" if lang == "en" else "05_Prognose")
+            assert out.is_dir() and namespace["OUT"].parent == out
+            saved = namespace["fc"].NetworkModel.load(str(namespace["path"]))
+            assert saved.names == model.names
+            # a transformer recording of the same test by a second recorder: its upstream impedance (key transformer)
+            from groundfault import Intervals, demo, evaluate, open_recording
+            cfg = str(tmp_path / "TR_0_10_000kHz.cfg")
+            w = demo.make_transformer_recording(cfg)
+            b = w["intervals"]
+            tr = evaluate(open_recording(cfg), Intervals(tuple(b["steady_state"]), tuple(b["pre_fault"]),
+                                                         tuple(b["post_fault"])))
+            folder = namespace["WORK_FOLDER"] / namespace["LAYOUT"].campaigns / namespace["TESTS"][0]["campaign"]
+            tr.save_json(namespace["LAYOUT"].result_path(folder, "TR_0_10_000kHz"))
+            namespace["TESTS"][0]["transformer"] = "TR_0_10_000kHz"
+            namespace["TESTS"][1]["transformer"] = "missing"
+            printed = []
+            namespace["print"] = lambda *a, **k: printed.append(" ".join(map(str, a)))
+            _run_cells([c for c in cells if "MODEL = fc.NetworkModel(NETWORK)" in c], namespace)
+            del namespace["print"]
+            first = namespace["MODEL"].tests[0]
+            assert any(e.Z_up is not None for e in first.orders.values())
+            assert all(e.Z_up is None for e in namespace["MODEL"].tests[1].orders.values())
+            name1 = namespace["MODEL"].tests[1].name
+            assert any(line.startswith("ℹ " + name1) and "missing" in line for line in printed)
+            # a check with another measurement: busbar voltages of one recording, fault current of another
+            namespace["CHECKS"] = [dict(campaign=namespace["TESTS"][2]["campaign"],
+                                        measurement=namespace["TESTS"][2]["measurement"], Z=5.0,
+                                        current=namespace["TESTS"][2]["measurement"], line=namespace["LINE"])]
+            _run_cells([c for c in cells if c.startswith("VERIFY = pd.DataFrame()")], namespace)
+            v = namespace["VERIFY"]
+            assert set(v["mode"]) == {"verify"} and (v[v.order != "I_H"].deviation_A < 0).any()  # line not in the test
+            lt = namespace["LINE_TABLE"]                 # the busbar voltages measure no line: the test was at the busbar
+            assert len(lt) and (lt["Z_measured_Ohm"] < 0.01 * lt["Z_line_Ohm"]).all()
+            assert set(namespace["LINE_MEASURED"]) == {lt["target"].iloc[0]}
+            # a time series of a power-quality measurement as a CSV file (semicolon, decimal comma)
+            rng = np.random.default_rng(3)
+            idx = pd.date_range("2026-02-01", periods=300, freq="10min")
+            df = pd.DataFrame({"U_H%d" % m: rng.uniform(0.5, 1.0, 300) * u for m, u in
+                               ((3, 30.0), (5, 250.0), (7, 130.0), (11, 40.0), (13, 30.0))}, index=idx)
+            csv = tmp_path / "pq.csv"
+            df.to_csv(csv, sep=";", decimal=",")
+            namespace["VOLTAGES"] = str(csv)
+            _run_cells([c for c in cells if c.startswith("FORECAST = FORECAST_TABLE = None")], namespace)
+            f = namespace["FORECAST"]
+            assert len(f.currents) == 300
+            t = namespace["FORECAST_TABLE"]
+            table = t[t["location"] == t["location"].iloc[0]].set_index("order")
+            assert table.loc["I_RES", "I_forecast_A"] == pytest.approx(float(f.IRES.quantile(0.95)))
+    finally:
+        i18n.set_language("de")                                                # the language of the test suite
+
+
+#: the limits of the notebook without an earth fault and their values in the published notebooks: not set
+WITHOUT_FAULT_LIMITS = {"MIN_HV_SHARE": None, "V0_RATIO": None, "FUNDAMENTAL_A": None, "LIMITS": ()}
+#: network data and assumptions of that notebook: not set in the templates, demo values in the example notebooks
+WITHOUT_FAULT_DATA = ("U_N", "U_LE", "I_C", "I_L", "D", "U_K", "S_RT", "S_K", "C_1", "R_X_UP", "R_X_HV", "VOLTAGES",
+                      "G_MAX", "G", "G_RANGE")
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+@pytest.mark.parametrize("example", [False, True])
+def test_without_fault_notebook_contains_no_limits_or_network_data(generator, lang, example):
+    """The limits of the notebook without an earth fault are not set; network data, harmonic voltages and the
+    assumptions about the damping are not set in the templates and marked demo values in the example notebooks."""
+    cells = _code(generator.without_fault_notebook(lang, example))
+    config = [c for c in cells if "MIN_HV_SHARE  =" in c]
+    assert len(config) == 1
+    values = {}
+    for line in config[0].splitlines():
+        m = re.match(r"([A-Z_0-9]+)\s*=\s*([^#]+?)\s*(#.*)?$", line)
+        if m:
+            values[m.group(1)] = m.group(2)
+    assert {k: eval(values[k]) for k in WITHOUT_FAULT_LIMITS} == WITHOUT_FAULT_LIMITS
+    if example:
+        assert re.search(r"network data \(demo values\)|Netzdaten \(Demo-Werte\)", config[0])
+        assert re.search(r"V1 and V2 \(demo values\)|V1 und V2 \(Demo-Werte\)", config[0])
+        assert re.search(r"^VOLTAGES\s*=.*#\s*(demo values|Demo-Werte)", config[0], re.M)
+    else:
+        assert all(values[k] == "None" for k in WITHOUT_FAULT_DATA), {k: values[k] for k in WITHOUT_FAULT_DATA}
+        assert values["RECORDINGS"] == "[]" and values["REFERENCE"] == "None"
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_without_fault_notebook_runs(generator, lang, tmp_path, monkeypatch):
+    """The example notebook without an earth fault creates a measuring day of undisturbed transformer recordings,
+    finds the angle error of the current transformers from the reference clamp, evaluates every recording, pools the
+    reliable ones and shows V0 to V3 side by side; with a limit for the share of the HV-driven variation only the
+    recordings driven from the HV side are pooled, and with V0_RATIO the rule column appears."""
+    pytest.importorskip("IPython")
+    import matplotlib
+    from groundfault import i18n
+    cells = _code(generator.without_fault_notebook(lang, True))
+    monkeypatch.chdir(tmp_path)
+    shown = []
+    namespace = {"__name__": "notebook"}
+    try:
+        with matplotlib.rc_context():
+            _run_cells(cells[:2], namespace)
+            namespace.update(display=lambda *a, **k: shown.append(a[0]) if a else None)
+            _run_cells(cells[2:], namespace)
+            assert len(namespace["FILES"]) == 6
+            ct = namespace["CT_TABLE"].set_index("order")
+            assert ct.loc[5, "angle_deg"] == pytest.approx(2.0, abs=0.05)
+            assert ct.loc[7, "angle_deg"] == pytest.approx(2.8, abs=0.05)
+            table, pooled = namespace["V3_TABLE"], namespace["V3_POOLED"]
+            assert len(table) == 12 and table.natural_sequence.all() and table.attrs["sign"] == 1.0
+            assert set(namespace["Z_MV"]) == {5, 7} and (pooled.recordings >= 4).all()
+            comparison = namespace["COMPARISON"]
+            for c in ("V0_A", "V1_A", "V2_A", "V2_envelope_A", "V3_A"):
+                assert c in comparison.columns and comparison[c].notna().all()
+            assert list(comparison.order).count("I_H") == 3 and "V0_rule_A" not in comparison.columns
+            out = tmp_path / ("forecast" if lang == "en" else "05_Prognose")
+            assert namespace["OUT"].parent == out and len(list(namespace["OUT"].glob("*_without_fault_*.csv"))) == 5
+            # with limits: only the recordings driven from the HV side are pooled; the rule column of V0
+            namespace.update(MIN_HV_SHARE=0.25, V0_RATIO=0.8, FUNDAMENTAL_A=40.0, LIMITS=(60.0,))
+            _run_cells([c for c in cells if "mv_network_series" in c or "estimates_without_fault" in c], namespace)
+            pooled = namespace["V3_POOLED"].set_index("order")
+            assert pooled.loc[5, "recordings"] == 4 and pooled.loc[7, "recordings"] == 3
+            low = namespace["V3_TABLE"]
+            assert not low[low.hv_share < 0.25].reliable.any()
+            comparison = namespace["COMPARISON"]
+            assert "V0_rule_A" in comparison.columns
+            z = {m: complex(1 / complex(g, m * 2 * 3.141592653589793 * 50.0 * 65e-6)) for m, g in ((5, 0.07), (7, 0.09))}
+            for m, zm in z.items():
+                assert abs(namespace["Z_MV"][m] / zm - 1) < 0.06               # the truth of the demo
+    finally:
+        i18n.set_language("de")                                                # the language of the test suite
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_without_fault_template_runs_without_data(generator, lang, tmp_path, monkeypatch, capsys):
+    """The template without network data, voltages and recordings runs through, says what is missing and writes
+    nothing – no empty folder in the forecast folder."""
+    pytest.importorskip("IPython")
+    import matplotlib
+    from groundfault import i18n
+    cells = _code(generator.without_fault_notebook(lang, False))
+    monkeypatch.chdir(tmp_path)
+    namespace = {"__name__": "notebook"}
+    try:
+        with matplotlib.rc_context():
+            _run_cells(cells[:2], namespace)
+            namespace.update(display=lambda *a, **k: None)
+            _run_cells(cells[2:], namespace)
+        assert namespace["TABLES"] == {} and namespace["COMPARISON"] is None and namespace["V3_TABLE"] is None
+        assert not (tmp_path / ("forecast" if lang == "en" else "05_Prognose")).exists()
+        out = capsys.readouterr().out
+        assert ("Nothing to export" if lang == "en" else "Nichts zu exportieren") in out
+    finally:
+        i18n.set_language("de")                                                # the language of the test suite

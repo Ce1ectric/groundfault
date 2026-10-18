@@ -5,8 +5,9 @@ Usage::
 
     python tools/make_notebooks.py --lang en --out notebooks/en --example
     python tools/make_notebooks.py --lang de --out <folder> [--templates-only] [--overwrite]
+    python tools/make_notebooks.py --lang de --out <folder> --forecast [--forecast-only]
 
-Two notebooks are written per language:
+The evaluation notebooks, per language:
 
 * ``evaluate_measurement.ipynb`` / ``Messung_auswerten.ipynb`` – one recording: channel roles, raw-data diagnostics,
   RMS trend, evaluation, station and earthing measurement (groundmeas), signal explorer, checks, export;
@@ -14,12 +15,25 @@ Two notebooks are written per language:
   equivalent-source method, residual current at the earthing impedance, resistive approach, stations, report
   tables and figures, entries in groundmeas.
 
+The forecast notebooks of the optional part ``groundfault.forecast`` – only with ``--forecast`` (or
+``--forecast-only``), in their own folder ``forecast/`` (German ``Prognose/``):
+
+* ``forecast_without_fault.ipynb`` / ``Prognose_ohne_Erdschluss.ipynb`` – the estimates without an earth fault (V0
+  to V3): network data, resonance of the busbar, the MV network from undisturbed recordings of the transformer node
+  (angle error of the current transformers from a reference clamp, the share of the HV-driven variation per recording,
+  pooled estimate), the methods side by side;
+* ``network_model_forecast.ipynb`` / ``Netzmodell_Prognose.ipynb`` – the network model of a busbar from the staged
+  fault tests of one or more campaigns (V4 to V7): calibration, checks between the tests, update and checks with
+  recorded earth faults (node rule with coil currents), checks with other measurements (e.g. a test in the network),
+  forecast of the harmonic residual current at the busbar or behind a line, model file.
+
 The code cells are identical in both languages (English names); comments, explanations and printed texts follow
 the language. ``--example`` fills the configuration for the demo campaign (``groundfault.demo.make_campaign``),
-which the notebooks create on the first run – they then run without any measurement data. Without ``--example`` the
-configuration contains placeholders. Unchanged reference copies (``templates/*_DEFAULT.ipynb`` or
-``Vorlagen/*_DEFAULT.ipynb``) are always written; working copies are written only if they do not exist yet (own
-changes are kept) unless ``--overwrite`` is given.
+which the notebooks create on the first run (the forecast notebook adds a recorded earth fault, the notebook
+without an earth fault a measuring day of undisturbed transformer recordings) – they then run without any measurement
+data. Without ``--example`` the configuration contains placeholders. Unchanged reference
+copies (``templates/*_DEFAULT.ipynb`` or ``Vorlagen/*_DEFAULT.ipynb``) are always written; working copies are written
+only if they do not exist yet (own changes are kept) unless ``--overwrite`` is given.
 """
 import argparse
 import os
@@ -28,6 +42,10 @@ import nbformat as nbf
 
 NAMES = {"en": ("evaluate_measurement", "evaluate_campaign", "templates"),
          "de": ("Messung_auswerten", "Kampagne_auswerten", "Vorlagen")}
+FORECAST_NAMES = {"en": ("network_model_forecast", "forecast"), "de": ("Netzmodell_Prognose", "Prognose")}
+"""Forecast notebook (optional part): file name and folder per language."""
+WITHOUT_FAULT_NAMES = {"en": "forecast_without_fault", "de": "Prognose_ohne_Erdschluss"}
+"""Forecast notebook without an earth fault (optional part, in the folder of the forecast notebook)."""
 
 
 def md(text):
@@ -979,9 +997,12 @@ data are not read again. Reference copy: `templates/evaluate_campaign_DEFAULT.ip
    with Z).
 2. **Equivalent-source method**: active two-terminal equivalent per harmonic with a common angle reference
    (U_L1-L2), normalization of the source fluctuation to the voltage level before/after the fault, two estimators in
-   comparison, pairwise solution of two measurements, forecast error, jackknife and Monte Carlo uncertainty.
-3. **Residual current at Z_E** with scaling to the 95 % quantile of a PQ measurement and your limits of the residual
-   current; **resistive approach** (after the VDE Impuls on the residual earth-fault current).
+   comparison, pairwise solution of two measurements, forecast error, jackknife and Monte Carlo uncertainty – and the
+   **measured source** (U_q = pre-fault voltage of the faulted phase, Z_q from the tests), which carries beyond the
+   tested additional impedances.
+3. **Residual current at Z_E** with the measured source (or the fitted one, `SOURCE`), the other one for comparison,
+   scaling to the 95 % quantile of a PQ measurement and your limits of the residual current; **resistive approach**
+   (after the VDE Impuls on the residual earth-fault current).
 4. **Stations** – earth potential rise and touch voltage per frequency (direct and fault-related), comparison with
    the earthing measurements from **groundmeas**, **reduction factor** (per harmonic and RMS value) and – with PEN
    currents – current into the **LV network** and Z_E,LV with the parallel check.
@@ -996,9 +1017,12 @@ die Rohdaten werden nicht erneut gelesen. Ausgangsfassung: `Vorlagen/Kampagne_au
 1. **Übersicht und Konsistenz** der Messungen (gleiche Grundschwingung, Spulenströme, Oberschwingungen sinken mit Z).
 2. **Ersatzquellenverfahren**: aktiver Zweipol je Harmonische mit gemeinsamem Winkelbezug (U_L1-L2), Normierung der
    Quellschwankung auf den Spannungspegel vor/nach dem Fehler, zwei Schätzverfahren im Vergleich, paarweise Lösung aus
-   je zwei Messungen, Prognosefehler, Jackknife und Monte-Carlo-Unsicherheit.
-3. **Erdschlussreststrom an Z_E** mit Skalierung auf das 95-%-Quantil einer PQ-Messung und den eigenen Grenzwerten
-   des Reststroms; **resistiver Ansatz** (nach dem VDE Impuls zum Erdschluss-Reststrom).
+   je zwei Messungen, Prognosefehler, Jackknife und Monte-Carlo-Unsicherheit – und die **gemessene Quelle**
+   (U_q = Vorfehlerspannung des Fehlerleiters, Z_q aus den Versuchen), die über die Zusatzimpedanzen der Versuche
+   hinaus trägt.
+3. **Erdschlussreststrom an Z_E** mit der gemessenen Quelle (oder der geschätzten, `SOURCE`), die andere zum
+   Vergleich, Skalierung auf das 95-%-Quantil einer PQ-Messung und den eigenen Grenzwerten des Reststroms;
+   **resistiver Ansatz** (nach dem VDE Impuls zum Erdschluss-Reststrom).
 4. **Station** – Erdungs- und Berührungsspannung je Frequenz (direkt und fehlerbedingt), Vergleich mit den
    Erdungsmessungen aus **groundmeas**, **Reduktionsfaktor** (je Harmonische und effektiv) und – mit PEN-Strömen –
    Strom ins **Ortsnetz** und Z_E,Ortsnetz mit Parallelschaltungsprüfung.
@@ -1014,6 +1038,8 @@ ORDERS        = "auto"             # "auto" = odd orders with ≥ 0.5 A in ≥ 2
 NORMALIZATION = "complex"          # "complex" (magnitude and phase) | "magnitude" | None
 LEVEL         = "mean"             # source level: "pre_fault" | "post_fault" | "mean"
 METHOD        = "equation_error"   # "equation_error" (linear least squares) | "output_error" (nonlinear)
+SOURCE        = "measured"         # source of the result I_RES(Z_E): "measured" (pre-fault voltage) | "fitted" (from the currents)
+SOURCE_IMPEDANCE = "median"        # Z_q of the measured source: "median" over the tests | "smallest" (test without additional impedance, the others check it)
 Z_E           = ''' + z_e + '''
 Z_E_MAX       = 10.0               # end of the axis of the figure I_RES(Z_E)
 IG_CHOICE     = "max"              # fundamental component: "max" (conservative) | "median" | a number in A
@@ -1033,6 +1059,8 @@ U_TP              = None    # permissible touch voltage U_Tp in V (resistive app
 F_FACTOR          = None    # factor F of the permissible earth potential rise F·U_Tp (as U_TP)
 REFERENCE_CURRENT = None    # reference current in A for the reduction factor (None = largest limit of the result file)
 UNCERTAINTY_I     = 0.0     # measurement-uncertainty margin m_I of currents for I_RES at Z_E: I·(1 + m_I) (0.0 = none)
+LOO_LIMIT_PCT     = None    # leave-one-out check: permissible deviation in % of every test from the model of the others (None = without assessment)
+LOO_LIMIT_A       = None    # … and in A, for the small currents of the higher orders (within one of the two = passed; None = not used)
 PQ_SAFETY_FACTOR  = 1.0     # factor on the 95 % quantiles of the PQ measurement (1.0 = none)
 R_TYPICAL         = None    # range (low, high) of the reduction factor at 50 Hz you expect, e.g. from your experience
 
@@ -1056,6 +1084,8 @@ ORDERS        = "auto"             # "auto" = ungerade Ordnungen mit ≥ 0,5 A i
 NORMALIZATION = "complex"          # "complex" (Betrag + Phase) | "magnitude" (nur Betrag) | None
 LEVEL         = "mean"             # Quellenpegel: "pre_fault" (Vorfehler) | "post_fault" (Nachfehler) | "mean" (Mittel)
 METHOD        = "equation_error"   # "equation_error" (Gleichungsfehler, linear) | "output_error" (Ausgangsfehler, nichtlinear)
+SOURCE        = "measured"         # Quelle des Ergebnisses I_RES(Z_E): "measured" (Vorfehlerspannung) | "fitted" (aus den Strömen)
+SOURCE_IMPEDANCE = "median"        # Z_q der gemessenen Quelle: "median" über die Versuche | "smallest" (Versuch ohne Zusatzimpedanz, die übrigen prüfen)
 Z_E           = ''' + z_e + '''
 Z_E_MAX       = 10.0               # Achsenende im Diagramm I_RES(Z_E)
 IG_CHOICE     = "max"              # Grundschwingung: "max" (konservativ) | "median" | Zahl in A
@@ -1075,6 +1105,8 @@ U_TP              = None    # zulässige Berührungsspannung U_Tp in V (resistiv
 F_FACTOR          = None    # Faktor F der zulässigen Erdungsspannung F·U_Tp (wie U_TP)
 REFERENCE_CURRENT = None    # Bezugsstrom in A für den Reduktionsfaktor (None = größter Grenzwert der Ergebnisdatei)
 UNCERTAINTY_I     = 0.0     # Messunsicherheitszuschlag m_I der Ströme für I_RES an Z_E: I·(1 + m_I) (0.0 = keiner)
+LOO_LIMIT_PCT     = None    # Leave-one-out-Prüfung: zulässige Abweichung in % jedes Versuchs vom Modell der übrigen (None = ohne Bewertung)
+LOO_LIMIT_A       = None    # … und in A, für die kleinen Ströme der höheren Ordnungen (innerhalb einer der beiden = erfüllt; None = nicht genutzt)
 PQ_SAFETY_FACTOR  = 1.0     # Faktor auf die 95-%-Quantile der PQ-Messung (1.0 = keiner)
 R_TYPICAL         = None    # erwarteter Bereich (unten, oben) des Reduktionsfaktors bei 50 Hz, z. B. aus Erfahrung
 
@@ -1151,8 +1183,17 @@ normalized – their current only arises in the earth fault.
 they disagree strongly, U_q and Z_q are individually uncertain (the hint says whether the forecast within the measured
 range is stable nevertheless).
 **Thevenin check:** physically U_q is the pre-fault voltage of the faulted phase → column `Uq_ref_faulted_phase` ≈ 1 and
-`Uq_angle_ref_faulted_phase_deg` ≈ 0°. **Sensitivity** `dZq_rel_per_1pct`: relative change of Z_q for an error of 1 %
-(or 0.5°) of one current – above 0.1 ill-conditioned.
+`Uq_angle_ref_faulted_phase_deg` ≈ 0°. A deviation of more than 10 % or 10° shows that the fitted U_q has absorbed
+changes of the network between the tests: U_q is the slope of 1/I over Z, poorly determined when the additional
+impedances are small compared with |Z_q|. Within the tested range the model current stays reliable, beyond it not.
+**Sensitivity** `dZq_rel_per_1pct`: relative change of Z_q for an error of 1 % (or 0.5°) of one current – above 0.1
+ill-conditioned.
+**Measured source:** U_q as measured – the pre-fault voltage of the faulted phase – and Z_q = U_q/I_k − Z_k from the
+tests (`SOURCE_IMPEDANCE`: the median over the tests or the test without additional impedance); one test suffices, every
+further test is checked against the model of the others (leave-one-out, `LOO_LIMIT_PCT`). The table of the single
+tests shows how much the network changed between them, the comparison where the two sources agree (tested range) and
+where not. Orders of the zero sequence keep the fitted source – their source
+arises in the fault. `SOURCE` selects the result of the checks and of section 4; the other source is drawn dashed.
 ''', '''
 ## 3 · Ersatzquellenverfahren (aktiver Zweipol je Harmonische)
 
@@ -1164,55 +1205,114 @@ Erdschluss.
 Stromabweichung). Liegen beide weit auseinander, sind U_q und Z_q einzeln unsicher (der Hinweis nennt, ob die
 Vorhersage im Messbereich trotzdem stabil ist).
 **Thevenin-Kontrolle:** Physikalisch ist U_q die Vorfehlerspannung des Fehlerleiters → Spalte
-`Uq_bez_Fehlerleiter` ≈ 1 und `Uq_Winkel_bez_Fehlerleiter_deg` ≈ 0°. **Empfindlichkeit**: relative Änderung von Z_q
-bei 1 % (bzw. 0,5°) Fehler eines Stroms – über 0,1 schlecht konditioniert.
+`Uq_bez_Fehlerleiter` ≈ 1 und `Uq_Winkel_bez_Fehlerleiter_deg` ≈ 0°. Mehr als 10 % bzw. 10° Abweichung zeigen, dass
+das geschätzte U_q Änderungen des Netzes zwischen den Versuchen aufgenommen hat: U_q ist die Steigung von 1/I über Z,
+schlecht bestimmt, wenn die Zusatzimpedanzen klein gegen |Z_q| sind. Im Bereich der Versuche bleibt der Modellstrom
+belastbar, darüber hinaus nicht. **Empfindlichkeit**: relative Änderung von Z_q bei 1 % (bzw. 0,5°) Fehler eines
+Stroms – über 0,1 schlecht konditioniert.
+**Gemessene Quelle:** U_q wie gemessen – die Vorfehlerspannung des Fehlerleiters – und Z_q = U_q/I_k − Z_k aus den
+Versuchen (`SOURCE_IMPEDANCE`: der Median über die Versuche oder der Versuch ohne Zusatzimpedanz); ein Versuch genügt,
+jeder weitere wird mit dem Modell der übrigen geprüft (Leave-one-out, `LOO_LIMIT_PCT`). Die Tabelle der einzelnen
+Versuche zeigt, wie stark sich das Netz zwischen ihnen geändert hat, der Vergleich, wo beide Quellen übereinstimmen
+(Messbereich) und wo nicht. Ordnungen des Nullsystems behalten die
+geschätzte Quelle – ihre Quelle entsteht im Fehler. `SOURCE` wählt das Ergebnis der Kontrollen und von Abschnitt 4;
+die andere Quelle ist gestrichelt eingezeichnet.
 ''')),
-        code('''SERIES = MC = None                 ''' + t("# MC: Monte Carlo uncertainty (section 3, checks)", "# MC: Monte-Carlo-Unsicherheit (Abschnitt 3, Kontrollen)") + '''
+        code('''SERIES = MEASURED = MAIN = OTHER = MC = None   ''' + t("# fitted source, measured source, result (SOURCE), comparison; MC: Monte Carlo (checks)",
+                                                         "# geschätzte Quelle, gemessene Quelle, Ergebnis (SOURCE), Vergleich; MC: Monte Carlo (Kontrollen)") + '''
+SOURCE_TEXT = {"measured": "''' + t("measured source", "gemessene Quelle") + '''", "fitted": "''' + t("fitted source", "geschätzte Quelle") + '''"}
 entries = [dict(file=str(result_file(m["measurement"])), Z=m["Z"], name=m["name"])
            for m in MEASUREMENTS if m["Z"] is not None and m["name"] in RESULTS]
-if len(entries) >= 2:
-    SERIES = equivalent_source.fit_equivalent_source(equivalent_source.load_series(entries), orders=ORDERS,
-                                                     normalization=NORMALIZATION, reference=LEVEL, method=METHOD)
-    show(SERIES.measurements_table())
+if entries:
+    legacy.check_option("SOURCE", SOURCE, ("measured", "fitted"))
+    legacy.check_option("SOURCE_IMPEDANCE", SOURCE_IMPEDANCE, ("median", "smallest"))
+    TESTS = equivalent_source.load_series(entries)
+    if len({complex(e["Z"]) for e in entries}) >= 2:
+        SERIES = equivalent_source.fit_equivalent_source(TESTS, orders=ORDERS, normalization=NORMALIZATION,
+                                                         reference=LEVEL, method=METHOD)
+        MEASURED = equivalent_source.measured_source(SERIES, impedance=SOURCE_IMPEDANCE)
+    else:                              ''' + t("# one additional impedance: no fitted source, the measured source suffices",
+                                         "# eine Zusatzimpedanz: keine geschätzte Quelle, die gemessene genügt") + '''
+        MEASURED = equivalent_source.measured_source(TESTS, impedance=SOURCE_IMPEDANCE, orders=ORDERS, reference=LEVEL)
+        print("''' + t("ℹ One additional impedance only: the fitted source needs two – result with the measured source.",
+                       "ℹ Nur eine Zusatzimpedanz: die geschätzte Quelle braucht zwei – Ergebnis mit der gemessenen Quelle.") + '''")
+    MAIN, OTHER = (MEASURED, SERIES) if SOURCE == "measured" or SERIES is None else (SERIES, MEASURED)
+    show(MAIN.measurements_table())
     display(Markdown("''' + t("**Source level before/after the fault** (drift within one measurement = quality of the normalization)",
                               "**Quellenpegel vor/nach dem Fehler** (Drift innerhalb einer Messung = Güte der Normierung)") + '''"))
-    show(SERIES.level_table(LEVEL))
-    display(Markdown("''' + t("**Two-terminal equivalents per order**", "**Zweipol-Parameter je Ordnung**") + '''"))
-    show(SERIES.source_table())
-    for h in SERIES.hints:
+    show(MAIN.level_table(LEVEL))
+    if SERIES is not None:
+        display(Markdown("''' + t("**Fitted source: two-terminal equivalents per order** (Thevenin check ≈ 1∠0°)",
+                                  "**Geschätzte Quelle: Zweipol-Parameter je Ordnung** (Thevenin-Kontrolle ≈ 1∠0°)") + '''"))
+        show(SERIES.source_table())
+        for h in SERIES.hints:
+            print("ℹ", h)
+        for m, F in SERIES.fits.items():
+            for h in F.hints:
+                print("ℹ ''' + t("harmonic %d:", "%d. Harmonische:") + ''' %s" % (m, h))
+    display(Markdown("''' + t("**Measured source** – U_q = pre-fault voltage of the faulted phase; Z_q of every single test (the spread is the change of the network between the tests) and of the series",
+                              "**Gemessene Quelle** – U_q = Vorfehlerspannung des Fehlerleiters; Z_q jedes einzelnen Versuchs (die Streuung ist die Änderung des Netzes zwischen den Versuchen) und der Reihe") + '''"))
+    show(MEASURED.single_test_table())
+    show(MEASURED.source_table()[["order", "f_Hz", "sequence", "method", "Uq_V", "Rq_Ohm", "Xq_Ohm", "Zq_Ohm",
+                                  "residual_pct", "Rq_fixed"]])
+    for h in (MEASURED.hints[-1:] if SERIES is not None else MEASURED.hints):    ''' + t("# with a fitted series: only the new hint",
+                                                                                       "# mit geschätzter Reihe: nur der neue Hinweis") + '''
         print("ℹ", h)
-    for m, F in SERIES.fits.items():
-        for h in F.hints:
+    for m, F in MEASURED.fits.items():
+        for h in (F.hints if F.method == "measured" else F.hints[-1:]):     ''' + t("# kept fitted orders: only the new hint",
+                                                                                    "# beibehaltene geschätzte Ordnungen: nur der neue Hinweis") + '''
             print("ℹ ''' + t("harmonic %d:", "%d. Harmonische:") + ''' %s" % (m, h))
+    if SERIES is not None:
+        display(Markdown("''' + t("**Measured against fitted source** – current per order and I_RES within and beyond the tested range (`fitted_to_measured`; `interpolation` = within the tested additional impedances)",
+                                  "**Gemessene gegen geschätzte Quelle** – Strom je Ordnung und I_RES im Messbereich und darüber hinaus (`geschaetzt_zu_gemessen`; `Interpolation` = im Bereich der Zusatzimpedanzen der Versuche)") + '''"))
+        zmin, zmax = SERIES.Z_range
+        show(equivalent_source.compare_sources(MEASURED, SERIES, [0.0, zmax, 2 * zmax]
+                                               + ([Z_E] if Z_E is not None and Z_E not in (0.0, zmax, 2 * zmax) else []),
+                                               IG=IG_CHOICE))
 else:
-    print("''' + t("The equivalent-source method needs at least two substation measurements with different additional impedances.",
-                   "Für das Ersatzquellenverfahren sind mindestens zwei UW-Messungen mit verschiedener Zusatzimpedanz nötig.") + '''")'''),
+    print("''' + t("The equivalent-source method needs at least one substation measurement with its additional impedance Z (the fitted source two different ones).",
+                   "Für das Ersatzquellenverfahren ist mindestens eine UW-Messung mit ihrer Zusatzimpedanz Z nötig (für die geschätzte Quelle zwei verschiedene).") + '''")'''),
         md(t("### Checks: pairwise solution, forecast per measurement, jackknife, Monte Carlo",
              "### Kontrollen: paarweise Lösung, Prognose je Messung, Jackknife, Monte Carlo")),
-        code('''if SERIES is not None:
-    show(SERIES.pairwise_table())
-    show(SERIES.forecast_table())
+        code('''if MAIN is not None:
+    if SERIES is not None:
+        display(Markdown("''' + t("**Fitted source: solution of every pair of tests**", "**Geschätzte Quelle: Lösung aus je zwei Versuchen**") + '''"))
+        show(SERIES.pairwise_table())
+    display(Markdown(i18n.format_text("''' + t("**Result ({}): model against measurement per test, jackknife at Z_E**",
+                                               "**Ergebnis ({}): Modell gegen Messung je Versuch, Jackknife an Z_E**") + '''",
+                                      SOURCE_TEXT[MAIN.settings["source"]])))
+    show(MAIN.forecast_table())
+    display(Markdown("''' + t("**Leave-one-out: every test from the model of the other tests** (a large deviation: the network changed between the tests)",
+                              "**Leave-one-out: jeder Versuch aus dem Modell der übrigen** (große Abweichung: das Netz hat sich zwischen den Versuchen geändert)") + '''"))
+    LOO = MAIN.loo_table(LOO_LIMIT_PCT, LOO_LIMIT_A)
+    show(LOO)
+    BAD = LOO["within_limit"].eq(False) if "within_limit" in LOO else LOO["order"].isna()   ''' + t("# None: not determinable", "# None: nicht bestimmbar") + '''
+    if BAD.any():
+        print(i18n.format_text("''' + t("⚠ Leave-one-out: {} of {} values outside the permissible deviation ({}) – the network changed between the tests",
+                                         "⚠ Leave-one-out: {} von {} Werten außerhalb der zulässigen Abweichung ({}) – das Netz hat sich zwischen den Versuchen geändert") + '''",
+                               int(BAD.sum()), int(LOO["within_limit"].notna().sum()),
+                               " / ".join(i18n.format_text(f, v) for f, v in (("±{:g} %", LOO_LIMIT_PCT), ("±{:g} A", LOO_LIMIT_A)) if v is not None)))
     if Z_E is not None:
-        show(SERIES.jackknife_table(Z_E))
+        show(MAIN.jackknife_table(Z_E))
     display(Markdown("''' + t("**Residual current at the measured impedances** – model (with the level and I_G of each measurement, rest = orders not fitted) against the measured true RMS value",
                               "**Reststrom an den Messimpedanzen** – Modell (mit Pegel und I_G der jeweiligen Messung, Rest = nicht gefittete Ordnungen) gegen den gemessenen Echt-Effektivwert") + '''"))
-    show(SERIES.check_table())
+    show(MAIN.check_table())
     if Z_E is None:
         print("''' + t("ℹ Jackknife and Monte Carlo at Z_E skipped – Z_E is not set (section 1).",
                        "ℹ Jackknife und Monte Carlo an Z_E übersprungen – Z_E ist nicht gesetzt (Abschnitt 1).") + '''")
     else:
-        MC = equivalent_source.monte_carlo(SERIES, Z_E, n=2000)
+        MC = equivalent_source.monte_carlo(MAIN, Z_E, n=2000)
         print(i18n.format_text("''' + t("Monte Carlo (1 %/0.5° current, 2 % Z, model residual): I_RES(Z_E = {:g} Ω) P5 … P95 = {:.1f} … {:.1f} A (median {:.1f} A)",
                                          "Monte Carlo (1 %/0,5° Strom, 2 % Z, Modellresiduum): I_RES(Z_E = {:g} Ω) P5 … P95 = {:.1f} … {:.1f} A (Median {:.1f} A)") + '''",
                                Z_E, MC["IRES"][5], MC["IRES"][95], MC["IRES"][50]))
-        zmin, zmax = SERIES.Z_range
+        zmin, zmax = MAIN.Z_range
         print(i18n.format_text("''' + t("Z_E lies {} the measured range {:.1f} … {:.1f} Ω", "Z_E liegt {} des Messbereichs {:.1f} … {:.1f} Ω") + '''",
-            "''' + t("within", "innerhalb") + '''" if zmin <= Z_E <= zmax else "''' + t("OUTSIDE (extrapolation)", "AUSSERHALB (Extrapolation)") + '''", zmin, zmax))
-    interactive.source_fit(SERIES, Z_E).show()'''),
+            "''' + t("within", "innerhalb") + '''" if zmin <= abs(Z_E) <= zmax else "''' + t("OUTSIDE (extrapolation)", "AUSSERHALB (Extrapolation)") + '''", zmin, zmax))
+    interactive.source_fit(MAIN, Z_E, comparison=OTHER).show()'''),
         md(t("## 4 · Residual current at the earthing impedance and resistive approach",
              "## 4 · Erdschlussreststrom an der Erdungsimpedanz und resistiver Ansatz")),
         code('''SCALING = None
-if SERIES is not None:
+if MAIN is not None:
     if U95 or THD95_PERCENT:           ''' + t("# U95 per order; THD95_PERCENT alone for all orders, with U95 for the orders U95 cannot scale",
                                          "# U95 je Ordnung; THD95_PERCENT allein für alle Ordnungen, mit U95 für die, die U95 nicht skaliert") + '''
         SCALING = dict(safety_factor=PQ_SAFETY_FACTOR)
@@ -1228,10 +1328,10 @@ if SERIES is not None:
         print("''' + t("ℹ Residual current at Z_E skipped – Z_E is not set (section 1); the figure shows I_RES over Z_E.",
                        "ℹ Reststrom an Z_E übersprungen – Z_E ist nicht gesetzt (Abschnitt 1); das Diagramm zeigt I_RES über Z_E.") + '''")
     else:
-        r = equivalent_source.ires_at_impedance(SERIES, Z_E, IG=IG_CHOICE, uncertainty_I=UNCERTAINTY_I, **(SCALING or {}))
+        r = equivalent_source.ires_at_impedance(MAIN, Z_E, IG=IG_CHOICE, uncertainty_I=UNCERTAINTY_I, **(SCALING or {}))
         margin = UNCERTAINTY_I > 0             ''' + t("# the value with the margin only if you set one", "# den Wert mit Zuschlag nur, wenn einer gesetzt ist") + '''
-        print(i18n.format_text("I_G = {:.2f} A | I_H(Z_E) = {:.2f} A (''' + t("rest", "davon Rest") + ''' {:.2f} A) | I_RES(Z_E = {:g} Ω) = {:.2f} A",
-                               r["IG"], r["IH"], r["IH_rest"], Z_E, r["IRES"])
+        print(i18n.format_text("{}: I_G = {:.2f} A | I_H(Z_E) = {:.2f} A (''' + t("rest", "davon Rest") + ''' {:.2f} A) | I_RES(Z_E = {:g} Ω) = {:.2f} A",
+                               SOURCE_TEXT[MAIN.settings["source"]], r["IG"], r["IH"], r["IH_rest"], Z_E, r["IRES"])
               + (i18n.format_text(" | ''' + t("with the measurement-uncertainty margin", "mit Messunsicherheitszuschlag") + ''': {:.2f} A", r["IRES_assessed"]) if margin else ""))
         if SCALING:
             print(i18n.format_text("''' + t("scaled", "skaliert") + ''': I_H = {:.2f} A → I_RES = {:.2f} A", r["IH_scaled"], r["IRES_scaled"])
@@ -1240,10 +1340,15 @@ if SERIES is not None:
                                                                          for m, k in r["factors"].items())))
         for h in r["hints"]:
             print("ℹ", h)
+        if OTHER is not None:
+            o = equivalent_source.ires_at_impedance(OTHER, Z_E, IG=IG_CHOICE, **(SCALING or {}))
+            print(i18n.format_text("''' + t("comparison", "Vergleich") + ''' {}: I_H(Z_E) = {:.2f} A | I_RES(Z_E) = {:.2f} A",
+                                   SOURCE_TEXT[OTHER.settings["source"]], o["IH"], o["IRES"])
+                  + (i18n.format_text(" | ''' + t("scaled", "skaliert") + ''': I_RES = {:.2f} A", o["IRES_scaled"]) if SCALING else ""))
     if not LIMITS:
         print("''' + t("ℹ No limit lines in the figures I_RES(Z_E) – LIMITS is not set (section 1).",
                        "ℹ Keine Grenzwertlinien in den Diagrammen I_RES(Z_E) – LIMITS ist nicht gesetzt (Abschnitt 1).") + '''")
-    interactive.ires_ze(SERIES, Z_E_MAX, LIMITS, SCALING).show()
+    interactive.ires_ze(MAIN, Z_E_MAX, LIMITS, SCALING, comparison=OTHER).show()
 legacy.check_keys("RESISTIVE", RESISTIVE, ("U_thd95_V", "from_ll", "R_E_max", "R1_km", "R0_km", "r", "I_res_max"))
 NOT_SET = [k for k in ("U_thd95_V", "R_E_max", "R1_km", "R0_km") if RESISTIVE.get(k) is None]
 if RESISTIVE.get("I_res_max") is None:                ''' + t("# otherwise I_RES,max = F·U_Tp/(r·R_E,max)", "# sonst I_RES,max = F·U_Tp/(r·R_E,max)") + '''
@@ -1374,7 +1479,7 @@ PDF/SVG/PNG.
                                                    "# Namen in Datei- und Tabellennamen: Kleinbuchstaben, Buchstaben/Ziffern/_ (wie in den Berichtstabellen)") + '''
 OUT = CAMPAIGN_FOLDER / LAYOUT.results / ("campaign" if LAYOUT.language == "en" else "Kampagne")
 FIG = CAMPAIGN_FOLDER / LAYOUT.figures / ("campaign" if LAYOUT.language == "en" else "Kampagne")
-TABLES = report.report_tables(RESULTS, series=SERIES, Z_E=Z_E)
+TABLES = report.report_tables(RESULTS, series=MAIN, Z_E=Z_E, comparison=OTHER)
 TABLES["overview"] = campaign.overview(RESULTS)
 for n, e in STATIONS.items():                     ''' + t("# station: per frequency and ratio to the earthing measurement", "# Station: frequenzselektiv und Verhältnis zur Erdungsmessung") + '''
     TABLES["station_frequency_" + slug(n)] = e.table("station_frequency")
@@ -1411,11 +1516,12 @@ sub_results = [RESULTS[m["name"]] for m in MEASUREMENTS if m["Z"] is not None an
 if sub_results:
     f = report.spectrum_comparison(sub_results, [m["name"] for m in MEASUREMENTS if m["Z"] is not None and m["name"] in RESULTS])
     figures += report.save(f, str(FIG / "fault_current_spectrum_comparison"), EXPORT_FORMATS, close=True)
-if SERIES is not None:
-    figures += report.save(report.source_fit(SERIES, Z_E=Z_E), str(FIG / "source_fit"), EXPORT_FORMATS, close=True)
-    figures += report.save(report.source_plane(SERIES, MC), str(FIG / "source_impedance"), EXPORT_FORMATS, close=True)
-    figures += report.save(report.ires_over_ze(SERIES, Z_E_MAX, LIMITS, IG_CHOICE, SCALING), str(FIG / "ires_over_ZE"),
-                           EXPORT_FORMATS, close=True)
+if MAIN is not None:                    ''' + t("# result (SOURCE), the other source dashed", "# Ergebnis (SOURCE), die andere Quelle gestrichelt") + '''
+    figures += report.save(report.source_fit(MAIN, Z_E=Z_E, comparison=OTHER), str(FIG / "source_fit"), EXPORT_FORMATS,
+                           close=True)
+    figures += report.save(report.source_plane(MAIN, MC), str(FIG / "source_impedance"), EXPORT_FORMATS, close=True)
+    figures += report.save(report.ires_over_ze(MAIN, Z_E_MAX, LIMITS, IG_CHOICE, SCALING, comparison=OTHER),
+                           str(FIG / "ires_over_ZE"), EXPORT_FORMATS, close=True)
 print("''' + t("%d table files in %s", "%d Tabellen-Dateien in %s") + '''" % (len(paths), OUT.relative_to(WORK_FOLDER)))
 print("''' + t("%d figure files in %s", "%d Abbildungsdateien in %s") + '''" % (len(figures), FIG.relative_to(WORK_FOLDER)))'''),
         md(t('''
@@ -1477,6 +1583,865 @@ if PLANS:
     return _notebook(cells, lang, NAMES[lang][1])
 
 
+# =========================================================================== forecast (optional part)
+def forecast_notebook(lang: str, example: bool) -> nbf.NotebookNode:
+    """The forecast notebook (optional part of groundfault): network model of a busbar and forecast."""
+    t = (lambda en, de: en if lang == "en" else de)
+    if example:
+        conf = t('''NETWORK   = "Demo substation"            # name of the network model (substation, busbar)
+DEMO      = True                         # create the demo campaign, a recorded earth fault and their result files if missing
+CAMPAIGNS = ["2026-01-15_Demo"]          # campaigns whose staged fault tests calibrate the model (from the register)
+TESTS     = None                         # None = the tests of CAMPAIGNS from the register; or a list of dict(campaign=…, measurement=…, Z=…)
+# Recorded earth faults at the busbar (update): result files of evaluate_measurement.ipynb with the busbar voltages
+# before and during the fault – no fault current needed; with coil currents also the fault current per order
+FAULTS = [
+    dict(campaign="2026-01-15_Demo", measurement="SUB_fault_10_000kHz"),
+]
+# Measurements to check the model with, e.g. a staged fault test at a location in the network:
+# dict(campaign=…, measurement=<busbar recording>, Z=…, current=<recording with the fault current>, line=LINE)
+CHECKS = []''', '''NETWORK   = "Demo-UW"                    # Name des Netzmodells (Umspannwerk, Sammelschiene)
+DEMO      = True                         # Demo-Kampagne, einen aufgezeichneten Erdschluss und ihre Ergebnisdateien anlegen, falls sie fehlen
+CAMPAIGNS = ["2026-01-15_Demo"]          # Kampagnen, deren Erdschlussversuche das Modell kalibrieren (aus dem Messregister)
+TESTS     = None                         # None = die Versuche von CAMPAIGNS aus dem Messregister; oder eine Liste dict(campaign=…, measurement=…, Z=…)
+# Aufgezeichnete Erdschlüsse an der Sammelschiene (Nachführung): Ergebnisdateien aus Messung_auswerten.ipynb mit den
+# Sammelschienenspannungen vor und im Fehler – ohne Fehlerstrom; mit Spulenströmen auch der Fehlerstrom je Ordnung
+FAULTS = [
+    dict(campaign="2026-01-15_Demo", measurement="UW_Erdschluss_10_000kHz"),
+]
+# Messungen zur Prüfung des Modells, z. B. ein Erdschlussversuch an einem Ort im Netz:
+# dict(campaign=…, measurement=<Aufzeichnung der Sammelschiene>, Z=…, current=<Aufzeichnung mit dem Fehlerstrom>, line=LINE)
+CHECKS = []''')
+        voltages = t('''{3: 30.0, 5: 250.0, 7: 130.0, 11: 40.0, 13: 30.0}   # demo values: 95 % quantiles in V (line-to-earth)''',
+                     '''{3: 30.0, 5: 250.0, 7: 130.0, 11: 40.0, 13: 30.0}   # Demo-Werte: 95-%-Quantile in V (Leiter-Erde)''')
+        line = t('''dict(name="Demo feeder, station 4", segments=[         # demo: 4 km cable, 1.5 km overhead line
+    dict(length_km=4.0, R1=0.125, X1=0.11, R0=0.50, X0=0.40, C1_uF=0.30),
+    dict(length_km=1.5, R1=0.30,  X1=0.35, R0=0.45, X0=1.20, C1_uF=0.01)])''', '''dict(name="Demo-Abgang, Station 4", segments=[         # Demo: 4 km Kabel, 1,5 km Freileitung
+    dict(length_km=4.0, R1=0.125, X1=0.11, R0=0.50, X0=0.40, C1_uF=0.30),
+    dict(length_km=1.5, R1=0.30,  X1=0.35, R0=0.45, X0=1.20, C1_uF=0.01)])''')
+    else:
+        conf = t('''NETWORK   = "<substation>"               # name of the network model (substation, busbar)
+DEMO      = False
+CAMPAIGNS = ["YYYY-MM-DD_Place"]         # campaigns whose staged fault tests calibrate the model (from the register)
+TESTS     = None                         # None = the tests of CAMPAIGNS from the register; or a list of dict(campaign=…, measurement=…, Z=…)
+# Recorded earth faults at the busbar (update): result files of evaluate_measurement.ipynb with the busbar voltages
+# before and during the fault – no fault current needed; with coil currents also the fault current per order
+FAULTS = [
+    # dict(campaign="YYYY-MM-DD_Place", measurement="<recording>"),
+]
+# Measurements to check the model with, e.g. a staged fault test at a location in the network:
+# dict(campaign=…, measurement=<busbar recording>, Z=…, current=<recording with the fault current>, line=LINE)
+CHECKS = []''', '''NETWORK   = "<UW>"                       # Name des Netzmodells (Umspannwerk, Sammelschiene)
+DEMO      = False
+CAMPAIGNS = ["JJJJ-MM-TT_Ort"]           # Kampagnen, deren Erdschlussversuche das Modell kalibrieren (aus dem Messregister)
+TESTS     = None                         # None = die Versuche von CAMPAIGNS aus dem Messregister; oder eine Liste dict(campaign=…, measurement=…, Z=…)
+# Aufgezeichnete Erdschlüsse an der Sammelschiene (Nachführung): Ergebnisdateien aus Messung_auswerten.ipynb mit den
+# Sammelschienenspannungen vor und im Fehler – ohne Fehlerstrom; mit Spulenströmen auch der Fehlerstrom je Ordnung
+FAULTS = [
+    # dict(campaign="JJJJ-MM-TT_Ort", measurement="<Aufzeichnung>"),
+]
+# Messungen zur Prüfung des Modells, z. B. ein Erdschlussversuch an einem Ort im Netz:
+# dict(campaign=…, measurement=<Aufzeichnung der Sammelschiene>, Z=…, current=<Aufzeichnung mit dem Fehlerstrom>, line=LINE)
+CHECKS = []''')
+        voltages = t('''None   # harmonic voltages per order in V, e.g. {5: U_5, 7: U_7}, or a CSV file (None = no forecast)''',
+                     '''None   # Oberschwingungsspannungen je Ordnung in V, z. B. {5: U_5, 7: U_7}, oder eine CSV-Datei (None = keine Prognose)''')
+        line = t('''None   # fault location in the network: dict(name=…, segments=[dict(length_km=…, R1=…, X1=…, R0=…, X0=…, C1_uF=…)])''',
+                 '''None   # Fehlerort im Netz: dict(name=…, segments=[dict(length_km=…, R1=…, X1=…, R0=…, X0=…, C1_uF=…)])''')
+    conf += t('''
+# optional per entry: name="…" (default: the measurement), meta=dict(…) (e.g. load, PV infeed, switching state),
+# transformer="…" (transformer recording of the same earth fault by a second recorder: its upstream impedance Z_up),
+# line=dict(…) (a test in the network: the line to its fault location)
+
+# ---------------------------------------------------------------- model
+ORDERS        = "auto"            # "auto" = odd orders ≥ 3 with at least MIN_CURRENT_A in the test, otherwise e.g. [3, 5, 7, 11, 13]
+MIN_CURRENT_A = 0.3               # smallest current of an order for "auto" in A
+HOW           = "median"          # Z_q over the earth faults: "median" | "mean" | "latest" (the last one added)
+TWO_SOURCE    = "zero_sequence"   # orders with a source that arises in the fault: "zero_sequence" (3, 9, 15 …) | [orders] | None
+
+# ---------------------------------------------------------------- forecast
+VOLTAGES          = ''' + voltages + '''
+VOLTAGE_REFERENCE = "LE"          # "LE" = line-to-earth | "LL" = line-to-line (divided by √3; no zero sequence)
+CSV_OPTIONS       = dict(sep=";", decimal=",", index_col=0)   # reading a CSV file (pandas.read_csv): one column per order
+QUANTILE          = 0.95          # quantile of a time series
+Z_F               = 0.0           # fault impedance in Ω (0 = fault without resistance)
+LINE              = ''' + line + '''
+# per-length values at 50 Hz (Ω/km, µF/km) give R constant, X ∝ m – not on the safe side; at the orders of interest give
+# values of their own: per segment orders={5: dict(R1=…, X1=…, R0=…, X0=…)} (Ω/km at 250 Hz, X not divided by 5) or for
+# the whole line loop={5: Z_qL} (Ω, e.g. measured with MODEL.line_from_fault(<recorded earth fault behind the line>))
+
+# ---------------------------------------------------------------- margins and limits – defined by you
+# groundfault contains no margins or limits. Not set (the values below), the forecast is shown without them.
+MARGIN_A      = 0.0     # margin per order in A: a number or {order: A} (0.0 = none), e.g. from the checks of section 3
+FUNDAMENTAL_A = None    # fundamental residual current in A (None = median of √(I_w² + I_v²) of the tests)
+LIMITS        = ()      # limits of the residual current in A, e.g. (I_1, I_2)''', '''
+# optional je Eintrag: name="…" (Standard: die Messung), meta=dict(…) (z. B. Last, PV-Einspeisung, Schaltzustand),
+# transformer="…" (Trafoaufzeichnung desselben Erdschlusses, zweites Messgerät: deren Vorimpedanz Z_vor),
+# line=dict(…) (ein Versuch im Netz: die Leitung bis zu seinem Fehlerort)
+
+# ---------------------------------------------------------------- Modell
+ORDERS        = "auto"            # "auto" = ungerade Ordnungen ≥ 3 mit mindestens MIN_CURRENT_A im Versuch, sonst z. B. [3, 5, 7, 11, 13]
+MIN_CURRENT_A = 0.3               # kleinster Strom einer Ordnung für "auto" in A
+HOW           = "median"          # Z_q über die Erdschlüsse: "median" | "mean" (Mittel) | "latest" (der zuletzt hinzugefügte)
+TWO_SOURCE    = "zero_sequence"   # Ordnungen mit einer im Fehler entstehenden Quelle: "zero_sequence" (3, 9, 15 …) | [Ordnungen] | None
+
+# ---------------------------------------------------------------- Prognose
+VOLTAGES          = ''' + voltages + '''
+VOLTAGE_REFERENCE = "LE"          # "LE" = Leiter-Erde | "LL" = Leiter-Leiter (durch √3 geteilt; ohne Nullsystem)
+CSV_OPTIONS       = dict(sep=";", decimal=",", index_col=0)   # Lesen einer CSV-Datei (pandas.read_csv): eine Spalte je Ordnung
+QUANTILE          = 0.95          # Quantil einer Zeitreihe
+Z_F               = 0.0           # Fehlerimpedanz in Ω (0 = Fehler ohne Widerstand)
+LINE              = ''' + line + '''
+# Beläge bei 50 Hz (Ω/km, µF/km) heißen R konstant, X ∝ m – nicht auf der sicheren Seite; für die wichtigen Ordnungen
+# eigene Werte angeben: je Abschnitt orders={5: dict(R1=…, X1=…, R0=…, X0=…)} (Ω/km bei 250 Hz, X nicht durch 5 geteilt)
+# oder für die ganze Leitung loop={5: Z_qL} (Ω, z. B. gemessen mit MODEL.line_from_fault(<Erdschluss hinter der Leitung>))
+
+# ---------------------------------------------------------------- Zuschläge und Grenzwerte – selbst festlegen
+# groundfault enthält keine Zuschläge oder Grenzwerte. Nicht gesetzt (die Werte unten), zeigt die Prognose sie nicht.
+MARGIN_A      = 0.0     # Zuschlag je Ordnung in A: eine Zahl oder {Ordnung: A} (0.0 = keiner), z. B. aus der Prüfung in Abschnitt 3
+FUNDAMENTAL_A = None    # Grundschwingungsreststrom in A (None = Median von √(I_w² + I_v²) der Versuche)
+LIMITS        = ()      # Grenzwerte des Reststroms in A, z. B. (I_1, I_2)''')
+    cells = [
+        md(t('''
+# Forecast of the harmonic residual current – network model of a busbar
+
+An **optional part** of groundfault: it builds on the **result files** of the single evaluations
+(`evaluate_measurement.ipynb`, section 7) and needs nothing else of the evaluation. The **network model** of the
+earth-fault loop at a busbar per harmonic order is calibrated with the staged fault tests, updated with every earth
+fault recorded at the busbar and checked; from harmonic voltages – e.g. the 95 % quantiles of a power-quality
+measurement – it forecasts the **harmonic residual current** I_H and the residual current I_RES of an earth fault at
+the busbar or behind a line. Reference copy: `templates/network_model_forecast_DEFAULT.ipynb`. Method and
+equivalent circuits: online documentation, *Forecast*.
+
+1. **Calibration** with the staged fault tests of the campaigns (fault current measured): sequence impedances
+   Z_0, Z_1, Z_2 per order from the changes of the busbar voltages, Z_q = (Z_0 + Z_1 + Z_2)/3; at the orders of the
+   zero sequence also the source that only exists during the fault (saturating coils and transformers).
+2. **Checks between the tests** – the deviations show the margin a forecast needs.
+3. **Recorded earth faults** (busbar voltages, e.g. of a disturbance recorder): Z_1, Z_2, Z_q updated, the fault
+   current estimated (with coil currents by the node rule at every order) and the forecast checked at each of them.
+4. **Checks with other measurements**, e.g. a staged fault test at a location in the network.
+5. **Forecast** of I_H and I_RES (one value per order or a time series; at the busbar or behind `LINE`).
+6. **Save** the model file and the tables in the forecast folder of the work folder.
+''', '''
+# Prognose des Oberschwingungsreststroms – Netzmodell einer Sammelschiene
+
+Ein **optionaler Teil** von groundfault: Er baut auf den **Ergebnisdateien** der Einzelauswertungen auf
+(`Messung_auswerten.ipynb`, Abschnitt 7) und braucht sonst nichts von der Auswertung. Das **Netzmodell** der
+Erdschlussschleife an einer Sammelschiene je Oberschwingungsordnung wird mit den Erdschlussversuchen kalibriert, mit
+jedem an der Sammelschiene aufgezeichneten Erdschluss nachgeführt und geprüft; aus Oberschwingungsspannungen – z. B.
+den 95-%-Quantilen einer Netzqualitätsmessung – prognostiziert es den **Oberschwingungsreststrom** I_H und den
+Reststrom I_RES eines Erdschlusses an der Sammelschiene oder hinter einer Leitung. Ausgangsfassung:
+`Vorlagen/Netzmodell_Prognose_DEFAULT.ipynb`. Verfahren und Ersatzschaltbilder: Online-Dokumentation, *Forecast*.
+
+1. **Kalibrierung** mit den Erdschlussversuchen der Kampagnen (Fehlerstrom gemessen): Sequenzimpedanzen Z_0, Z_1, Z_2
+   je Ordnung aus den Änderungen der Sammelschienenspannungen, Z_q = (Z_0 + Z_1 + Z_2)/3; bei den Ordnungen des
+   Nullsystems zusätzlich die Quelle, die nur im Fehler besteht (sättigende Spulen und Wandler).
+2. **Prüfung zwischen den Versuchen** – die Abweichungen zeigen, welchen Zuschlag eine Prognose braucht.
+3. **Aufgezeichnete Erdschlüsse** (Sammelschienenspannungen, z. B. eines Störschreibers): Z_1, Z_2, Z_q nachgeführt,
+   der Fehlerstrom geschätzt (mit Spulenströmen über die Knotenregel bei jeder Ordnung) und die Prognose an jedem von
+   ihnen geprüft.
+4. **Prüfung mit weiteren Messungen**, z. B. einem Erdschlussversuch an einem Ort im Netz.
+5. **Prognose** von I_H und I_RES (ein Wert je Ordnung oder eine Zeitreihe; an der Sammelschiene oder hinter `LINE`).
+6. Modelldatei und Tabellen im Prognoseordner des Arbeitsordners **speichern**.
+''')),
+        code(setup(lang).replace("import sys\n", "import datetime\nimport json\nimport sys\nimport warnings\n", 1)
+             .replace("from IPython.display import Markdown, display\n",
+                      "from IPython.display import Markdown, display\nfrom groundfault import forecast as fc\n", 1)),
+        md(t("## 1 · Configuration", "## 1 · Konfiguration")),
+        code(conf),
+        md(t('''
+## 2 · Calibration with the staged fault tests
+
+Per test and order the **B method**: Z_s = 3·p_s·ΔU_s/I (s = zero, positive, negative sequence; ΔU = change of the
+busbar voltage during the fault, I = fault current, p_s = phase factor of the faulted phase). The source is the
+pre-fault voltage of the faulted phase, U_q = −Σ p_s·U_pre,s. At the orders of `TWO_SOURCE` the tests with different
+additional impedances also separate the source U_s that arises in the fault (`two_source`); with only one additional
+impedance the measured current is used for every fault impedance (`constant`). With coil currents in the tests the
+admittance of the network without the coils, Y_0,net = (I − I_coil)/(3·ΔU_0), is kept for the node rule (section 4).
+''', '''
+## 2 · Kalibrierung mit den Erdschlussversuchen
+
+Je Versuch und Ordnung das **B-Verfahren**: Z_s = 3·p_s·ΔU_s/I (s = Null-, Mit-, Gegensystem; ΔU = Änderung der
+Sammelschienenspannung im Fehler, I = Fehlerstrom, p_s = Phasenfaktor des Fehlerleiters). Quelle ist die
+Vorfehlerspannung des Fehlerleiters, U_q = −Σ p_s·U_pre,s. Bei den Ordnungen von `TWO_SOURCE` trennen Versuche mit
+verschiedener Zusatzimpedanz zusätzlich die im Fehler entstehende Quelle U_s ab (`zwei Quellen`); mit nur einer
+Zusatzimpedanz gilt der gemessene Strom für jede Fehlerimpedanz (`konstant`). Mit Spulenströmen in den Versuchen wird
+die Admittanz des Netzes ohne die Spulen, Y_0,Netz = (I − I_Spule)/(3·ΔU_0), für die Knotenregel (Abschnitt 4)
+behalten.
+''')),
+        code('''for i, e in enumerate(FAULTS + CHECKS):     ''' + t("# known keys only (a misspelt key would be ignored)",
+                                                    "# nur bekannte Schlüssel (ein vertippter Schlüssel bliebe unbeachtet)") + '''
+    legacy.check_keys("FAULTS" if i < len(FAULTS) else "CHECKS", e, fc.ENTRY_KEYS + ("current",))
+
+if DEMO:                         ''' + t("# demo: campaign, a recording of the busbar voltages and coil currents, result files",
+                                        "# Demo: Kampagne, eine Aufzeichnung der Sammelschienenspannungen und Spulenströme, Ergebnisdateien") + '''
+    for c in CAMPAIGNS:
+        if not (WORK_FOLDER / LAYOUT.campaigns / c).exists():
+            demo.make_campaign(str(WORK_FOLDER), c, layout=LAYOUT.language)
+    for e in [*FAULTS, *[dict(campaign=c, measurement=t["measurement"], Z=t["Z"]) for c in CAMPAIGNS
+                         for t in fc.campaign_tests(WORK_FOLDER, c)]]:
+        folder = WORK_FOLDER / LAYOUT.campaigns / e["campaign"]
+        cfg = folder / LAYOUT.raw / ("SUB" if LAYOUT.language == "en" else "UW") / (e["measurement"] + ".cfg")
+        if e in FAULTS and not cfg.exists():            ''' + t("# recorded earth fault: busbar voltages and coil currents",
+                                                              "# aufgezeichneter Erdschluss: Sammelschienenspannungen und Spulenströme") + '''
+            demo.make_substation_recording(str(cfg), 0.0, drift=demo.polar(1.15, 20), fault_current=False, seed=7,
+                                           start=datetime.datetime(2026, 3, 2, 14, 7))
+        if not Path(fc.result_path(WORK_FOLDER, e["campaign"], e["measurement"])).exists():
+            with open(str(cfg).replace(".cfg", "_truth.json"), encoding="utf-8") as f:
+                b = json.load(f)["intervals"]
+            r_ = gf.evaluate(gf.open_recording(str(cfg)),
+                             gf.Intervals(*(tuple(b[k]) for k in ("steady_state", "pre_fault", "post_fault"))),
+                             z_fault_ohm=e.get("Z"))
+            r_.save_json(LAYOUT.result_path(folder, e["measurement"]))
+if TESTS is None:
+    TESTS = [t for c in CAMPAIGNS for t in fc.campaign_tests(WORK_FOLDER, c)]
+display(Markdown("''' + t("**Staged fault tests** (`TESTS`)", "**Erdschlussversuche** (`TESTS`)") + '''"))
+show(pd.DataFrame(TESTS))
+MODEL = fc.NetworkModel(NETWORK)
+for msg in fc.add_entries(MODEL, WORK_FOLDER, TESTS, "test", orders=ORDERS, min_current_A=MIN_CURRENT_A):
+    print("ℹ", msg)
+if MODEL.tests:
+    show(MODEL.table())
+    display(Markdown("''' + t("**Model per order**", "**Modell je Ordnung**") + '''"))
+    show(MODEL.source_table(how=HOW, two_source=TWO_SOURCE))
+    for T in MODEL.source_terms(how=HOW, two_source=TWO_SOURCE).values():
+        for h in T.hints:
+            print("ℹ", h)
+else:
+    print("''' + t("No calibration – the model needs at least one staged fault test with the fault current (TESTS).",
+                   "Keine Kalibrierung – das Modell braucht mindestens einen Erdschlussversuch mit Fehlerstrom (TESTS).") + '''")'''),
+        md(t('''
+## 3 · Checks between the tests
+
+Every test is forecast from its own pre-fault voltage and additional impedance with the model of other tests:
+`loo` = model of all other tests, `pairwise` = model of one other test (every pair), `chain` = Z_0 of one test, Z_q
+from the busbar voltages of a second one (as a recorded earth fault), forecast for a third. `deviation_A` = forecast
+− measured: **negative values are underestimates**. The largest underestimate per order of `loo` – a model of the
+other tests, like the forecast with all of them – is a basis for your margin `MARGIN_A`; `pairwise` and `chain` show
+how far a single test or an update with a recorded earth fault carries (with one test the orders of the zero sequence
+keep the current of that test). The row `I_H` is the whole harmonic content (orders not modelled included).
+''', '''
+## 3 · Prüfung zwischen den Versuchen
+
+Jeder Versuch wird aus seiner eigenen Vorfehlerspannung und Zusatzimpedanz mit dem Modell anderer Versuche
+prognostiziert: `alle anderen` = Modell aller übrigen Versuche, `paarweise` = Modell eines anderen Versuchs (jedes
+Paar), `Lernkette` = Z_0 eines Versuchs, Z_q aus den Sammelschienenspannungen eines zweiten (wie ein aufgezeichneter
+Erdschluss), Prognose für einen dritten. `Abweichung_A` = Prognose − Messung: **negative Werte sind
+Unterschätzungen**. Die größte Unterschätzung je Ordnung von `alle anderen` – ein Modell der übrigen Versuche, wie
+die Prognose mit allen – ist eine Grundlage für den eigenen Zuschlag `MARGIN_A`; `paarweise` und `Lernkette` zeigen,
+wie weit ein einzelner Versuch oder eine Nachführung mit einem aufgezeichneten Erdschluss trägt (mit einem Versuch
+behalten die Ordnungen des Nullsystems den Strom dieses Versuchs). Die Zeile `I_H` ist der gesamte
+Oberschwingungsanteil (nicht modellierte Ordnungen eingeschlossen).
+''')),
+        code('''CROSS_CHECKS = pd.DataFrame()
+if len(MODEL.tests) >= 2:
+    modes = ["loo", "pairwise"] + (["chain"] if len(MODEL.tests) >= 3 else [])
+    CROSS_CHECKS = pd.concat([MODEL.cross_check(0.0, mode, how=HOW, two_source=TWO_SOURCE) for mode in modes],
+                             ignore_index=True)
+    summary = (CROSS_CHECKS.assign(order=CROSS_CHECKS["order"].astype(str))
+               .groupby(["order", "mode"], sort=False)
+               .agg(n=("deviation_A", "size"), deviation_min_A=("deviation_A", "min"),
+                    deviation_max_A=("deviation_A", "max"), ratio_min=("ratio", "min"), ratio_max=("ratio", "max"))
+               .reset_index())
+    show(summary)
+    under = CROSS_CHECKS[CROSS_CHECKS["order"] != "I_H"].groupby(["mode", "order"])["deviation_A"].min()
+    for mode in [m for m in modes if m in under.index.get_level_values(0)]:   ''' + t("# per check, without margin",
+                                                                                       "# je Prüfung, ohne Zuschlag") + '''
+        print(i18n.format_text("''' + t("Largest underestimate per order without margin ({}):",
+                                         "Größte Unterschätzung je Ordnung ohne Zuschlag ({}):") + '''",
+                               i18n.value_label("mode", mode)),
+              ", ".join(i18n.format_text("{}: {:.2f} A", m, min(v, 0.0)) for m, v in under[mode].items()))
+    display(Markdown("''' + t("**All other tests (loo)**", "**Alle anderen Versuche (loo)**") + '''"))
+    show(CROSS_CHECKS[CROSS_CHECKS["mode"] == "loo"])
+else:
+    print("''' + t("The checks need at least two staged fault tests.", "Die Prüfung braucht mindestens zwei Erdschlussversuche.") + '''")'''),
+        md(t('''
+## 4 · Recorded earth faults
+
+An earth fault of the network recorded at the busbar – line-to-earth voltages before and during the fault, evaluated
+with `evaluate_measurement.ipynb` (pre-fault and steady-state interval; a fault current is not needed). With Z_0 of
+the tests: Z_s = Z_0·p_s·ΔU_s/ΔU_0. The **fault current** of the earth fault (`I_estimated_A`): with the coil currents
+in the recording and in the tests by the **node rule** of the zero sequence, I_F = 3·Y_0,net·ΔU_0 + I_coil – at every
+order, also where a source arises in the fault –, otherwise 3·|ΔU_0|/|Z_0|. The orders of `TWO_SOURCE` are not
+updated. A recording with the line currents of the transformer – or `transformer=` – also gives the upstream impedance
+Z_up and with it the MV network Z_down. Each earth fault then **checks the forecast**: the model of all other earth
+faults forecasts it from its own pre-fault voltage with the fault impedance 0 (the fault impedance of a natural earth
+fault is not known – its current can only be smaller).
+''', '''
+## 4 · Aufgezeichnete Erdschlüsse
+
+Ein an der Sammelschiene aufgezeichneter Erdschluss des Netzes – Leiter-Erde-Spannungen vor und im Fehler,
+ausgewertet mit `Messung_auswerten.ipynb` (Vorfehler- und stationärer Bereich; ein Fehlerstrom ist nicht nötig). Mit
+Z_0 der Versuche: Z_s = Z_0·p_s·ΔU_s/ΔU_0. Der **Fehlerstrom** des Erdschlusses (`I_geschaetzt_A`): mit Spulenströmen
+in der Aufzeichnung und in den Versuchen über die **Knotenregel** des Nullsystems, I_F = 3·Y_0,Netz·ΔU_0 + I_Spule –
+bei jeder Ordnung, auch wo im Fehler eine Quelle entsteht –, sonst 3·|ΔU_0|/|Z_0|. Die Ordnungen von `TWO_SOURCE`
+werden nicht nachgeführt. Eine Aufzeichnung mit den Leiterströmen des Trafos – oder `transformer=` – liefert
+zusätzlich die Vorimpedanz Z_vor und damit das MS-Netz Z_MS. Jeder Erdschluss **prüft dann die Prognose**: Das Modell
+aller anderen Erdschlüsse prognostiziert ihn aus seiner eigenen Vorfehlerspannung mit der Fehlerimpedanz 0 (die
+Fehlerimpedanz eines natürlichen Erdschlusses ist unbekannt – sein Strom kann nur kleiner sein).
+''')),
+        code('''FAULT_CHECKS = pd.DataFrame()
+if FAULTS and not MODEL.tests:
+    print("''' + t("⚠ a recorded earth fault needs Z_0 of a calibration (section 2)",
+                   "⚠ ein aufgezeichneter Erdschluss braucht Z_0 einer Kalibrierung (Abschnitt 2)") + '''")
+elif FAULTS:
+    for msg in fc.add_entries(MODEL, WORK_FOLDER, FAULTS, "fault", two_source=TWO_SOURCE):
+        print("ℹ", msg)
+if MODEL.faults:
+    tab = MODEL.table()
+    show(tab[tab["kind"] == "fault"])
+    display(Markdown("''' + t("**|Z_q| of the earth faults ÷ median of the tests**", "**|Z_q| der Erdschlüsse ÷ Median der Versuche**") + '''"))
+    ref = tab[tab["kind"] == "test"].groupby("order")["Zq_Ohm"].median()
+    show(tab[tab["kind"] == "fault"].pivot(index="order", columns="name", values="Zq_Ohm").div(ref, axis=0))
+    if any(c.currents for c in MODEL.faults):
+        FAULT_CHECKS = MODEL.fault_check(0.0, how=HOW, two_source=TWO_SOURCE)
+        display(Markdown("''' + t("**Forecast (fault impedance 0, without margin) ÷ estimated fault current**",
+                                  "**Prognose (Fehlerimpedanz 0, ohne Zuschlag) ÷ geschätzter Fehlerstrom**") + '''"))
+        show(FAULT_CHECKS)
+else:
+    print("''' + t("No recorded earth fault in the model (FAULTS).", "Kein aufgezeichneter Erdschluss im Modell (FAULTS).") + '''")'''),
+        md(t('''
+## 5 · Checks with other measurements
+
+A measurement that is not part of the model – e.g. a staged fault test at a location in the network: the busbar
+voltages of the substation recording (`measurement`), the fault current of the recording at the fault location
+(`current`, magnitudes per order) and the line to the fault location (`line`). The model forecasts the fault current
+from the pre-fault voltage of the busbar, the fault impedance `Z` and the line, Z_q + (2·Z_1L + Z_0L)/3 + Z_F. For an
+entry with a line the busbar voltages of the same fault also measure the line per order (`MODEL.line_from_fault`):
+Z_qL,m = −U_ph,bus,m/I_F,m − Z_F with the fault current from the busbar (node rule, otherwise 3·ΔU_0/Z_0 at the orders
+without a source in the fault). `LINE_MEASURED` holds the values – as `loop=` of a line they give the forecast its own
+values per order.
+''', '''
+## 5 · Prüfung mit weiteren Messungen
+
+Eine Messung, die nicht Teil des Modells ist – z. B. ein Erdschlussversuch an einem Ort im Netz: die
+Sammelschienenspannungen der UW-Aufzeichnung (`measurement`), der Fehlerstrom der Aufzeichnung am Fehlerort
+(`current`, Beträge je Ordnung) und die Leitung bis zum Fehlerort (`line`). Das Modell prognostiziert den Fehlerstrom
+aus der Vorfehlerspannung der Sammelschiene, der Fehlerimpedanz `Z` und der Leitung, Z_q + (2·Z_1L + Z_0L)/3 + Z_F. Für
+einen Eintrag mit Leitung messen die Sammelschienenspannungen desselben Fehlers auch die Leitung je Ordnung
+(`MODEL.line_from_fault`): Z_qL,m = −U_L,SS,m/I_F,m − Z_F mit dem Fehlerstrom aus der Sammelschiene (Knotenregel, sonst
+3·ΔU_0/Z_0 bei den Ordnungen ohne Quelle im Fehler). `LINE_MEASURED` enthält die Werte – als `loop=` einer Leitung geben
+sie der Prognose eigene Werte je Ordnung.
+''')),
+        code('''VERIFY = pd.DataFrame()
+LINE_MEASURED, LINE_TABLE = {}, pd.DataFrame()
+if CHECKS and MODEL.tests:
+    parts, rows = [], []
+    for e in CHECKS:
+        try:
+            fd = fc.check_data(WORK_FOLDER, e)
+            parts.append(MODEL.verify(fd, 0.0, how=HOW, two_source=TWO_SOURCE))
+            if fd.line is not None:          ''' + t("# the line per order from the busbar voltages of the same fault",
+                                                     "# die Leitung je Ordnung aus den Sammelschienenspannungen desselben Fehlers") + '''
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    z = LINE_MEASURED[fd.name] = MODEL.line_from_fault(fd, fd.Z_F or 0.0, two_source=TWO_SOURCE)
+                for w in caught:
+                    print("ℹ", w.message)
+                for m, v in sorted(z.items()):
+                    g = fd.line.Zq(m)
+                    rows.append(dict(target=fd.name, order=m, line_values=fd.line.source(m), Z_line_Ohm=abs(g),
+                                     R_measured_Ohm=v.real, X_measured_Ohm=v.imag, Z_measured_Ohm=abs(v),
+                                     ratio=abs(v) / abs(g) if abs(g) else float("nan")))
+        except (OSError, ValueError) as ex:
+            print("⚠", ex)
+    if parts:
+        VERIFY = pd.concat(parts, ignore_index=True)
+        show(VERIFY)
+    if rows:
+        LINE_TABLE = pd.DataFrame(rows)
+        display(Markdown("''' + t("**Line per order: given (`line`) and measured from the busbar voltages of the fault "
+                                    "(`LINE_MEASURED`)**",
+                                    "**Leitung je Ordnung: angegeben (`line`) und aus den Sammelschienenspannungen des "
+                                    "Fehlers gemessen (`LINE_MEASURED`)**") + '''"))
+        show(LINE_TABLE)
+else:
+    print("''' + t("ℹ No further measurements (CHECKS).", "ℹ Keine weiteren Messungen (CHECKS).") + '''")'''),
+        md(t('''
+## 6 · Forecast of the harmonic residual current
+
+Harmonic voltages of the busbar per order (line-to-earth, the largest of the three phases): one value per order –
+e.g. the 95 % quantile of a power-quality measurement – or a time series (CSV file, one column per order such as
+`U_H5`; the last number of a column name is the order). Per order |I_F,m| = (|U_m| + |U_s,m|)/|Z_q,m + Z_qL,m + Z_F|
++ margin (Z_qL = 0 at the busbar, (2·Z_1L + Z_0L)/3 behind `LINE`), then I_H = √(Σ I_F,m² + I_rest²) with I_rest =
+harmonic content of the tests outside the forecast orders and I_RES = √(I_1² + I_H²). A time series gives the
+quantile `QUANTILE` of the time series of I_H and I_RES.
+''', '''
+## 6 · Prognose des Oberschwingungsreststroms
+
+Oberschwingungsspannungen der Sammelschiene je Ordnung (Leiter-Erde, die größte der drei Phasen): ein Wert je Ordnung
+– z. B. das 95-%-Quantil einer Netzqualitätsmessung – oder eine Zeitreihe (CSV-Datei, eine Spalte je Ordnung wie
+`U_H5`; die letzte Zahl eines Spaltennamens ist die Ordnung). Je Ordnung |I_F,m| = (|U_m| + |U_s,m|)/|Z_q,m + Z_qL,m +
+Z_F| + Zuschlag (Z_qL = 0 an der Sammelschiene, (2·Z_1L + Z_0L)/3 hinter `LINE`), dann I_H = √(Σ I_F,m² + I_Rest²)
+mit I_Rest = Oberschwingungsanteil der Versuche außerhalb der Prognoseordnungen und I_RES = √(I_1² + I_H²). Eine
+Zeitreihe ergibt das Quantil `QUANTILE` der Zeitreihe von I_H und I_RES.
+''')),
+        code('''FORECAST = FORECAST_TABLE = None
+if VOLTAGES is None:
+    print("''' + t("ℹ Forecast skipped – VOLTAGES is not set (section 1).",
+                   "ℹ Prognose übersprungen – VOLTAGES ist nicht gesetzt (Abschnitt 1).") + '''")
+elif not MODEL.calibrations:
+    print("''' + t("ℹ Forecast skipped – the model contains no calibration (section 2).",
+                   "ℹ Prognose übersprungen – das Modell enthält keine Kalibrierung (Abschnitt 2).") + '''")
+else:
+    U = pd.read_csv(VOLTAGES, **CSV_OPTIONS) if isinstance(VOLTAGES, (str, Path)) else VOLTAGES
+    places = [(None, "''' + t("busbar", "Sammelschiene") + '''")] + ([(LINE, LINE.get("name") or "LINE")] if LINE else [])
+    FORECASTS, tables = {}, []
+    for line, place in places:
+        f = FORECASTS[place] = MODEL.forecast(U, Z_F=Z_F, margin_A=MARGIN_A, how=HOW, two_source=TWO_SOURCE,
+                                              reference=VOLTAGE_REFERENCE, fundamental_A=FUNDAMENTAL_A, line=line)
+        series = len(f.currents) > 1
+        tab = f.table(QUANTILE if series else None)
+        tab.insert(0, "location", place)
+        tables.append(tab)
+        display(Markdown("**%s**" % place))
+        show(tab)
+        for h in f.hints:
+            print("ℹ", h)
+        value = tab.set_index("order")["I_forecast_A"]
+        print(i18n.format_text("''' + t("Forecast{}: I_H = {:.2f} A, I_RES = {:.2f} A (fault impedance {:g} Ω)",
+                                         "Prognose{}: I_H = {:.2f} A, I_RES = {:.2f} A (Fehlerimpedanz {:g} Ω)") + '''",
+                               i18n.format_text(" (''' + t("quantile", "Quantil") + ''' {:g} ''' + t("of", "von") + ''' {} ''' + t("time steps", "Zeitschritten") + ''')",
+                                                QUANTILE, len(f.currents)) if series else "",
+                               value["I_H"], value["I_RES"], abs(complex(Z_F))))
+        if LIMITS:
+            for limit in LIMITS:
+                print(i18n.format_text("I_RES = {:.2f} A {} {:g} A", value["I_RES"],
+                                       "≤" if value["I_RES"] <= limit else ">", limit))
+    FORECAST = FORECASTS[places[0][1]]                   ''' + t("# at the busbar", "# an der Sammelschiene") + '''
+    FORECAST_TABLE = pd.concat(tables, ignore_index=True)
+    if not MARGIN_A:
+        print("''' + t("ℹ Without a margin – MARGIN_A is not set (section 1); section 3 shows the deviations of the model.",
+                       "ℹ Ohne Zuschlag – MARGIN_A ist nicht gesetzt (Abschnitt 1); Abschnitt 3 zeigt die Abweichungen des Modells.") + '''")
+    if not LIMITS:
+        print("''' + t("ℹ No comparison with limits – LIMITS is not set (section 1).",
+                       "ℹ Kein Vergleich mit Grenzwerten – LIMITS ist nicht gesetzt (Abschnitt 1).") + '''")'''),
+        md(t("## 7 · Save the model and export the tables", "## 7 · Modell speichern und Tabellen exportieren")),
+        code('''OUT = Path(fc.forecast_folder(WORK_FOLDER, NETWORK))
+if MODEL.calibrations:
+    path = OUT / (report.slug(NETWORK) + "_''' + t("network_model", "netzmodell") + '''.json")
+    MODEL.save(str(path))
+    TABLES = {"forecast_calibrations": MODEL.table(),
+              "forecast_model": MODEL.source_table(how=HOW, two_source=TWO_SOURCE),
+              "forecast_checks": pd.concat([CROSS_CHECKS, VERIFY], ignore_index=True),
+              "forecast_faults": FAULT_CHECKS, "forecast": FORECAST_TABLE}
+    paths = report.export_tables({k: v for k, v in TABLES.items() if v is not None and len(v)}, str(OUT),
+                                 prefix=report.slug(NETWORK) + "_", formats=("csv", "md"))
+    print("''' + t("model file:", "Modelldatei:") + '''", path)
+    print("''' + t("%d table files in %s", "%d Tabellen-Dateien in %s") + '''" % (len(paths), OUT))
+    ''' + t("# later: fc.NetworkModel.load(path) – add earth faults with add_fault, forecast with forecast",
+            "# später: fc.NetworkModel.load(path) – Erdschlüsse mit add_fault ergänzen, Prognose mit forecast")),
+    ]
+    return _notebook(cells, lang, FORECAST_NAMES[lang][0])
+
+
+def without_fault_notebook(lang: str, example: bool) -> nbf.NotebookNode:
+    """The forecast notebook without an earth fault (optional part of groundfault): V0 to V3."""
+    t = (lambda en, de: en if lang == "en" else de)
+    if example:
+        raw = t("campaigns/2026-03-10_Demo/raw/SUB", "01_Messkampagnen/2026-03-10_Demo/1_Rohdaten/UW")
+        conf = t('''NETWORK = "Demo substation"     # name of the network (substation, busbar) – also the sub-folder of the forecast folder
+DEMO    = True                  # create demo recordings of the undisturbed transformer node if missing
+
+# ---------------------------------------------------------------- network data (demo values)
+U_N    = 20e3                   # nominal voltage of the MV network in V
+U_LE   = 20e3 / 3 ** 0.5        # line-to-earth voltage (fundamental) in V
+I_C    = 700.0                  # capacitive earth-fault current in A (coil controller)
+I_L    = 735.0                  # coil current in A (coil controller; None = I_C, tuned)
+D      = 0.03                   # damping I_w/I_C (coil controller): series resistance d·X_C0 of the zero sequence in V2, V3
+U_K    = 0.18                   # short-circuit voltage of the transformer (0.18 = 18 %)
+S_RT   = 40e6                   # rated power of the transformer in VA
+S_K    = 3.67e9                 # short-circuit power S″_k of the HV network in VA
+C_1    = 65e-6                  # operating capacitance of the MV network per phase in F (cable lengths); None = Q_C·C_E
+Q_C    = None                   # C_1/C_E when C_1 is None: cable networks about 1, mixed networks somewhat more
+R_X_UP = 0.03                   # R/X of the upstream impedance (transformer and HV network) at the orders – your assumption
+R_X_HV = 0.1                    # R/X of the HV network (corrected instrument of V3) – your assumption''', '''NETWORK = "Demo-UW"             # Name des Netzes (Umspannwerk, Sammelschiene) – auch der Unterordner des Prognoseordners
+DEMO    = True                  # Demo-Aufzeichnungen des ungestörten Trafoknotens anlegen, falls sie fehlen
+
+# ---------------------------------------------------------------- Netzdaten (Demo-Werte)
+U_N    = 20e3                   # Nennspannung des MS-Netzes in V
+U_LE   = 20e3 / 3 ** 0.5        # Leiter-Erde-Spannung (Grundschwingung) in V
+I_C    = 700.0                  # kapazitiver Erdschlussstrom in A (Spulenregler)
+I_L    = 735.0                  # Spulenstrom in A (Spulenregler; None = I_C, abgestimmt)
+D      = 0.03                   # Dämpfung I_w/I_C (Spulenregler): Reihenwiderstand d·X_C0 des Nullsystems in V2, V3
+U_K    = 0.18                   # Kurzschlussspannung des Trafos (0.18 = 18 %)
+S_RT   = 40e6                   # Bemessungsleistung des Trafos in VA
+S_K    = 3.67e9                 # Kurzschlussleistung S″_k des HS-Netzes in VA
+C_1    = 65e-6                  # Betriebskapazität des MS-Netzes je Leiter in F (Kabellängen); None = Q_C·C_E
+Q_C    = None                   # C_1/C_E, wenn C_1 fehlt: Kabelnetze etwa 1, Mischnetze etwas mehr
+R_X_UP = 0.03                   # R/X der Vorimpedanz (Trafo und HS-Netz) bei den Ordnungen – Ihre Annahme
+R_X_HV = 0.1                    # R/X des HS-Netzes (korrigiertes Instrument von V3) – Ihre Annahme''')
+        conf += t('''
+
+# ---------------------------------------------------------------- harmonic voltages and fault impedances
+ORDERS   = (5, 7)               # orders of the positive and negative sequence (not 3, 9, 15 …: their source arises in the fault)
+VOLTAGES = {5: 250.0, 7: 130.0} # demo values: 95 % quantiles in V (line-to-earth), e.g. of a power-quality measurement
+Z_F      = (0.0, 2.5, 5.0)      # fault impedances in Ω
+
+# ---------------------------------------------------------------- assumptions for V1 and V2 (demo values)
+G_MAX   = 0.15                  # V1: upper limit of the damping of the MV network in S (None = V1 not computed)
+G       = 0.06                  # V2: assumed damping in S (None = no V2 estimate)
+G_RANGE = (0.02, 0.15)          # V2: range of the damping in S for the envelope (None = no envelope)
+
+# ---------------------------------------------------------------- V3: undisturbed recordings of the transformer node
+RECORDINGS = "''' + raw + '''/TRU_*.cfg"   # demo: pattern relative to the work folder, or a list of .cfg paths
+SIGN       = None               # polarity of the transformer currents: +1 as measured, −1 reversed (None = from all recordings)
+CT_ANGLE   = None               # angle error of the transformer current transformers in degrees: one value or {order: angle}
+REFERENCE  = dict(recording="''' + raw + '''/TRU_02h_10_000kHz.cfg", channel="I1", reference="IRef")
+# reference clamp parallel to a transformer current (demo: in the first recording) – gives the angle error per order;
+# None = CT_ANGLE''', '''
+
+# ---------------------------------------------------------------- Oberschwingungsspannungen und Fehlerimpedanzen
+ORDERS   = (5, 7)               # Ordnungen des Mit- und Gegensystems (nicht 3, 9, 15 …: deren Quelle entsteht im Fehler)
+VOLTAGES = {5: 250.0, 7: 130.0} # Demo-Werte: 95-%-Quantile in V (Leiter-Erde), z. B. einer Netzqualitätsmessung
+Z_F      = (0.0, 2.5, 5.0)      # Fehlerimpedanzen in Ω
+
+# ---------------------------------------------------------------- Annahmen für V1 und V2 (Demo-Werte)
+G_MAX   = 0.15                  # V1: Obergrenze der Dämpfung des MS-Netzes in S (None = V1 nicht gerechnet)
+G       = 0.06                  # V2: angenommene Dämpfung in S (None = keine Schätzung V2)
+G_RANGE = (0.02, 0.15)          # V2: Bereich der Dämpfung in S für die Hüllkurve (None = keine Hüllkurve)
+
+# ---------------------------------------------------------------- V3: ungestörte Aufzeichnungen des Trafoknotens
+RECORDINGS = "''' + raw + '''/TRU_*.cfg"   # Demo: Muster relativ zum Arbeitsordner oder eine Liste von .cfg-Pfaden
+SIGN       = None               # Polarität der Trafoströme: +1 wie gemessen, −1 umgekehrt (None = aus allen Aufzeichnungen)
+CT_ANGLE   = None               # Winkelfehler der Trafostromwandler in Grad: ein Wert oder {Ordnung: Winkel}
+REFERENCE  = dict(recording="''' + raw + '''/TRU_02h_10_000kHz.cfg", channel="I1", reference="IRef")
+# Referenzzange parallel zu einem Trafostrom (Demo: in der ersten Aufzeichnung) – gibt den Winkelfehler je Ordnung;
+# None = CT_ANGLE''')
+    else:
+        conf = t('''NETWORK = "<substation>"        # name of the network (substation, busbar) – also the sub-folder of the forecast folder
+DEMO    = False
+
+# ---------------------------------------------------------------- network data
+U_N    = None                   # nominal voltage of the MV network in V
+U_LE   = None                   # line-to-earth voltage (fundamental) in V
+I_C    = None                   # capacitive earth-fault current in A (coil controller)
+I_L    = None                   # coil current in A (coil controller; None = I_C, tuned)
+D      = None                   # damping I_w/I_C (coil controller): series resistance d·X_C0 of the zero sequence in V2, V3
+U_K    = None                   # short-circuit voltage of the transformer (e.g. 0.14 for 14 %)
+S_RT   = None                   # rated power of the transformer in VA
+S_K    = None                   # short-circuit power S″_k of the HV network in VA
+C_1    = None                   # operating capacitance of the MV network per phase in F (cable lengths); None = Q_C·C_E
+Q_C    = None                   # C_1/C_E when C_1 is None: cable networks about 1, mixed networks somewhat more
+R_X_UP = None                   # R/X of the upstream impedance (transformer and HV network) at the orders – your assumption
+R_X_HV = None                   # R/X of the HV network (corrected instrument of V3) – your assumption
+
+# ---------------------------------------------------------------- harmonic voltages and fault impedances
+ORDERS   = (5, 7)               # orders of the positive and negative sequence (not 3, 9, 15 …: their source arises in the fault)
+VOLTAGES = None                 # harmonic voltages per order in V, e.g. {5: U_5, 7: U_7} (None = no forecast)
+Z_F      = (0.0,)               # fault impedances in Ω
+
+# ---------------------------------------------------------------- assumptions for V1 and V2
+G_MAX   = None                  # V1: upper limit of the damping of the MV network in S (None = V1 not computed)
+G       = None                  # V2: assumed damping in S (None = no V2 estimate)
+G_RANGE = None                  # V2: range of the damping in S for the envelope, (G_min, G_max) (None = no envelope)
+
+# ---------------------------------------------------------------- V3: undisturbed recordings of the transformer node
+RECORDINGS = []                 # pattern relative to the work folder (e.g. "campaigns/<campaign>/raw/<folder>/*.cfg") or a list of .cfg paths
+SIGN       = None               # polarity of the transformer currents: +1 as measured, −1 reversed (None = from all recordings)
+CT_ANGLE   = None               # angle error of the transformer current transformers in degrees: one value or {order: angle}
+REFERENCE  = None               # reference clamp: dict(recording=…, channel=<transformer current>, reference=<clamp>) – gives
+                                # the angle error per order; None = CT_ANGLE''', '''NETWORK = "<UW>"                # Name des Netzes (Umspannwerk, Sammelschiene) – auch der Unterordner des Prognoseordners
+DEMO    = False
+
+# ---------------------------------------------------------------- Netzdaten
+U_N    = None                   # Nennspannung des MS-Netzes in V
+U_LE   = None                   # Leiter-Erde-Spannung (Grundschwingung) in V
+I_C    = None                   # kapazitiver Erdschlussstrom in A (Spulenregler)
+I_L    = None                   # Spulenstrom in A (Spulenregler; None = I_C, abgestimmt)
+D      = None                   # Dämpfung I_w/I_C (Spulenregler): Reihenwiderstand d·X_C0 des Nullsystems in V2, V3
+U_K    = None                   # Kurzschlussspannung des Trafos (z. B. 0.14 für 14 %)
+S_RT   = None                   # Bemessungsleistung des Trafos in VA
+S_K    = None                   # Kurzschlussleistung S″_k des HS-Netzes in VA
+C_1    = None                   # Betriebskapazität des MS-Netzes je Leiter in F (Kabellängen); None = Q_C·C_E
+Q_C    = None                   # C_1/C_E, wenn C_1 fehlt: Kabelnetze etwa 1, Mischnetze etwas mehr
+R_X_UP = None                   # R/X der Vorimpedanz (Trafo und HS-Netz) bei den Ordnungen – Ihre Annahme
+R_X_HV = None                   # R/X des HS-Netzes (korrigiertes Instrument von V3) – Ihre Annahme
+
+# ---------------------------------------------------------------- Oberschwingungsspannungen und Fehlerimpedanzen
+ORDERS   = (5, 7)               # Ordnungen des Mit- und Gegensystems (nicht 3, 9, 15 …: deren Quelle entsteht im Fehler)
+VOLTAGES = None                 # Oberschwingungsspannungen je Ordnung in V, z. B. {5: U_5, 7: U_7} (None = keine Prognose)
+Z_F      = (0.0,)               # Fehlerimpedanzen in Ω
+
+# ---------------------------------------------------------------- Annahmen für V1 und V2
+G_MAX   = None                  # V1: Obergrenze der Dämpfung des MS-Netzes in S (None = V1 nicht gerechnet)
+G       = None                  # V2: angenommene Dämpfung in S (None = keine Schätzung V2)
+G_RANGE = None                  # V2: Bereich der Dämpfung in S für die Hüllkurve, (G_min, G_max) (None = keine Hüllkurve)
+
+# ---------------------------------------------------------------- V3: ungestörte Aufzeichnungen des Trafoknotens
+RECORDINGS = []                 # Muster relativ zum Arbeitsordner (z. B. "01_Messkampagnen/<Kampagne>/1_Rohdaten/<Ordner>/*.cfg") oder Liste von .cfg-Pfaden
+SIGN       = None               # Polarität der Trafoströme: +1 wie gemessen, −1 umgekehrt (None = aus allen Aufzeichnungen)
+CT_ANGLE   = None               # Winkelfehler der Trafostromwandler in Grad: ein Wert oder {Ordnung: Winkel}
+REFERENCE  = None               # Referenzzange: dict(recording=…, channel=<Trafostrom>, reference=<Zange>) – gibt den
+                                # Winkelfehler je Ordnung; None = CT_ANGLE''')
+    conf += t('''
+
+# ---------------------------------------------------------------- limits – defined by you
+# groundfault contains no limits. Not set (the values below), the notebook lists the values without assessing them.
+MIN_HV_SHARE  = None            # V3: smallest share of the HV-driven variation of a reliable recording (None = not assessed)
+V0_RATIO      = None            # V0: below m/m_r < V0_RATIO the column V0_rule_A doubles V0 (None = no such column)
+FUNDAMENTAL_A = None            # fundamental residual current in A for I_RES (None = I_H only)
+LIMITS        = ()              # limits of the residual current in A, e.g. (I_1, I_2)''', '''
+
+# ---------------------------------------------------------------- Grenzwerte – selbst festlegen
+# groundfault enthält keine Grenzwerte. Nicht gesetzt (die Werte unten), listet das Notebook die Werte ohne Bewertung.
+MIN_HV_SHARE  = None            # V3: kleinster Anteil der HS-getriebenen Schwankung einer verlässlichen Aufzeichnung (None = ohne Bewertung)
+V0_RATIO      = None            # V0: unter m/m_r < V0_RATIO verdoppelt die Spalte V0_Regel_A den Wert von V0 (None = keine solche Spalte)
+FUNDAMENTAL_A = None            # Grundschwingungsreststrom in A für I_RES (None = nur I_H)
+LIMITS        = ()              # Grenzwerte des Reststroms in A, z. B. (I_1, I_2)''')
+    cells = [
+        md(t('''
+# Forecast without an earth fault – estimates V0 to V3
+
+An **optional part** of groundfault: the harmonic fault current at a busbar from network data and – with a recorder at
+the transformer – from undisturbed recordings of the transformer node, **without a staged fault test**. Four methods
+side by side:
+
+| Method | Data | Result |
+|---|---|---|
+| **V0** classical estimate | U_m, I_C, coil | an upper estimate above about the resonance of the busbar, none below it |
+| **V1** resonance bound | as V0, an upper limit G_max of the damping | the order of magnitude at the resonance |
+| **V2** network data | as V0, damping d of the coil controller, rating plate, S″_k, C_1, an assumed damping G of the MV network | an estimate with G and an envelope over a range of G |
+| **V3** transformer node | as V2, undisturbed recordings of HV voltages, MV voltages and transformer currents in one device | an estimate with the damping of the MV network measured |
+
+The orders of the zero sequence (3, 9, 15 …) have a source that arises only in the fault: without an earth fault there
+is no forecast for them. With staged fault tests or recorded earth faults use `network_model_forecast.ipynb` (V4 to
+V7). Reference copy: `templates/forecast_without_fault_DEFAULT.ipynb`. Methods: online documentation, *Forecast*.
+
+1. **Configuration** – network data, harmonic voltages, assumptions, recordings of the transformer node, limits.
+2. **Network data and resonance** – upstream impedance, operating capacitance, resonance order m_r and m/m_r.
+3. **V3** – the MV network from each undisturbed recording with its checks, and the pooled estimate of the reliable ones.
+4. **V0 to V3 side by side** per order and fault impedance, and I_H.
+5. **Export** of the tables to the forecast folder of the work folder.
+''', '''
+# Prognose ohne Erdschluss – Abschätzungen V0 bis V3
+
+Ein **optionaler Teil** von groundfault: der Oberschwingungs-Fehlerstrom an einer Sammelschiene aus Netzdaten und – mit
+einem Messgerät am Trafo – aus ungestörten Aufzeichnungen des Trafoknotens, **ohne Erdschlussversuch**. Vier Verfahren
+nebeneinander:
+
+| Verfahren | Daten | Ergebnis |
+|---|---|---|
+| **V0** klassische Abschätzung | U_m, I_C, Spule | oberhalb etwa der Resonanz der Sammelschiene eine obere Abschätzung, darunter nicht |
+| **V1** Resonanzschranke | wie V0, eine Obergrenze G_max der Dämpfung | die Größenordnung in der Resonanz |
+| **V2** Netzdaten | wie V0, Dämpfung d des Spulenreglers, Typschild, S″_k, C_1, eine angenommene Dämpfung G des MS-Netzes | eine Schätzung mit G und eine Hüllkurve über einen Bereich von G |
+| **V3** Trafoknoten | wie V2, ungestörte Aufzeichnungen von HS-Spannungen, MS-Spannungen und Trafoströmen in einem Gerät | eine Schätzung mit gemessener Dämpfung des MS-Netzes |
+
+Die Ordnungen des Nullsystems (3, 9, 15 …) haben eine Quelle, die erst im Fehler entsteht: Ohne Erdschluss gibt es für
+sie keine Prognose. Mit Erdschlussversuchen oder aufgezeichneten Erdschlüssen `Netzmodell_Prognose.ipynb` verwenden
+(V4 bis V7). Ausgangsfassung: `Vorlagen/Prognose_ohne_Erdschluss_DEFAULT.ipynb`. Verfahren: Online-Dokumentation,
+*Forecast*.
+
+1. **Konfiguration** – Netzdaten, Oberschwingungsspannungen, Annahmen, Aufzeichnungen des Trafoknotens, Grenzwerte.
+2. **Netzdaten und Resonanz** – Vorimpedanz, Betriebskapazität, Resonanzordnung m_r und m/m_r.
+3. **V3** – das MS-Netz aus jeder ungestörten Aufzeichnung mit ihren Prüfwerten und die zusammengefasste Schätzung der
+   verlässlichen.
+4. **V0 bis V3 nebeneinander** je Ordnung und Fehlerimpedanz, und I_H.
+5. **Export** der Tabellen in den Prognoseordner des Arbeitsordners.
+''')),
+        code(setup(lang).replace("import sys\n", "import datetime\nimport sys\n", 1)
+             .replace("from IPython.display import Markdown, display\n",
+                      "from IPython.display import Markdown, display\nfrom groundfault import forecast as fc\n", 1)),
+        md(t("## 1 · Configuration", "## 1 · Konfiguration")),
+        code(conf),
+        md(t('''
+## 2 · Network data and resonance
+
+From the rating plate and the short-circuit power: X_T = u_k·U_n²/S_rT, X_Q = 1.1·U_n²/S″_k, the upstream impedance
+Z_up,m = m·(X_T + X_Q)·(R/X + j) and the impedance of the HV network Z_HV,m = m·X_Q·(R/X + j) (for the corrected
+instrument of V3). The earth capacitance C_E = I_C/(3·ω₁·U_LE) and the operating capacitance C_1 give the parallel
+resonance of the busbar, m_r = √(X_C1/X_up) with X_C1 = 1/(ω₁·C_1). Above about m_r the positive and negative
+sequence are capacitive in the fault loop and the classical estimate V0 lies above the current; below m_r they are
+inductive, partly cancel the capacitive zero sequence, and the current can exceed V0 severalfold.
+''', '''
+## 2 · Netzdaten und Resonanz
+
+Aus Typschild und Kurzschlussleistung: X_T = u_k·U_n²/S_rT, X_Q = 1,1·U_n²/S″_k, die Vorimpedanz
+Z_vor,m = m·(X_T + X_Q)·(R/X + j) und die Impedanz des HS-Netzes Z_HS,m = m·X_Q·(R/X + j) (für das korrigierte
+Instrument von V3). Die Erdkapazität C_E = I_C/(3·ω₁·U_LE) und die Betriebskapazität C_1 ergeben die Parallelresonanz
+der Sammelschiene, m_r = √(X_C1/X_vor) mit X_C1 = 1/(ω₁·C_1). Oberhalb etwa m_r sind Mit- und Gegensystem in der
+Fehlerschleife kapazitiv, und die klassische Abschätzung V0 liegt über dem Strom; unterhalb m_r sind sie induktiv,
+heben das kapazitive Nullsystem teilweise auf, und der Strom kann V0 um ein Mehrfaches übersteigen.
+''')),
+        code('''X_T = fc.transformer_reactance(U_K, S_RT, U_N) if None not in (U_K, S_RT, U_N) else None
+X_Q = fc.hv_network_reactance(S_K, U_N) if None not in (S_K, U_N) else None
+X_UP = X_T + X_Q if None not in (X_T, X_Q) else None
+C_E = fc.earth_capacitance(I_C, U_LE) if None not in (I_C, U_LE) else None
+C1 = C_1 if C_1 is not None else (Q_C * C_E if None not in (Q_C, C_E) else None)
+M_R = fc.resonance_order(X_UP, C1) if X_UP and C1 else None
+Z_UP = {m: fc.at_order(X_UP, m, R_X_UP) for m in ORDERS} if None not in (X_UP, R_X_UP) else None
+Z_HV = {m: fc.at_order(X_Q, m, R_X_HV) for m in ORDERS} if None not in (X_Q, R_X_HV) else None
+NETWORK_DATA = pd.DataFrame([dict(X_T_Ohm=X_T, X_Q_Ohm=X_Q, X_up_Ohm=X_UP, C_E_uF=C_E * 1e6 if C_E else None,
+                                  C_1_uF=C1 * 1e6 if C1 else None, m_r=M_R)])
+show(NETWORK_DATA)
+if M_R:
+    show(pd.DataFrame([dict(order=m, f_Hz=50.0 * m, m_over_mr=m / M_R) for m in ORDERS]))
+NOT_SET = [n for n, v in (("U_N", U_N), ("U_LE", U_LE), ("I_C", I_C), ("U_K", U_K), ("S_RT", S_RT), ("S_K", S_K),
+                          ("R_X_UP", R_X_UP), ("R_X_HV", R_X_HV)) if v is None] + ([] if C1 else ["C_1 ''' + t("or", "oder") + ''' Q_C"])
+if NOT_SET:
+    print("''' + t("ℹ Not set (section 1): ", "ℹ Nicht gesetzt (Abschnitt 1): ") + '''" + ", ".join(NOT_SET) + "''' +
+             t(" – the methods that need them are left out.", " – die Verfahren, die sie brauchen, entfallen.") + '''")'''),
+        md(t('''
+## 3 · V3 – the MV network from undisturbed recordings
+
+In undisturbed operation the harmonic sources of the HV and of the MV network vary all the time. A variation driven
+from the HV side changes busbar voltage and transformer current by ΔU = Z_MV·ΔI, one driven from the MV side by
+ΔU = −Z_up·ΔI. The HV voltage, corrected by the drop over the HV network (E = U_HV + Z_HV·I_T), follows only the HV
+sources and serves as **instrument**: per 200-ms window the deviations from the mean give
+Z_MV = ΣΔU·ΔE*/ΣΔI·ΔE* in the natural sequence of each order. Before that the angle error of the transformer current
+transformers is corrected (reference clamp `REFERENCE` or `CT_ANGLE`).
+
+Checks per recording: correlation between current and instrument (`corr_I_hv`), a capacitive result with a positive
+real part, and the **share of the HV-driven variation** in the variance of the busbar voltage (`hv_share`). The share
+is what decides: where the MV side drives most of the variation the estimate drifts towards −Z_up, and neither the
+correlation nor the angle shows it. The share changes over the day (e.g. higher at night), so record at several times.
+The recordings that pass are pooled – the estimate for the forecast.
+''', '''
+## 3 · V3 – das MS-Netz aus ungestörten Aufzeichnungen
+
+Im ungestörten Betrieb schwanken die Oberschwingungsquellen des HS- und des MS-Netzes ständig. Eine vom HS-Netz
+getriebene Schwankung ändert Sammelschienenspannung und Trafostrom um ΔU = Z_MS·ΔI, eine vom MS-Netz getriebene um
+ΔU = −Z_vor·ΔI. Die HS-Spannung, korrigiert um den Spannungsfall über dem HS-Netz (E = U_HS + Z_HS·I_T), folgt nur den
+HS-Quellen und dient als **Instrument**: Je 200-ms-Fenster ergeben die Abweichungen vom Mittel
+Z_MS = ΣΔU·ΔE*/ΣΔI·ΔE* im natürlichen Drehsystem jeder Ordnung. Vorher wird der Winkelfehler der Trafostromwandler
+korrigiert (Referenzzange `REFERENCE` oder `CT_ANGLE`).
+
+Prüfwerte je Aufzeichnung: Korrelation zwischen Strom und Instrument (`corr_I_hv`), ein kapazitives Ergebnis mit
+positivem Wirkanteil und der **Anteil der HS-getriebenen Schwankung** an der Varianz der Sammelschienenspannung
+(`hv_share`). Der Anteil entscheidet: Treibt das MS-Netz den größten Teil der Schwankung, rückt die Schätzung zu
+−Z_vor, und weder die Korrelation noch der Winkel zeigen das. Der Anteil ändert sich über den Tag (z. B. nachts höher),
+deshalb zu mehreren Zeiten aufzeichnen. Die bestandenen Aufzeichnungen werden zusammengefasst – die Schätzung für die
+Prognose.
+''')),
+        code('''def path_in_work_folder(p):
+    p = Path(p)
+    return p if p.is_absolute() else WORK_FOLDER / p
+
+
+if DEMO:                         ''' + t("# demo: a measuring day – six recordings of one minute, the share of the HV side falls towards noon",
+                                        "# Demo: ein Messtag – sechs Aufzeichnungen von einer Minute, der HS-Anteil fällt zum Mittag") + '''
+    folder = path_in_work_folder(Path(RECORDINGS).parent)
+    folder.mkdir(parents=True, exist_ok=True)
+    z_mv = {m: 1 / complex(g, m * 2 * np.pi * 50.0 * 65e-6) for m, g in ((5, 0.07), (7, 0.09))}   ''' + t("# the truth of the demo", "# die Wahrheit der Demo") + '''
+    for k, (hour, hv, mv) in enumerate(((2, 0.10, 0.05), (6, 0.08, 0.07), (10, 0.04, 0.10), (12, 0.02, 0.13),
+                                        (16, 0.05, 0.09), (22, 0.09, 0.06))):
+        cfg = folder / ("TRU_%02dh_10_000kHz.cfg" % hour)
+        if not cfg.exists():
+            demo.make_undisturbed_transformer_recording(str(cfg), duration=60.0, Z_mv=z_mv, hv_fluctuation=hv,
+                                                        mv_fluctuation=mv, ct_angle_deg={5: 2.0, 7: 2.8},
+                                                        reference_clamp=(k == 0), seed=30 + k,
+                                                        start=datetime.datetime(2026, 3, 10, hour, 0))
+FILES = (sorted(WORK_FOLDER.glob(RECORDINGS)) if isinstance(RECORDINGS, str)
+         else [path_in_work_folder(p) for p in RECORDINGS])
+CT_TABLE = V3_TABLE = V3_POOLED = None
+Z_MV = {}
+CT = CT_ANGLE
+if REFERENCE:
+    CT_TABLE = transformer.ct_angle_from_reference(str(path_in_work_folder(REFERENCE["recording"])),
+                                                   REFERENCE["channel"], REFERENCE["reference"], orders=ORDERS)
+    display(Markdown("''' + t("**Angle error of the current transformers** against the reference clamp",
+                              "**Winkelfehler der Stromwandler** gegen die Referenzzange") + '''"))
+    show(CT_TABLE)
+    CT = CT_TABLE
+if not FILES:
+    print("''' + t("ℹ V3 skipped – no recordings (RECORDINGS, section 1).",
+                   "ℹ V3 übersprungen – keine Aufzeichnungen (RECORDINGS, Abschnitt 1).") + '''")
+elif Z_UP is None or Z_HV is None:
+    print("''' + t("ℹ V3 skipped – the upstream impedance needs U_N, U_K, S_RT, S_K, R_X_UP and R_X_HV (section 1).",
+                   "ℹ V3 übersprungen – die Vorimpedanz braucht U_N, U_K, S_RT, S_K, R_X_UP und R_X_HV (Abschnitt 1).") + '''")
+else:
+    V3_TABLE, V3_POOLED = transformer.mv_network_series([str(f) for f in FILES], ORDERS, sign=SIGN, Z_hv=Z_HV,
+                                                        Z_up=Z_UP, ct_angle_deg=CT, min_hv_share=MIN_HV_SHARE)
+    cols = ["recording", "start", "order", "sequence", "Z_Ohm", "Z_angle_deg", "G_S", "B_S", "corr_I_hv", "hv_share",
+            "reliable"]
+    display(Markdown("''' + t("**Per recording** (natural sequence; polarity of the currents: %+g)",
+                              "**Je Aufzeichnung** (natürliches Drehsystem; Polarität der Ströme: %+g)") + '''" % V3_TABLE.attrs["sign"]))
+    show(V3_TABLE[cols])
+    for name, hints in V3_TABLE.attrs["hints"].items():
+        for h in hints:
+            print("ℹ %s: %s" % (name, h))
+    display(Markdown("''' + t("**Pooled estimate of the reliable recordings**",
+                              "**Zusammengefasste Schätzung der verlässlichen Aufzeichnungen**") + '''"))
+    show(V3_POOLED[["order", "sequence", "recordings", "Z_Ohm", "Z_angle_deg", "Z_low_Ohm", "Z_high_Ohm", "G_S", "B_S",
+                    "hv_share", "names"]])
+    Z_MV = {int(r.order): complex(r.R_Ohm, r.X_Ohm) for r in V3_POOLED.itertuples() if r.recordings}
+    if MIN_HV_SHARE is None:
+        print("''' + t("ℹ The share of the HV-driven variation (hv_share) is listed, not assessed – MIN_HV_SHARE is not "
+                       "set (section 1). Recordings in which the MV side drives most of the variation are then pooled too.",
+                       "ℹ Der Anteil der HS-getriebenen Schwankung (hv_share) ist gelistet, nicht bewertet – MIN_HV_SHARE "
+                       "ist nicht gesetzt (Abschnitt 1). Aufzeichnungen, in denen das MS-Netz den größten Teil der "
+                       "Schwankung treibt, werden dann mit zusammengefasst.") + '''")'''),
+        md(t('''
+## 4 · V0 to V3 side by side
+
+Per order and fault impedance: **V0** = 3·U_m/|Z_0,m + 3·Z_F| with the capacitive Z_0 from I_C and the coil;
+**V1** = 3·U_m/|2/G_max + Z_0,m + 3·Z_F|; **V2** the full fault loop 3·U_m/|Z_0 + Z_1 + Z_2 + 3·Z_F| with
+Z_1 = Z_2 = (1/Z_up + G + j·m·ω₁·C_1)⁻¹ and Z_0 with the series resistance d·X_C0 – the estimate with `G` and the
+envelope (largest current) over `G_RANGE`, there without damping of the zero sequence; **V3** the same loop with the
+MV network measured (section 3). With `V0_RATIO` the column `V0_rule_A` doubles V0 below m/m_r < `V0_RATIO`. The rows
+`I_H` are √Σ I_m² over the orders of the table.
+''', '''
+## 4 · V0 bis V3 nebeneinander
+
+Je Ordnung und Fehlerimpedanz: **V0** = 3·U_m/|Z_0,m + 3·Z_F| mit dem kapazitiven Z_0 aus I_C und der Spule;
+**V1** = 3·U_m/|2/G_max + Z_0,m + 3·Z_F|; **V2** die volle Fehlerschleife 3·U_m/|Z_0 + Z_1 + Z_2 + 3·Z_F| mit
+Z_1 = Z_2 = (1/Z_vor + G + j·m·ω₁·C_1)⁻¹ und Z_0 mit dem Reihenwiderstand d·X_C0 – die Schätzung mit `G` und die
+Hüllkurve (größter Strom) über `G_RANGE`, dort ohne Dämpfung des Nullsystems; **V3** dieselbe Schleife mit dem
+gemessenen MS-Netz (Abschnitt 3). Mit `V0_RATIO` verdoppelt die Spalte `V0_Regel_A` den Wert von V0 unterhalb
+m/m_r < `V0_RATIO`. Die Zeilen `I_H` sind √Σ I_m² über die Ordnungen der Tabelle.
+''')),
+        code('''COMPARISON = None
+if VOLTAGES is None:
+    print("''' + t("ℹ No forecast – VOLTAGES is not set (section 1).",
+                   "ℹ Keine Prognose – VOLTAGES ist nicht gesetzt (Abschnitt 1).") + '''")
+elif None in (U_LE, I_C) or Z_UP is None:
+    print("''' + t("ℹ No forecast – network data missing (section 2).",
+                   "ℹ Keine Prognose – Netzdaten fehlen (Abschnitt 2).") + '''")
+else:
+    COMPARISON = fc.estimates_without_fault({m: VOLTAGES[m] for m in ORDERS if m in VOLTAGES}, I_C, U_LE, Z_UP,
+                                            Z_F=tuple(Z_F), I_L=I_L, d=D or 0.0, C_1=C1, m_r=M_R, G_max=G_MAX,
+                                            G=G, G_range=G_RANGE, Z_mv=Z_MV or None)
+    if V0_RATIO is not None and M_R:
+        rule = [v * (2.0 if isinstance(o, (int, np.integer)) and o / M_R < V0_RATIO else 1.0)
+                for o, v in zip(COMPARISON.order, COMPARISON.V0_A)]
+        COMPARISON.insert(list(COMPARISON.columns).index("V0_A") + 1, "V0_rule_A", rule)
+        for zf in COMPARISON.Z_F_Ohm.unique():      ''' + t("# I_H of the rule: √Σ over the orders",
+                                                                "# I_H der Regel: √Σ über die Ordnungen") + '''
+            part = (COMPARISON.Z_F_Ohm == zf) & (COMPARISON.order != "I_H")
+            COMPARISON.loc[(COMPARISON.Z_F_Ohm == zf) & (COMPARISON.order == "I_H"), "V0_rule_A"] = \\
+                float(np.sqrt((COMPARISON.loc[part, "V0_rule_A"] ** 2).sum()))
+    show(COMPARISON)
+    names = {"V0_A": "V0", "V0_rule_A": "''' + t("V0 rule", "V0 Regel") + '''", "V1_A": "V1", "V2_A": "V2",
+             "V2_envelope_A": "''' + t("V2 envelope", "V2 Hüllkurve") + '''", "V3_A": "V3"}
+    methods = [c for c in names if c in COMPARISON.columns]
+    for zf in COMPARISON.Z_F_Ohm.unique():
+        h = COMPARISON[(COMPARISON.Z_F_Ohm == zf) & (COMPARISON.order == "I_H")].iloc[0]
+        text = ", ".join(i18n.format_text("{} {:.1f} A", names[c], h[c]) for c in methods)
+        if FUNDAMENTAL_A is not None:
+            text += " · I_RES: " + ", ".join(i18n.format_text("{} {:.1f} A", names[c], float(np.hypot(FUNDAMENTAL_A, h[c])))
+                                             for c in methods)
+        print(i18n.format_text("Z_F = {:g} Ω – I_H: ", zf) + text)
+        if LIMITS and FUNDAMENTAL_A is not None:
+            for limit in LIMITS:
+                over = [names[c] for c in methods if np.hypot(FUNDAMENTAL_A, h[c]) > limit]
+                print(i18n.format_text("   I_RES ''' + t("above", "über") + ''' {:g} A: ", limit) + (", ".join(over) or "–"))
+    if FUNDAMENTAL_A is None:
+        print("''' + t("ℹ I_RES not computed – FUNDAMENTAL_A is not set (section 1).",
+                       "ℹ I_RES nicht gerechnet – FUNDAMENTAL_A ist nicht gesetzt (Abschnitt 1).") + '''")'''),
+        md(t("## 5 · Export the tables", "## 5 · Tabellen exportieren")),
+        code('''OUT = Path(fc.forecast_folder(WORK_FOLDER, NETWORK))
+TABLES = {"forecast_network_data": NETWORK_DATA, "forecast_ct_angle": CT_TABLE, "forecast_v3_recordings": V3_TABLE,
+          "forecast_v3": V3_POOLED, "forecast_without_fault": COMPARISON}
+TABLES = {k: v for k, v in TABLES.items() if v is not None and len(v) and v.notna().any().any()}
+if TABLES:
+    paths = report.export_tables(TABLES, str(OUT), prefix=report.slug(NETWORK) + "_without_fault_",
+                                 formats=("csv", "md"))
+    print("''' + t("%d table files in %s", "%d Tabellen-Dateien in %s") + '''" % (len(paths), OUT))
+else:
+    print("''' + t("ℹ Nothing to export – no network data, recordings or voltages (section 1).",
+                   "ℹ Nichts zu exportieren – keine Netzdaten, Aufzeichnungen oder Spannungen (Abschnitt 1).") + '''")'''),
+    ]
+    return _notebook(cells, lang, WITHOUT_FAULT_NAMES[lang])
+
+
 def _notebook(cells, lang, name):
     """Notebook of the cells with deterministic cell ids: ``<name>-<number>`` counted over the cells without a key
     (e.g. ``evaluate_measurement-07``), ``<name>-<key>`` for cells with a key (see ``keyed``).
@@ -1516,13 +2481,24 @@ def main(argv=None):
     ap.add_argument("--example", action="store_true", help="configuration for the demo campaign")
     ap.add_argument("--templates-only", action="store_true", help="write only the reference copies")
     ap.add_argument("--overwrite", action="store_true", help="also overwrite existing working copies")
+    ap.add_argument("--forecast", action="store_true",
+                    help="also write the forecast notebooks (optional part) into <out>/forecast (German: <out>/Prognose)")
+    ap.add_argument("--forecast-only", action="store_true", help="write only the forecast notebooks")
     a = ap.parse_args(argv)
     meas, camp, templates = NAMES[a.lang]
-    write(measurement_notebook(a.lang, False), os.path.join(a.out, templates, meas + "_DEFAULT.ipynb"))
-    write(campaign_notebook(a.lang, False), os.path.join(a.out, templates, camp + "_DEFAULT.ipynb"))
-    if not a.templates_only:
-        write(measurement_notebook(a.lang, a.example), os.path.join(a.out, meas + ".ipynb"), overwrite=a.overwrite)
-        write(campaign_notebook(a.lang, a.example), os.path.join(a.out, camp + ".ipynb"), overwrite=a.overwrite)
+    if not a.forecast_only:
+        write(measurement_notebook(a.lang, False), os.path.join(a.out, templates, meas + "_DEFAULT.ipynb"))
+        write(campaign_notebook(a.lang, False), os.path.join(a.out, templates, camp + "_DEFAULT.ipynb"))
+        if not a.templates_only:
+            write(measurement_notebook(a.lang, a.example), os.path.join(a.out, meas + ".ipynb"), overwrite=a.overwrite)
+            write(campaign_notebook(a.lang, a.example), os.path.join(a.out, camp + ".ipynb"), overwrite=a.overwrite)
+    if a.forecast or a.forecast_only:
+        name, folder = FORECAST_NAMES[a.lang]
+        out = os.path.join(a.out, folder)
+        for build, nb_name in ((forecast_notebook, name), (without_fault_notebook, WITHOUT_FAULT_NAMES[a.lang])):
+            write(build(a.lang, False), os.path.join(out, templates, nb_name + "_DEFAULT.ipynb"))
+            if not a.templates_only:
+                write(build(a.lang, a.example), os.path.join(out, nb_name + ".ipynb"), overwrite=a.overwrite)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,18 @@
 # Notebooks
 
-Two Jupyter notebooks are the user interface of groundfault. All computations are in the package; the notebooks only
-collect the settings, call the functions and show tables and figures.
+Two Jupyter notebooks are the user interface of groundfault. All computations are in the package; the notebooks
+only collect the settings, call the functions and show tables and figures.
 
 | Notebook (English / German) | Purpose |
 |---|---|
 | `evaluate_measurement.ipynb` / `Messung_auswerten.ipynb` | one recording: channel roles, raw-data diagnostics, RMS trend, evaluation, station and earthing measurement (groundmeas), signal explorer, checks, export |
 | `evaluate_campaign.ipynb` / `Kampagne_auswerten.ipynb` | a campaign: overview and consistency, equivalent-source method, residual current at the earthing impedance, resistive approach, stations, report tables and figures, entries in groundmeas |
+
+Two further notebooks belong to the optional [forecast](../forecast/index.md) and are described there, both in the
+sub-folder `forecast/` (German `Prognose/`): `forecast_without_fault.ipynb` / `Prognose_ohne_Erdschluss.ipynb` – the
+estimates without an earth fault (V0 to V3) from network data and undisturbed recordings of the transformer node – and
+`network_model_forecast.ipynb` / `Netzmodell_Prognose.ipynb` – the network model of a busbar from staged tests and
+recorded earth faults (V6, V7) and the forecast of the harmonic residual current.
 
 The English notebooks are in `notebooks/en/`, the German ones in `notebooks/de/`. The code cells are identical in
 both languages and use the same English variable names (`CAMPAIGN`, `FILE`, `STEADY_STATE` …); comments,
@@ -28,14 +34,14 @@ Each language folder contains two kinds of notebooks:
   `Vorlagen/…_DEFAULT.ipynb`) – **reference copies with placeholders**. Do not edit them.
 * `evaluate_measurement.ipynb` and `evaluate_campaign.ipynb` – **examples** configured for the demo campaign.
 
-For a new campaign copy the two reference copies into your [work folder](campaigns.md#the-work-folder) (or a folder
-below it) and give them names of your choice. The first code cell finds the work folder by itself – the first folder
+For a new campaign copy the reference copies into your [work folder](campaigns.md#the-work-folder) (or a folder below
+it) and give them names of your choice. The first code cell finds the work folder by itself – the first folder
 upwards from the notebook that contains a campaigns folder – and takes the folder layout from the name of that
 campaigns folder; in a folder without one (a new, empty work folder) the layout of `LANGUAGE` is used. It prints a
 line such as
 
 ```text
-groundfault 3.0.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
+groundfault 3.1.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
 ```
 
 One copy of the measurement notebook is enough for all recordings of a campaign: for the next recording change
@@ -75,7 +81,7 @@ and run again.” and nothing is exported. What the sections compute is describe
 The configuration cell is divided into blocks. The defaults below are those of the reference copies.
 
 Every value is checked where it is used – by the function it is passed to, or by the notebook itself
-(`GROUNDMEAS_EXPORT`, `RESISTIVE`, `MEASUREMENTS`, `IG_CHOICE`). Text values are English: a misspelt value or key, or
+(`GROUNDMEAS_EXPORT`, `RESISTIVE`, `MEASUREMENTS`, `IG_CHOICE`, `SOURCE`, `SOURCE_IMPEDANCE`). Text values are English: a misspelt value or key, or
 one of the predecessor tool copied from an old notebook (`"mittel"`, `"spektral"`, `"ersetzen"`, the key `aus_ll` …),
 stops the cell with an error that names the allowed values and the current name instead of being ignored, e.g.
 
@@ -201,8 +207,8 @@ The campaign notebook works only with the **result files** of the measurement no
 |---|---|
 | 1 · Configuration | enter the campaign and the list of measurements |
 | 2 · Load the results – overview and consistency | run all cells; check the overview, the consistency checks and the hints of the single measurements |
-| 3 · Equivalent-source method | check the two-terminal equivalents per order and the checks (substation measurements) |
-| 4 · Residual current at the earthing impedance and resistive approach | read I_RES at Z_E (and the scaled value; needs `Z_E`) |
+| 3 · Equivalent-source method | check the two-terminal equivalents per order – fitted (Thevenin check) and with the measured source (single tests, comparison of both) – and the checks (substation measurements) |
+| 4 · Residual current at the earthing impedance and resistive approach | read I_RES at Z_E with the source of `SOURCE` and the other one for comparison (and the scaled value; needs `Z_E`) |
 | 5 · Stations | look at the stations per frequency and at the comparison with groundmeas |
 | 6 · Export the report tables and figures | find the exported files |
 | 7 · groundmeas | read the dry run; enter all measurements on request |
@@ -246,6 +252,8 @@ MEASUREMENTS = [
 | `NORMALIZATION` | `"complex"` | reference of the currents to the harmonic level of the network: `"complex"` (magnitude and phase, recommended), `"magnitude"` or `None` |
 | `LEVEL` | `"mean"` | level used: `"pre_fault"`, `"post_fault"` or `"mean"` of both |
 | `METHOD` | `"equation_error"` | estimator of the result: `"equation_error"` (linear) or `"output_error"` (nonlinear); both are always computed for comparison |
+| `SOURCE` | `"measured"` | source of the result (checks, I_RES at Z_E, figures, report table): `"measured"` – the pre-fault voltage of the faulted phase, which carries beyond the tested additional impedances – or `"fitted"` (from the currents); the other one is shown for comparison ([Measured source](campaign.md#measured-source)) |
+| `SOURCE_IMPEDANCE` | `"median"` | Z_q of the measured source: `"median"` over the tests (every test is checked against the model of the others, see `LOO_LIMIT_PCT`) or `"smallest"` (the test with the smallest additional impedance; the others check it) |
 | `Z_E` | `None` | earthing impedance in Ω at which I_RES is computed – a value of your network (the example notebook uses the demo value 2.5); not set, the notebook skips I_RES at Z_E, the jackknife and the Monte Carlo spread with a note (ℹ) and shows only the figure I_RES(Z_E) |
 | `Z_E_MAX` | `10.0` | end of the impedance axis of the figure I_RES(Z_E) |
 | `IG_CHOICE` | `"max"` | fundamental component I_G: `"max"` (largest measured value, conservative), `"median"` or a number in A |
@@ -273,6 +281,8 @@ defaults leave them unset, and the parts that need them are skipped with a note 
 | `U_TP`, `F_FACTOR` | `None` | permissible touch voltage U_Tp in V and the factor F: the permissible residual current F·U_Tp/(r·R_E,max) of the resistive approach and the relevance of the reduction factor (there `None` = the values stored in the result file) |
 | `REFERENCE_CURRENT` | `None` | reference current of the reduction factor in A; `None` = the largest limit stored in the result file |
 | `UNCERTAINTY_I` | `0.0` | measurement-uncertainty margin m_I on I_RES at Z_E; the value with the margin is printed only if one is set |
+| `LOO_LIMIT_PCT` | `None` | permissible deviation in % of the leave-one-out check (every test from the model of the other tests, `loo_table`); `None` = the deviations are shown without assessment |
+| `LOO_LIMIT_A` | `None` | permissible deviation in A of the same check – for the small currents of the higher orders, where a few tenths of an ampere are many per cent; a value within one of the two limits passes |
 | `PQ_SAFETY_FACTOR` | `1.0` | factor on the 95 % quantiles `U95`/`THD95_PERCENT`; `1.0` = no factor |
 | `R_TYPICAL` | `None` | range `(low, high)` of the reduction factor at 50 Hz that you expect; `None` = no classification |
 
@@ -296,13 +306,24 @@ note that names it.
 
 `EXPORT_FORMATS` – file formats of the figures, as in the measurement notebook.
 
+## The forecast notebooks
+
+The forecast notebooks are part of the optional [forecast](../forecast/index.md). `forecast_without_fault.ipynb`
+compares the estimates without an earth fault: from network data and from undisturbed recordings of the transformer
+node, e.g. those of a measuring day (sections and settings in
+[Without an earth fault](../forecast/without-fault.md#the-notebook)). `network_model_forecast.ipynb` builds the network
+model of one busbar from the result files of the measurement notebook – the staged fault tests of the campaigns and the
+earth faults recorded there – checks it and forecasts the harmonic residual current (sections and settings in
+[Working with the network model](../forecast/guide.md#the-forecast-notebook)). Both are kept once per busbar and save
+their tables in the forecast folder of the work folder.
+
 ## Regenerating the notebooks
 
 The notebooks are generated by `tools/make_notebooks.py` (needs `nbformat`):
 
 ```bash
-python tools/make_notebooks.py --lang en --out notebooks/en --example --overwrite   # the notebooks of the repository
-python tools/make_notebooks.py --lang de --out notebooks/de --example --overwrite
+python tools/make_notebooks.py --lang en --out notebooks/en --example --overwrite --forecast   # the repository
+python tools/make_notebooks.py --lang de --out notebooks/de --example --overwrite --forecast
 python tools/make_notebooks.py --lang en --out /path/to/work_folder                 # copies with placeholders
 python tools/make_notebooks.py --lang en --out /path/to/work_folder --templates-only
 ```
@@ -314,6 +335,8 @@ python tools/make_notebooks.py --lang en --out /path/to/work_folder --templates-
 | `--example` | configuration of the working copies for the demo campaign; without it, placeholders |
 | `--templates-only` | write only the reference copies (`templates/*_DEFAULT.ipynb`, German `Vorlagen/`) |
 | `--overwrite` | also overwrite existing working copies |
+| `--forecast` | also write the forecast notebook, into `FOLDER/forecast` (German `FOLDER/Prognose`) |
+| `--forecast-only` | write only the forecast notebook |
 
 The reference copies are always rewritten; existing working copies are kept (“exists, not overwritten”) unless
 `--overwrite` is given, so your own changes survive an update of groundfault.

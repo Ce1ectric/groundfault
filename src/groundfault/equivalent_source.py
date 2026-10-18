@@ -30,6 +30,13 @@ The evaluation proceeds in six steps:
    the 95 % quantile of the harmonic voltage. I_rest = harmonic content not covered by the two-terminal
    equivalents (measured I_H minus the fitted orders, largest value of the series – conservative). Extension:
    fault behind a line (Z_1L, Z_0L).
+
+**Measured source** ([`measured_source`][groundfault.equivalent_source.measured_source]): instead of estimating U_q
+from the currents, U_q is taken as measured – the pre-fault voltage of the faulted phase – and Z_q = U_q/I_k − Z_k
+follows from the tests (one test suffices, the others check it). Within the range of the additional impedances both
+give the same currents; beyond it (larger Z_E, fault behind a line) the measured source is the more reliable one,
+because the fitted U_q rests on the small differences between the currents of the tests. The orders of the zero
+sequence keep the fitted equivalent: their source arises in the fault.
 """
 from __future__ import annotations
 
@@ -37,7 +44,7 @@ import itertools
 import json
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -55,8 +62,8 @@ except Exception:  # pragma: no cover
 
 __all__ = ["SourceMeasurement", "SourceFit", "SourceSeries", "load_measurement", "load_series",
            "natural_sequence", "phase_factor", "fit_equation_error", "fit_output_error", "fit_rq0",
-           "fit_equivalent_source", "ires_at_impedance", "ires_over_line", "monte_carlo", "SEQUENCES",
-           "SEQUENCE_LEGACY"]
+           "fit_equivalent_source", "measured_source", "compare_sources", "ires_at_impedance", "ires_over_line",
+           "monte_carlo", "SEQUENCES", "SEQUENCE_LEGACY", "THEVENIN_TOLERANCE"]
 
 SEQUENCES = ("pos", "neg", "zero")
 """Sequence codes: positive, negative and zero sequence."""
@@ -70,6 +77,15 @@ _NORMALIZATIONS = {"complex": "complex", "complex_": "complex", "magnitude": "ma
 _METHODS = ("equation_error", "output_error")
 #: levels used for the normalization (``reference``)
 _LEVELS = ("mean", "pre_fault", "post_fault")
+#: source impedance of the measured source (``impedance`` of ``measured_source``)
+_IMPEDANCES = ("median", "smallest")
+
+THEVENIN_TOLERANCE = (0.10, 10.0)
+"""Tolerance (relative magnitude, angle in degrees) of the Thevenin check −U_q/level ≈ 1∠0° of a fitted equivalent
+source: beyond it a hint says that the fitted source voltage deviates from the measured one – within the tested
+additional impedances the model current stays reliable, beyond them the measured source
+([`measured_source`][groundfault.equivalent_source.measured_source]) is the better basis. A diagnostic threshold, not
+an assessment value; ``fit_equivalent_source(thevenin_tolerance=…)`` changes it."""
 
 i18n.register({
     # ---- loading result files
@@ -164,9 +180,77 @@ i18n.register({
               "{change:.0f} % (Zusatzimpedanzen klein gegenüber |Z_q|?) – U_q/Z_q nur eingeschränkt belastbar"},
     "equivalent_source.thevenin_check": {
         "en": "Thevenin check: −U_q/level = {magnitude:.2f}∠{angle:.0f}° (expected ≈ 1∠0°, U_q = pre-fault "
-              "voltage of the faulted phase) – check the normalization, polarity or measurement series",
+              "voltage of the faulted phase) – check the normalization, polarity or measurement series; if they are "
+              "right, the fitted source has absorbed changes of the network between the tests: beyond the additional "
+              "impedances of the tests use the measured source (measured_source)",
         "de": "Thevenin-Kontrolle: −U_q/Pegel = {magnitude:.2f}∠{angle:.0f}° (erwartet ≈ 1∠0°, U_q = "
-              "Vorfehlerspannung des Fehlerleiters) – Normierung, Polarität oder Messreihe prüfen"},
+              "Vorfehlerspannung des Fehlerleiters) – Normierung, Polarität oder Messreihe prüfen; stimmen sie, "
+              "enthält die geschätzte Quelle Änderungen des Netzes zwischen den Versuchen: über die Zusatzimpedanzen "
+              "der Versuche hinaus die gemessene Quelle verwenden (measured_source)"},
+    "equivalent_source.thevenin_deviation": {
+        "en": "Thevenin check: −U_q/level = {magnitude:.2f}∠{angle:.0f}° deviates by more than {tol_pct:.0f} % or "
+              "{tol_deg:.0f}° from the pre-fault voltage of the faulted phase – the fitted source has absorbed changes "
+              "of the network between the tests: within the additional impedances of the tests ({z_min}–{z_max} Ω) "
+              "the model current is reliable, beyond them (larger Z_E, fault behind a line) the measured source "
+              "(measured_source) is the better basis",
+        "de": "Thevenin-Kontrolle: −U_q/Pegel = {magnitude:.2f}∠{angle:.0f}° weicht um mehr als {tol_pct:.0f} % "
+              "bzw. {tol_deg:.0f}° von der Vorfehlerspannung des Fehlerleiters ab – die geschätzte Quelle enthält "
+              "Änderungen des Netzes zwischen den Versuchen: im Bereich der Zusatzimpedanzen der Versuche "
+              "({z_min}–{z_max} Ω) ist der Modellstrom belastbar, darüber hinaus (größeres Z_E, Fehler hinter einer "
+              "Leitung) ist die gemessene Quelle (measured_source) die bessere Grundlage"},
+    # ---- measured source
+    "equivalent_source.measured_summary": {
+        "en": "Measured source for the orders {orders}: U_q = pre-fault voltage of the faulted phase (level of the "
+              "series), Z_q {how}",
+        "de": "Gemessene Quelle für die Ordnungen {orders}: U_q = Vorfehlerspannung des Fehlerleiters (Pegel der "
+              "Reihe), Z_q {how}"},
+    "equivalent_source.measured_how_median": {
+        "en": "= median of U_q/I_k − Z_k over the tests",
+        "de": "= Median von U_q/I_k − Z_k über die Versuche"},
+    "equivalent_source.loo_limit": {
+        "en": "{name}={limit!r} is not permissible – a deviation ≥ 0 or None",
+        "de": "{name}={limit!r} ist nicht zulässig – eine Abweichung ≥ 0 oder None"},
+    "equivalent_source.measured_how_smallest": {
+        "en": "= U_q/I_k − Z_k of the test with the smallest additional impedance (the others check it)",
+        "de": "= U_q/I_k − Z_k des Versuchs mit der kleinsten Zusatzimpedanz (die übrigen prüfen es)"},
+    "equivalent_source.measured_none": {
+        "en": "Measured source for no order – it needs the complex level of the faulted phase (complex "
+              "normalization) and an order outside the zero sequence; the fitted equivalent sources are kept",
+        "de": "Gemessene Quelle für keine Ordnung – sie braucht den komplexen Pegel des Fehlerleiters (komplexe "
+              "Normierung) und eine Ordnung außerhalb des Nullsystems; die geschätzten Ersatzquellen bleiben"},
+    "equivalent_source.measured_zero_sequence": {
+        "en": "zero-sequence order: the source arises in the fault, the pre-fault voltage does not drive the current "
+              "→ fitted equivalent source kept",
+        "de": "Nullsystem-Ordnung: die Quelle entsteht im Fehler, die Vorfehlerspannung treibt den Strom nicht → "
+              "geschätzte Ersatzquelle beibehalten"},
+    "equivalent_source.measured_no_complex_level": {
+        "en": "no complex level of the faulted phase → fitted equivalent source kept",
+        "de": "kein komplexer Pegel des Fehlerleiters → geschätzte Ersatzquelle beibehalten"},
+    "equivalent_source.measured_in_rest": {
+        "en": "Orders {orders} without a measured source (zero sequence – the source arises in the fault – or no "
+              "complex level): without a fitted equivalent they stay in the remainder I_rest, with their largest "
+              "current of the tests and independent of Z_E (on the safe side)",
+        "de": "Ordnungen {orders} ohne gemessene Quelle (Nullsystem – die Quelle entsteht im Fehler – oder kein "
+              "komplexer Pegel): ohne geschätzte Ersatzquelle bleiben sie im Rest I_rest, mit ihrem größten Strom der "
+              "Versuche und unabhängig von Z_E (auf der sicheren Seite)"},
+    "equivalent_source.no_measurement": {
+        "en": "At least one measurement is needed.",
+        "de": "Mindestens eine Messung nötig."},
+    "equivalent_source.measured_not_selected": {
+        "en": "not in the selected orders → fitted equivalent source kept",
+        "de": "nicht unter den gewählten Ordnungen → geschätzte Ersatzquelle beibehalten"},
+    "equivalent_source.measured_rq_negative": {
+        "en": "R_q < 0 with the measured source (Z_q = {z} Ω – not a pure network impedance, e.g. a network state "
+              "that changed between the tests or a source arising in the fault) → R_q = 0 with |Z_q| kept: "
+              "I(Z_E) = |U_q|/√(|Z_q|² + Z_E²), on the safe side for an ohmic Z_E",
+        "de": "R_q < 0 mit gemessener Quelle (Z_q = {z} Ω – keine reine Netzimpedanz, z. B. ein zwischen den "
+              "Versuchen geänderter Netzzustand oder eine im Fehler entstehende Quelle) → R_q = 0 mit |Z_q| "
+              "beibehalten: I(Z_E) = |U_q|/√(|Z_q|² + Z_E²), für ein ohmsches Z_E auf der sicheren Seite"},
+    "equivalent_source.measured_vs_fitted": {
+        "en": "fitted equivalent source: −U_q/level = {magnitude:.2f}∠{angle:.0f}°; current fitted/measured source "
+              "{ratio_in:.2f} at Z = {z_in} Ω (tested range), {ratio_out:.2f} at Z = {z_out} Ω",
+        "de": "geschätzte Ersatzquelle: −U_q/Pegel = {magnitude:.2f}∠{angle:.0f}°; Strom geschätzte/gemessene "
+              "Quelle {ratio_in:.2f} bei Z = {z_in} Ω (Messbereich), {ratio_out:.2f} bei Z = {z_out} Ω"},
     # ---- scaling to the 95 % quantile
     "equivalent_source.thd_measured_missing": {
         "en": "The THD scaling needs the THD of the measurement series (thd_measured_percent).",
@@ -758,6 +842,47 @@ def _sensitivity(I: np.ndarray, Z: np.ndarray, Zq: complex, method: str, rq0: bo
     return float(best)
 
 
+def _measured_zq(I: np.ndarray, Z: np.ndarray, Uq: complex, impedance: str) -> complex:
+    """Source impedance with the measured source voltage: Z_q,k = U_q/I_k − Z_k per test, then the median over the
+    tests (real and imaginary part) or the value of the test with the smallest additional impedance (median if
+    several tests share it)."""
+    I = np.asarray(I, complex); Z = np.asarray(Z, complex)
+    zk = Uq / I - Z
+    if impedance == "smallest":
+        a = np.abs(Z)
+        zk = zk[a <= a.min() + 1e-9]
+    return complex(float(np.median(zk.real)), float(np.median(zk.imag)))
+
+
+def _rq_boundary(Zq: complex) -> complex:
+    """Boundary R_q = 0 of the measured source with |Z_q| kept – the current at Z = 0 stays the measured one, and for
+    an ohmic Z_E the current becomes |U_q|/√(|Z_q|² + Z_E²): j·sign(X_q)·|Z_q|."""
+    return complex(0.0, math.copysign(abs(Zq), Zq.imag if Zq.imag != 0 else -1.0))
+
+
+def _measured_impedance(I: np.ndarray, Z: np.ndarray, Uq: complex, impedance: str,
+                        rq_non_negative: bool) -> Tuple[complex, bool]:
+    """Z_q of the measured source and whether the boundary R_q = 0 was applied."""
+    Zq = _measured_zq(I, Z, Uq, impedance)
+    if rq_non_negative and Zq.real < 0:
+        return _rq_boundary(Zq), True
+    return Zq, False
+
+
+def _sensitivity_measured(I: np.ndarray, Z: np.ndarray, Uq: complex, Zq: complex, impedance: str,
+                          rq_non_negative: bool) -> float:
+    """As ``_sensitivity`` for the measured source: largest relative change of Z_q if a single current is falsified
+    by ±1 % in magnitude or ±0.5° in angle."""
+    best = 0.0
+    for k in range(len(I)):
+        for f in (1.01, 0.99, np.exp(1j * np.deg2rad(0.5)), np.exp(-1j * np.deg2rad(0.5))):
+            I2 = np.array(I, complex)
+            I2[k] *= f
+            Zq2, _ = _measured_impedance(I2, Z, Uq, impedance, rq_non_negative)
+            best = max(best, abs(Zq2 - Zq) / max(abs(Zq), 1e-9))
+    return float(best)
+
+
 # -------------------------------------------------------------------------------- evaluation of the series
 @dataclass
 class SourceFit:
@@ -772,11 +897,12 @@ class SourceFit:
     sequence : {"pos", "neg", "zero"}
         Sequence used for the level normalization.
     Uq : complex
-        Source voltage in V (L1-L2 reference).
+        Source voltage in V (L1-L2 reference; with complex normalization in the frame of the normalized currents).
     Zq : complex
         Source impedance in Ω.
-    method : {"equation_error", "output_error", "rq0"}
-        Estimator of the result (``"rq0"``: boundary solution R_q = 0).
+    method : {"equation_error", "output_error", "rq0", "measured"}
+        Estimator of the result (``"rq0"``: boundary solution R_q = 0; ``"measured"``: measured source voltage,
+        [`measured_source`][groundfault.equivalent_source.measured_source]).
     Z : numpy.ndarray
         Additional impedances (n,) in Ω.
     I_raw : numpy.ndarray
@@ -790,11 +916,12 @@ class SourceFit:
     resid_rel : float
         Relative RMS residual of the currents.
     condition_number : float
-        Condition number of the linear fit.
+        Condition number of the linear fit (NaN for the measured source).
     Rq_fixed : bool
         True if the boundary solution R_q = 0 was used.
     comparison : dict
-        Results of the estimators: {method: (U_q, Z_q, relative residual)}.
+        Results of the estimators: {method: (U_q, Z_q, relative residual)}; with the measured source also
+        ``"measured"``.
     hints : list of str
         Hints for this order.
     sensitivity : float
@@ -870,7 +997,8 @@ class SourceSeries:
         Measured fundamental component per measurement in A.
     settings : dict
         Settings of the fit (``normalization``, ``reference``, ``sequence``, ``method``, ``rq_non_negative``,
-        ``min_current_A``).
+        ``min_current_A``, ``thevenin_tolerance``) and ``source``: ``"fitted"`` (source voltage estimated from the
+        currents) or ``"measured"`` (measured source, then also ``impedance``).
     hints : list of str
         Hints for the whole series (hints per order: ``SourceFit.hints``).
     """
@@ -922,7 +1050,7 @@ class SourceSeries:
                        dZq_rel_per_1pct=F.sensitivity,
                        Rq_fixed=F.Rq_fixed, normalization=F.normalization, level_reference_V=F.level_reference,
                        Uq_ref_faulted_phase=abs(F.thevenin),
-                       Uq_angle_ref_faulted_phase_deg=(math.degrees(np.angle(F.thevenin))
+                       Uq_angle_ref_faulted_phase_deg=(math.degrees(np.angle(F.thevenin)) + 0.0
                                                        if np.isfinite(F.thevenin) else np.nan))
             for meth, (Uq, Zq, r) in F.comparison.items():
                 row["Zq_%s" % meth] = _fmt_z(Zq)
@@ -1038,8 +1166,43 @@ class SourceSeries:
                               drift_in_measurement_pct=100 * (post / pre - 1) if pre > 0 else np.nan))
         return pd.DataFrame(z)
 
+    def single_test_table(self) -> pd.DataFrame:
+        """Source impedance of every single test with the measured source voltage – the calibration with one test
+        each: Z_q,k = U_q/I_k − Z_k with U_q = −level of the series (the pre-fault voltage of the faulted phase in
+        the frame of the normalized currents).
+
+        The spread between the tests shows how much the network changed between them; the normalization removes the
+        change of the source level, not that of Z_q. A fitted equivalent source absorbs this spread into U_q (see
+        [`measured_source`][groundfault.equivalent_source.measured_source]). Only orders with complex normalization
+        outside the zero sequence.
+
+        Returns
+        -------
+        pandas.DataFrame
+            ``order``, ``measurement``, ``Z_Ohm`` (text), ``Rq_Ohm``, ``Xq_Ohm``, ``Zq_Ohm``, ``Zq_angle_deg``,
+            ``Zq_deviation_pct`` (|Z_q,k| against the median of the tests) and ``Zq_angle_deviation_deg``.
+        """
+        columns = ["order", "measurement", "Z_Ohm", "Rq_Ohm", "Xq_Ohm", "Zq_Ohm", "Zq_angle_deg", "Zq_deviation_pct",
+                   "Zq_angle_deviation_deg"]
+        z = []
+        for m, F in sorted(self.fits.items()):
+            if F.sequence == "zero" or F.normalization != "complex" or not F.level_reference > 0:
+                continue
+            zk = -F.level_reference / F.I_fit - F.Z
+            med = complex(float(np.median(zk.real)), float(np.median(zk.imag)))
+            for k, mm in enumerate(self.measurements):
+                z.append(dict(order=m, measurement=mm.name, Z_Ohm=_fmt_z(F.Z[k]), Rq_Ohm=zk[k].real, Xq_Ohm=zk[k].imag,
+                              Zq_Ohm=abs(zk[k]), Zq_angle_deg=math.degrees(np.angle(zk[k])),
+                              Zq_deviation_pct=100 * (abs(zk[k]) / abs(med) - 1) if abs(med) > 0 else np.nan,
+                              Zq_angle_deviation_deg=math.degrees(np.angle(zk[k] / med)) if abs(med) > 0 else np.nan))
+        return pd.DataFrame(z, columns=columns)
+
     def jackknife_table(self, Z_E: complex) -> pd.DataFrame:
         """Jackknife: current at Z_E per order when the fit is repeated without one measurement at a time.
+
+        With the measured source ([`measured_source`][groundfault.equivalent_source.measured_source]) Z_q is
+        determined again from the remaining tests with the same rule (median, or the test with the smallest
+        additional impedance among them) and U_q stays the measured one.
 
         Parameters
         ----------
@@ -1050,26 +1213,103 @@ class SourceSeries:
         -------
         pandas.DataFrame
             ``order``, ``I_at_ZE_A`` (all measurements), ``min_A``, ``max_A`` and ``span_pct``
-            (= (max − min)/(2·I_at_ZE)); NaN with fewer than three measurements.
+            (= (max − min)/(2·I_at_ZE)); NaN with fewer than three measurements (measured source: fewer than two).
         """
         z = []
         n = len(self.measurements)
+        rq = bool(self.settings.get("rq_non_negative"))
         for m, F in sorted(self.fits.items()):
             best = F.current(Z_E)
-            if n < 3:
+            measured = F.method == "measured"
+            if n < (2 if measured else 3):
                 z.append(dict(order=m, I_at_ZE_A=best, min_A=np.nan, max_A=np.nan, span_pct=np.nan))
                 continue
             values = []
             for removed in range(n):
                 sel = [j for j in range(n) if j != removed]
-                Uq, Zq = _fit(F.I_fit[sel], F.Z[sel], F.method if F.method != "rq0" else "equation_error")
-                if self.settings.get("rq_non_negative") and Zq.real < 0:
-                    Uq, Zq = fit_rq0(F.I_fit[sel], F.Z[sel])
+                if measured:
+                    Uq = F.Uq
+                    Zq, _ = _measured_impedance(F.I_fit[sel], F.Z[sel], Uq, self.settings.get("impedance", "median"),
+                                                rq)
+                else:
+                    Uq, Zq = _fit(F.I_fit[sel], F.Z[sel], F.method if F.method != "rq0" else "equation_error")
+                    if rq and Zq.real < 0:
+                        Uq, Zq = fit_rq0(F.I_fit[sel], F.Z[sel])
                 values.append(abs(Uq / (Zq + Z_E)))
             v = np.array(values)
             z.append(dict(order=m, I_at_ZE_A=best, min_A=v.min(), max_A=v.max(),
                           span_pct=100 * (v.max() - v.min()) / (2 * best) if best > 0 else np.nan))
         return pd.DataFrame(z)
+
+    def loo_table(self, limit_pct: Optional[float] = None, limit_A: Optional[float] = None) -> pd.DataFrame:
+        """Leave-one-out check: every measurement forecast with the model of the other measurements.
+
+        The model is built again without the measurement and with the same rule – the measured source
+        ([`measured_source`][groundfault.equivalent_source.measured_source]) keeps U_q and takes Z_q from the others
+        (median, or the test with the smallest additional impedance among them), the fitted source is fitted again
+        with the same estimator – and gives the current at the additional impedance of the left-out measurement, in the
+        frame of the normalized currents as in ``forecast_table`` (i.e. with the source level of that measurement).
+        Large deviations show that the network changed between the tests: a model from these tests is then less
+        reliable than their spread within the tested range suggests.
+
+        Parameters
+        ----------
+        limit_pct : float, optional
+            Permissible deviation in % – your choice (e.g. from the operator's specification).
+        limit_A : float, optional
+            Permissible deviation in A – for the small currents of the higher orders, where a few tenths of an ampere
+            are many per cent. Given one or both, the column ``within_limit`` says whether the deviation stays within
+            one of them. Not given: the deviations without assessment.
+
+        Returns
+        -------
+        pandas.DataFrame
+            ``order``, ``measurement``, ``Z_Ohm`` (text), ``I_measured_A``, ``I_from_others_A``, ``deviation_pct``,
+            ``deviation_A`` (model of the others against the measurement; NaN with fewer than two measurements for the
+            measured source, or fewer than two different additional impedances among the others for the fitted source)
+            and, with ``limit_pct`` or ``limit_A``, ``within_limit``.
+
+        Raises
+        ------
+        ValueError
+            For a negative ``limit_pct`` or ``limit_A``.
+        """
+        for name, value in (("limit_pct", limit_pct), ("limit_A", limit_A)):
+            if value is not None and not float(value) >= 0:
+                raise ValueError(tr("equivalent_source.loo_limit", name=name, limit=value))
+        columns = ["order", "measurement", "Z_Ohm", "I_measured_A", "I_from_others_A", "deviation_pct", "deviation_A"]
+        z = []
+        n = len(self.measurements)
+        rq = bool(self.settings.get("rq_non_negative"))
+        impedance = self.settings.get("impedance", "median")
+        for m, F in sorted(self.fits.items()):
+            measured = F.method == "measured"
+            for k, mm in enumerate(self.measurements):
+                sel = [j for j in range(n) if j != k]
+                ip = np.nan
+                if measured and sel:
+                    Zq, _ = _measured_impedance(F.I_fit[sel], F.Z[sel], F.Uq, impedance, rq)
+                    ip = abs(F.Uq / (Zq + F.Z[k]))
+                elif not measured and len(set(np.round(F.Z[sel], 9))) >= 2:
+                    Uq, Zq = _fit(F.I_fit[sel], F.Z[sel], "equation_error" if F.method == "rq0" else F.method)
+                    if rq and Zq.real < 0:
+                        Uq, Zq = fit_rq0(F.I_fit[sel], F.Z[sel])
+                    ip = abs(Uq / (Zq + F.Z[k]))
+                im = abs(F.I_fit[k])
+                z.append(dict(order=m, measurement=mm.name, Z_Ohm=_fmt_z(F.Z[k]), I_measured_A=im, I_from_others_A=ip,
+                              deviation_pct=100 * (ip - im) / im if im > 0 else np.nan, deviation_A=ip - im))
+        out = pd.DataFrame(z, columns=columns)
+        if limit_pct is not None or limit_A is not None:
+            within = []
+            for dp, da in zip(out["deviation_pct"], out["deviation_A"]):
+                if not np.isfinite(da):
+                    within.append(None)
+                    continue
+                ok = limit_A is not None and abs(da) <= float(limit_A)
+                ok = ok or (limit_pct is not None and np.isfinite(dp) and abs(dp) <= float(limit_pct))
+                within.append(bool(ok))
+            out["within_limit"] = within
+        return out
 
     @property
     def Z_range(self) -> Tuple[float, float]:
@@ -1088,11 +1328,81 @@ def _fmt_z(z: complex) -> str:
     return s.replace(".", ",") if i18n.get_language() == "de" else s
 
 
+def _select_orders(measurements: Sequence[SourceMeasurement], orders: Union[str, Sequence[int]],
+                   min_current_A: float, hints: List[str]) -> List[int]:
+    """Orders of the series: ``"auto"`` = odd orders > 1 with ≥ ``min_current_A`` in at least two measurements (one,
+    if the series has only one), otherwise the given orders that are in every file; hints in ``hints``."""
+    common = sorted(set.intersection(*[set(m.orders) for m in measurements]) - {1})
+    if orders == "auto":
+        # odd orders with ≥ min_current_A in at least two measurements: the two-terminal equivalent (two complex
+        # unknowns) needs two meaningful currents; even orders in staged fault tests mostly stem from transients/
+        # DC saturation of the clamps and follow no two-terminal model
+        need = min(2, len(measurements))
+        n_ok = {o: sum(abs(m.I[o]) >= min_current_A for m in measurements) for o in common}
+        ords = [o for o in common if o % 2 == 1 and n_ok[o] >= need]
+        removed = [o for o in common if o not in ords and n_ok[o] >= 1]
+        if removed:
+            hints.append(tr("equivalent_source.auto_orders_skipped", orders=removed, min_current=min_current_A))
+    else:
+        ords = [int(o) for o in orders if int(o) in common]
+        missing = sorted(set(int(o) for o in orders) - set(ords))
+        if missing:
+            hints.append(tr("equivalent_source.orders_missing", orders=missing))
+    return ords
+
+
+def _phase_hints(measurements: Sequence[SourceMeasurement], normalization: Optional[str],
+                 hints: List[str]) -> List[str]:
+    """Faulted phases of the series (sorted, without unknown ones); hints on differing or unknown phases."""
+    phase = sorted({mm.faulted_phase for mm in measurements if mm.faulted_phase})
+    complex_all = normalization == "complex" and all(mm.U_complex for mm in measurements)
+    if len(phase) > 1:
+        if complex_all:
+            hints.append(tr("equivalent_source.phases_differ_normalized", phases=", ".join(
+                "%s: %s" % (mm.name, mm.faulted_phase or "?") for mm in measurements)))
+        else:
+            hints.append(tr("equivalent_source.phases_differ_warning", phases=", ".join(phase)))
+    unknown = [mm.name for mm in measurements if not mm.faulted_phase]
+    if unknown and phase:
+        hints.append(tr("equivalent_source.phase_unknown", names=", ".join(unknown)))
+    return phase
+
+
+def _normalize_order(measurements: Sequence[SourceMeasurement], m: int, sq: str, sign: Sequence[int],
+                     normalization: Optional[str], reference: str, min_level_V: float, normalize_zero: bool,
+                     phase: Sequence[str]) -> Tuple[np.ndarray, np.ndarray, Optional[str], Optional[str], np.ndarray]:
+    """Currents of order m and their normalization: (I_k, levels used, normalization applied, message key of a
+    deviation from ``normalization`` or None, normalized currents)."""
+    Ik = np.array([mm.I[m] * s for mm, s in zip(measurements, sign)], complex)
+    complex_ok = normalization == "complex" and all(mm.U_complex for mm in measurements)
+    U_ref = np.array([mm.level(m, sq, reference, complex_=complex_ok) for mm in measurements], complex)
+    # normalization actually applied to this order; ``note`` = message key explaining a deviation
+    norm, note = normalization, None
+    if sq == "zero" and normalization and not normalize_zero:
+        norm, note = None, "equivalent_source.zero_sequence_not_normalized"
+    elif normalization == "complex" and not complex_ok:
+        norm, note = "magnitude", "equivalent_source.magnitude_only"
+    if norm and (not np.all(np.isfinite(U_ref)) or np.any(np.abs(U_ref) < min_level_V)):
+        # missing levels supersede the magnitude-only fallback: no normalization at all
+        norm, note = None, "equivalent_source.level_missing"
+    if norm == "complex":
+        # level of the natural sequence at the faulted phase (L2/L3: ±120°); unknown phase → as the others
+        faulted = [mm.faulted_phase or (phase[0] if len(phase) == 1 else "") for mm in measurements]
+        U_ref = U_ref * np.array([phase_factor(sq, x) for x in faulted])
+        I_fit = Ik * (np.median(np.abs(U_ref)) / U_ref)
+    elif norm == "magnitude":
+        I_fit = Ik * (np.median(np.abs(U_ref)) / np.abs(U_ref))
+    else:
+        I_fit = Ik.copy()
+    return Ik, U_ref, norm, note, I_fit
+
+
 def fit_equivalent_source(measurements: Sequence[SourceMeasurement], orders: Union[str, Sequence[int]] = "auto",
                           normalization: Optional[str] = "complex", reference: str = "mean",
                           sequence: Union[str, Mapping[int, str]] = "natural", method: str = "equation_error",
                           rq_non_negative: bool = True, min_current_A: float = 0.5, min_level_V: float = 1.0,
-                          polarity_brute_force: bool = False, normalize_zero: bool = False) -> SourceSeries:
+                          polarity_brute_force: bool = False, normalize_zero: bool = False,
+                          thevenin_tolerance: Tuple[float, float] = THEVENIN_TOLERANCE) -> SourceSeries:
     """Two-terminal (Thevenin) equivalent per harmonic order from a measurement series.
 
     Both estimators (equation error and output error) are always computed and stored in
@@ -1135,11 +1445,17 @@ def fit_equivalent_source(measurements: Sequence[SourceMeasurement], orders: Uni
         Also normalize the orders of the zero sequence (3, 9, 15 …). Default False: their current only arises
         during the earth fault (saturation of coils/transformers at full displacement), the tiny pre-fault level
         U0,m is no reference for it.
+    thevenin_tolerance : tuple of float, optional
+        (relative magnitude, angle in degrees) of the Thevenin check −U_q/level ≈ 1∠0°: beyond it a hint per order
+        says that the fitted source voltage deviates from the measured one
+        ([`THEVENIN_TOLERANCE`][groundfault.equivalent_source.THEVENIN_TOLERANCE]); beyond 0.5…2 or ±45° the hint
+        asks to check normalization, polarity or the series.
 
     Returns
     -------
     SourceSeries
-        Two-terminal equivalent per order with tables, checks and hints.
+        Two-terminal equivalent per order with tables, checks and hints. The measured source for the same series:
+        [`measured_source`][groundfault.equivalent_source.measured_source].
 
     Raises
     ------
@@ -1164,34 +1480,12 @@ def fit_equivalent_source(measurements: Sequence[SourceMeasurement], orders: Uni
     Z = np.array([m.Z for m in measurements], complex)
     if len(set(np.round(Z, 9))) < 2:
         raise ValueError(tr("equivalent_source.equal_impedances"))
+    tol_mag, tol_deg = (float(v) for v in thevenin_tolerance)
+    z_lo, z_hi = float(np.abs(Z).min()), float(np.abs(Z).max())        # tested range (hint of the Thevenin check)
     hints = []
-    common = sorted(set.intersection(*[set(m.orders) for m in measurements]) - {1})
-    if orders == "auto":
-        # odd orders with ≥ min_current_A in at least two measurements: the two-terminal equivalent (two complex
-        # unknowns) needs two meaningful currents; even orders in staged fault tests mostly stem from transients/
-        # DC saturation of the clamps and follow no two-terminal model
-        n_ok = {o: sum(abs(m.I[o]) >= min_current_A for m in measurements) for o in common}
-        ords = [o for o in common if o % 2 == 1 and n_ok[o] >= 2]
-        removed = [o for o in common if o not in ords and n_ok[o] >= 1]
-        if removed:
-            hints.append(tr("equivalent_source.auto_orders_skipped", orders=removed, min_current=min_current_A))
-    else:
-        ords = [int(o) for o in orders if int(o) in common]
-        missing = sorted(set(int(o) for o in orders) - set(ords))
-        if missing:
-            hints.append(tr("equivalent_source.orders_missing", orders=missing))
+    ords = _select_orders(measurements, orders, min_current_A, hints)
     IG = np.array([abs(m.I.get(1, np.nan)) for m in measurements])
-    phase = sorted({mm.faulted_phase for mm in measurements if mm.faulted_phase})
-    complex_all = normalization == "complex" and all(mm.U_complex for mm in measurements)
-    if len(phase) > 1:
-        if complex_all:
-            hints.append(tr("equivalent_source.phases_differ_normalized", phases=", ".join(
-                "%s: %s" % (mm.name, mm.faulted_phase or "?") for mm in measurements)))
-        else:
-            hints.append(tr("equivalent_source.phases_differ_warning", phases=", ".join(phase)))
-    unknown = [mm.name for mm in measurements if not mm.faulted_phase]
-    if unknown and phase:
-        hints.append(tr("equivalent_source.phase_unknown", names=", ".join(unknown)))
+    phase = _phase_hints(measurements, normalization, hints)
 
     def seq_for(m: int) -> str:
         if isinstance(sequence, Mapping):
@@ -1204,28 +1498,9 @@ def fit_equivalent_source(measurements: Sequence[SourceMeasurement], orders: Uni
         fits = {}
         for m in ords:
             sq = seq_for(m)
-            Ik = np.array([mm.I[m] * s for mm, s in zip(measurements, sign)], complex)
-            complex_ok = normalization == "complex" and all(mm.U_complex for mm in measurements)
-            U_ref = np.array([mm.level(m, sq, reference, complex_=complex_ok) for mm in measurements], complex)
-            # normalization actually applied to this order; ``note`` = message key explaining a deviation
-            norm, note = normalization, None
-            if sq == "zero" and normalization and not normalize_zero:
-                norm, note = None, "equivalent_source.zero_sequence_not_normalized"
-            elif normalization == "complex" and not complex_ok:
-                norm, note = "magnitude", "equivalent_source.magnitude_only"
-            if norm and (not np.all(np.isfinite(U_ref)) or np.any(np.abs(U_ref) < min_level_V)):
-                # missing levels supersede the magnitude-only fallback: no normalization at all
-                norm, note = None, "equivalent_source.level_missing"
+            Ik, U_ref, norm, note, I_fit = _normalize_order(measurements, m, sq, sign, normalization, reference,
+                                                            min_level_V, normalize_zero, phase)
             hint = [tr(note, min_level=min_level_V)] if note else []
-            if norm == "complex":
-                # level of the natural sequence at the faulted phase (L2/L3: ±120°); unknown phase → as the others
-                faulted = [mm.faulted_phase or (phase[0] if len(phase) == 1 else "") for mm in measurements]
-                U_ref = U_ref * np.array([phase_factor(sq, x) for x in faulted])
-                I_fit = Ik * (np.median(np.abs(U_ref)) / U_ref)
-            elif norm == "magnitude":
-                I_fit = Ik * (np.median(np.abs(U_ref)) / np.abs(U_ref))
-            else:
-                I_fit = Ik.copy()
             comparison = {}
             for meth in _METHODS:
                 Uq_, Zq_ = _fit(I_fit, Z, meth)
@@ -1262,6 +1537,10 @@ def fit_equivalent_source(measurements: Sequence[SourceMeasurement], orders: Uni
             th = F_.thevenin
             if np.isfinite(th) and (abs(np.angle(th, deg=True)) > 45 or not 0.5 <= abs(th) <= 2.0):
                 hint.append(tr("equivalent_source.thevenin_check", magnitude=abs(th), angle=np.angle(th, deg=True)))
+            elif (np.isfinite(th) and sq != "zero"
+                  and (abs(abs(th) - 1) > tol_mag or abs(np.angle(th, deg=True)) > tol_deg)):
+                hint.append(tr("equivalent_source.thevenin_deviation", magnitude=abs(th), angle=np.angle(th, deg=True),
+                               tol_pct=100 * tol_mag, tol_deg=tol_deg, z_min=_fmt_z(z_lo), z_max=_fmt_z(z_hi)))
             fits[m] = F_
         return fits
 
@@ -1290,7 +1569,227 @@ def fit_equivalent_source(measurements: Sequence[SourceMeasurement], orders: Uni
         hints.append(tr("equivalent_source.exactly_determined", n=len(measurements)))
     return SourceSeries(list(measurements), fits, IG,
                         dict(normalization=normalization, reference=reference, sequence=sequence, method=method,
-                             rq_non_negative=rq_non_negative, min_current_A=min_current_A), hints)
+                             rq_non_negative=rq_non_negative, min_current_A=min_current_A,
+                             thevenin_tolerance=(tol_mag, tol_deg), source="fitted"), hints)
+
+
+def measured_source(series: Union[SourceSeries, Sequence[SourceMeasurement]], impedance: str = "median",
+                    orders: Union[str, Sequence[int]] = "auto", rq_non_negative: Optional[bool] = None,
+                    reference: str = "mean", min_current_A: float = 0.5, min_level_V: float = 1.0) -> SourceSeries:
+    """Equivalent sources with the **measured** source voltage instead of the one estimated from the currents.
+
+    Physically the source voltage of the two-terminal equivalent is the pre-fault voltage of the faulted phase
+    (Thevenin) – the voltage a power-quality measurement records in undisturbed operation. Here it is taken as
+    measured: in the frame of the complex-normalized currents of ``series`` U_q = −Ũ (Ũ = level of the natural
+    sequence at the faulted phase, median of the series; the minus sign is the current orientation of the angle
+    method), and every test gives the source impedance
+
+        Z_q,k = U_q/I_k − Z_k
+
+    – for the test without additional impedance "open-circuit voltage divided by short-circuit current". One test
+    suffices; ``impedance`` takes the median over the tests (default) or the test with the smallest additional
+    impedance, and [`loo_table`][groundfault.equivalent_source.SourceSeries.loo_table] checks every test against the
+    model of the others. The fitted source of
+    [`fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source] instead takes U_q from the slope of
+    1/I_k over Z_k; when the additional impedances are small compared with |Z_q|, a small change of the network
+    between the tests changes this slope noticeably. Within the tested range both give the same currents (the fitted
+    Z_q compensates the error of U_q), beyond it – larger Z_E, fault behind a line – the measured source is the more
+    reliable one. The orders of the zero sequence keep the fitted equivalent: their source arises in the fault, the
+    pre-fault voltage does not drive their current.
+
+    Parameters
+    ----------
+    series : SourceSeries or sequence of SourceMeasurement
+        Result of [`fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source] (complex normalization
+        needed for the orders that get the measured source) – or the measurements themselves
+        ([`load_series`][groundfault.equivalent_source.load_series]): with two or more different additional
+        impedances they are fitted first (complex normalization), with **one test only** (or equal additional
+        impedances) the measured source is the only equivalent; the zero-sequence orders then stay in the
+        remainder I_rest (largest current of the tests, independent of Z_E – on the safe side).
+    impedance : {"median", "smallest"}, optional
+        Z_q from the median of Z_q,k over the tests (default; real and imaginary part – a change of the network
+        between the tests enters as the middle state) or from the test with the smallest additional impedance
+        (normally the 0-Ω test – the model then reproduces the largest measured current, and the other tests are a
+        genuine check in ``forecast_table``; median if several tests share the smallest additional impedance).
+        [`loo_table`][groundfault.equivalent_source.SourceSeries.loo_table] checks either rule test by test.
+    orders : "auto" or sequence of int, optional
+        ``"auto"``: every order with complex normalization outside the zero sequence; or a list of these orders (the
+        others keep the fitted equivalent, with a hint).
+    rq_non_negative : bool, optional
+        If Z_q has a negative real part (not a pure network impedance), use R_q = 0 with |Z_q| kept – the current at
+        Z_E = 0 stays the measured one and for an ohmic Z_E the current becomes |U_q|/√(|Z_q|² + Z_E²), on the safe
+        side. Default: the setting of ``series`` (True for measurements).
+    reference : {"mean", "pre_fault", "post_fault"}, optional
+        Level of the source (measurements only; a series keeps its own).
+    min_current_A, min_level_V : float, optional
+        Current threshold of ``orders="auto"`` and smallest usable level (measurements only, see
+        [`fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source]).
+
+    Returns
+    -------
+    SourceSeries
+        The same series with ``method == "measured"`` for these orders (``settings["source"] == "measured"``); every
+        table, [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance],
+        [`ires_over_line`][groundfault.equivalent_source.ires_over_line] and
+        [`monte_carlo`][groundfault.equivalent_source.monte_carlo] work with it. ``comparison`` of each order keeps the
+        fitted estimators and adds ``"measured"``. A hint per order compares the fitted source when it deviates by
+        more than ``settings["thevenin_tolerance"]``.
+
+    Raises
+    ------
+    ValueError
+        For an unknown ``impedance``, ``orders`` or ``reference``, or without a measurement.
+
+    Examples
+    --------
+    >>> fitted = fit_equivalent_source(load_series(entries))              # doctest: +SKIP
+    >>> measured = measured_source(fitted)                                # doctest: +SKIP
+    >>> compare_sources(measured, fitted, [0.0, 5.0, 10.0])               # doctest: +SKIP
+    """
+    check_option("impedance", impedance, _IMPEDANCES)
+    if isinstance(orders, str):
+        check_option("orders", orders, ("auto",))
+    if not isinstance(series, SourceSeries):                          # measurements: fit first, or one test only
+        measurements = list(series)
+        check_option("reference", reference, _LEVELS)
+        if not measurements:
+            raise ValueError(tr("equivalent_source.no_measurement"))
+        rq = True if rq_non_negative is None else bool(rq_non_negative)
+        if len(set(np.round([complex(mm.Z) for mm in measurements], 9))) < 2:
+            return _measured_only(measurements, impedance, orders, rq, reference, min_current_A, min_level_V)
+        series = fit_equivalent_source(measurements, orders=orders, normalization="complex", reference=reference,
+                                       rq_non_negative=rq, min_current_A=min_current_A, min_level_V=min_level_V)
+    rq = bool(series.settings.get("rq_non_negative", True)) if rq_non_negative is None else bool(rq_non_negative)
+    selected = None if isinstance(orders, str) else {int(o) for o in orders}
+    tol_mag, tol_deg = series.settings.get("thevenin_tolerance", THEVENIN_TOLERANCE)
+    z_lo, z_hi = series.Z_range
+    z_out = 2 * z_hi if z_hi > 0 else 10.0
+    fits, used = {}, []
+    for m, F in sorted(series.fits.items()):
+        note = None
+        if F.sequence == "zero":
+            note = "equivalent_source.measured_zero_sequence"
+        elif F.normalization != "complex" or not F.level_reference > 0:
+            note = "equivalent_source.measured_no_complex_level"
+        elif selected is not None and m not in selected:
+            note = "equivalent_source.measured_not_selected"
+        if note:
+            fits[m] = replace(F, hints=list(F.hints) + [tr(note)])            # the fitted equivalent stays
+            continue
+        Uq = complex(-F.level_reference)
+        Zq, fixed = _measured_impedance(F.I_fit, F.Z, Uq, impedance, rq)
+        hint = []
+        if fixed:
+            hint.append(tr("equivalent_source.measured_rq_negative", z=_fmt_z(_measured_zq(F.I_fit, F.Z, Uq, impedance))))
+        th = F.thevenin                                                         # of the fitted source
+        if np.isfinite(th) and (abs(abs(th) - 1) > tol_mag or abs(np.angle(th, deg=True)) > tol_deg):
+            r_in, r_out = (abs(F.Uq / (F.Zq + z)) / abs(Uq / (Zq + z)) for z in (z_hi, z_out))
+            hint.append(tr("equivalent_source.measured_vs_fitted", magnitude=abs(th), angle=np.angle(th, deg=True),
+                           ratio_in=r_in, z_in=_fmt_z(z_hi), ratio_out=r_out, z_out=_fmt_z(z_out)))
+        resid = _relres(F.I_fit, Uq, Zq, F.Z)
+        comparison = dict(F.comparison)
+        comparison["measured"] = (Uq, Zq, resid)
+        fits[m] = SourceFit(order=m, f_Hz=F.f_Hz, sequence=F.sequence, Uq=Uq, Zq=Zq, method="measured", Z=F.Z,
+                            I_raw=F.I_raw, I_fit=F.I_fit, U_ref=F.U_ref, normalization=F.normalization,
+                            resid_rel=resid, condition_number=float("nan"), Rq_fixed=fixed, comparison=comparison,
+                            hints=hint, sensitivity=_sensitivity_measured(F.I_fit, F.Z, Uq, Zq, impedance, fixed))
+        used.append(m)
+    # the hints of the series stay, except the one on the exactly determined fit: one test calibrates the measured
+    # source, a second one checks it
+    hints = [h for h in series.hints if h != tr("equivalent_source.exactly_determined", n=len(series.measurements))]
+    hints.append(tr("equivalent_source.measured_summary", orders=used, how=tr("equivalent_source.measured_how_" + impedance))
+                 if used else tr("equivalent_source.measured_none"))
+    settings = dict(series.settings, source="measured", impedance=impedance, rq_non_negative=rq)
+    return SourceSeries(list(series.measurements), fits, series.IG_measured, settings, hints)
+
+
+def _measured_only(measurements: Sequence[SourceMeasurement], impedance: str, orders: Union[str, Sequence[int]],
+                   rq: bool, reference: str, min_current_A: float, min_level_V: float) -> SourceSeries:
+    """Measured source without a fitted series (one additional impedance): every order of the positive or negative
+    sequence with a complex level gets U_q = −level and Z_q from the tests; the others stay in the remainder."""
+    hints: List[str] = []
+    ords = _select_orders(measurements, orders, min_current_A, hints)
+    phase = _phase_hints(measurements, "complex", hints)
+    Z = np.array([mm.Z for mm in measurements], complex)
+    f1 = float(np.mean([mm.f1 for mm in measurements]))
+    fits, used, rest = {}, [], []
+    for m in ords:
+        sq = natural_sequence(m)
+        Ik, U_ref, norm, _, I_fit = _normalize_order(measurements, m, sq, [1] * len(measurements), "complex",
+                                                     reference, min_level_V, False, phase)
+        if sq == "zero" or norm != "complex":
+            rest.append(m)
+            continue
+        Uq = complex(-float(np.median(np.abs(U_ref))))
+        Zq, fixed = _measured_impedance(I_fit, Z, Uq, impedance, rq)
+        hint = ([tr("equivalent_source.measured_rq_negative", z=_fmt_z(_measured_zq(I_fit, Z, Uq, impedance)))]
+                if fixed else [])
+        resid = _relres(I_fit, Uq, Zq, Z)
+        fits[m] = SourceFit(order=m, f_Hz=m * f1, sequence=sq, Uq=Uq, Zq=Zq, method="measured", Z=Z, I_raw=Ik,
+                            I_fit=I_fit, U_ref=U_ref, normalization="complex", resid_rel=resid,
+                            condition_number=float("nan"), Rq_fixed=fixed, comparison={"measured": (Uq, Zq, resid)},
+                            hints=hint, sensitivity=_sensitivity_measured(I_fit, Z, Uq, Zq, impedance, fixed))
+        used.append(m)
+    if rest:
+        hints.append(tr("equivalent_source.measured_in_rest", orders=rest))
+    hints.append(tr("equivalent_source.measured_summary", orders=used, how=tr("equivalent_source.measured_how_" + impedance))
+                 if used else tr("equivalent_source.measured_none"))
+    IG = np.array([abs(mm.I.get(1, np.nan)) for mm in measurements])
+    settings = dict(normalization="complex", reference=reference, sequence="natural", method="measured",
+                    rq_non_negative=rq, min_current_A=min_current_A, thevenin_tolerance=THEVENIN_TOLERANCE,
+                    source="measured", impedance=impedance)
+    return SourceSeries(list(measurements), fits, IG, settings, hints)
+
+
+def compare_sources(measured: SourceSeries, fitted: SourceSeries, Z_E: Union[complex, Sequence[complex]],
+                    IG: Union[str, float] = "max") -> pd.DataFrame:
+    """Current per order and I_RES at one or more earthing impedances with the measured and with the fitted source.
+
+    Within the range of the additional impedances of the tests both agree; beyond it the ratio shows how far the
+    fitted source voltage (which has absorbed the changes of the network between the tests) carries.
+
+    Parameters
+    ----------
+    measured : SourceSeries
+        Result of [`measured_source`][groundfault.equivalent_source.measured_source].
+    fitted : SourceSeries
+        Result of [`fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source] for the same
+        measurements.
+    Z_E : complex or sequence of complex
+        Earthing impedance(s) in Ω.
+    IG : {"max", "median"} or float, optional
+        Fundamental component for the rows ``I_RES`` (see
+        [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance]; unscaled, with the remainder).
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per Z_E and order and one row ``I_RES`` per Z_E: ``Z_E_Ohm`` (text), ``order``, ``f_Hz``,
+        ``sequence``, ``method`` (of ``measured``; zero-sequence orders keep the fitted estimator),
+        ``Uq_fitted_to_measured`` and ``Uq_fitted_angle_deg`` (fitted U_q relative to the measured one, = Thevenin
+        check), ``I_measured_source_A``, ``I_fitted_source_A``, ``fitted_to_measured`` (ratio of the currents) and
+        ``interpolation`` (Z_E within the range of the additional impedances).
+    """
+    zs = [Z_E] if np.isscalar(Z_E) else list(Z_E)
+    zmin, zmax = measured.Z_range
+    z = []
+    for ze in zs:
+        inside = bool(zmin - 1e-9 <= abs(ze) <= zmax + 1e-9)
+        for m, F in sorted(measured.fits.items()):
+            G = fitted.fits.get(m)
+            if G is None:
+                continue
+            i_m, i_f = F.current(ze), G.current(ze)
+            u = G.Uq / F.Uq if abs(F.Uq) > 0 else complex("nan")
+            z.append(dict(Z_E_Ohm=_fmt_z(ze), order=m, f_Hz=F.f_Hz, sequence=F.sequence, method=F.method,
+                          Uq_fitted_to_measured=abs(u), Uq_fitted_angle_deg=float(np.angle(u, deg=True)) + 0.0,
+                          I_measured_source_A=i_m, I_fitted_source_A=i_f,
+                          fitted_to_measured=i_f / i_m if i_m > 0 else np.nan, interpolation=inside))
+        r_m, r_f = ires_at_impedance(measured, ze, IG=IG)["IRES"], ires_at_impedance(fitted, ze, IG=IG)["IRES"]
+        z.append(dict(Z_E_Ohm=_fmt_z(ze), order="I_RES", f_Hz=np.nan, sequence="", method="",
+                      Uq_fitted_to_measured=np.nan, Uq_fitted_angle_deg=np.nan, I_measured_source_A=r_m,
+                      I_fitted_source_A=r_f, fitted_to_measured=r_f / r_m if r_m > 0 else np.nan, interpolation=inside))
+    return pd.DataFrame(z)
 
 
 # -------------------------------------------------------------------------------- residual current
@@ -1468,7 +1967,9 @@ def monte_carlo(series: SourceSeries, Z_E: complex, n: int = 2000, sigma_magnitu
     """Uncertainty of I_RES(Z_E) due to random measurement errors (Monte Carlo).
 
     The errors are normally distributed (1σ). Every run repeats the fit with the same estimator (and the
-    boundary solution R_q = 0 if the series was fitted with ``rq_non_negative``).
+    boundary solution R_q = 0 if the series was fitted with ``rq_non_negative``); with the measured source
+    ([`measured_source`][groundfault.equivalent_source.measured_source]) it determines Z_q again from the falsified
+    currents with the same rule and keeps the measured U_q (a level error enters through the normalized currents).
 
     Parameters
     ----------
@@ -1503,6 +2004,8 @@ def monte_carlo(series: SourceSeries, Z_E: complex, n: int = 2000, sigma_magnitu
     rng = np.random.default_rng(seed)
     ig = _ig_choice(series, IG)
     r_rest = _rest(series, True)
+    rq = bool(series.settings.get("rq_non_negative"))
+    impedance = series.settings.get("impedance", "median")
     ires = np.empty(n); ih = np.empty(n)
     zq = {m: np.empty(n, complex) for m in series.fits}
     for r in range(n):
@@ -1516,10 +2019,14 @@ def monte_carlo(series: SourceSeries, Z_E: complex, n: int = 2000, sigma_magnitu
                 error *= 1 + sigma_level * rng.standard_normal(k)
             I = F.I_fit * error
             Zs = F.Z * (1 + sigma_Z * rng.standard_normal(k))
-            meth = "equation_error" if F.method == "rq0" else F.method
-            Uq, Zq = _fit(I, Zs, meth)
-            if series.settings.get("rq_non_negative") and Zq.real < 0:
-                Uq, Zq = fit_rq0(I, Zs)
+            if F.method == "measured":
+                Uq = F.Uq
+                Zq, _ = _measured_impedance(I, Zs, Uq, impedance, rq)
+            else:
+                meth = "equation_error" if F.method == "rq0" else F.method
+                Uq, Zq = _fit(I, Zs, meth)
+                if rq and Zq.real < 0:
+                    Uq, Zq = fit_rq0(I, Zs)
             zq[m][r] = Zq
             s += abs(Uq / (Zq + Z_E)) ** 2
         s += r_rest ** 2

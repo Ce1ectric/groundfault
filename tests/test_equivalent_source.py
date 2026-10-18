@@ -449,3 +449,194 @@ def test_former_and_unknown_options_rejected(series, tmp_path):
                                  ("reference", "L12", "^reference='L12' ist nicht zulässig")):
         with pytest.raises(ValueError, match=pattern):
             equivalent_source.load_measurement(str(tmp_path / "never_read.json"), 0.0, **{name: value})
+
+
+# ------------------------------------------------------------------ measured source
+def _state_change_series(Z=(0.0, 2.0, 4.0), drift_z=(1.0, 1.05 * np.exp(-0.14j), 0.97 * np.exp(0.087j)),
+                         Zq=9 * np.exp(-0.436j), U=200.0):
+    """Thevenin series whose source impedance changes a little between the tests (network state): the level is the
+    pre-fault voltage of the faulted phase L1, Z_q·drift_k the source impedance of test k."""
+    out = []
+    for k, (z, d) in enumerate(zip(Z, drift_z)):
+        out.append(_thevenin_measurement("m%d" % k, z, "L1", 1.0, {5: (U, Zq * d)}))
+    return out
+
+
+def test_measured_source_recovers_exact_series():
+    """Exact Thevenin data with source drift and changing faulted phases: the measured source gives U_q = −level and
+    the true Z_q from every single test; the fitted and the measured source coincide at any Z_E."""
+    series = [_thevenin_measurement("L3 0", 0.0, "L3", 1.0, ORDERS),
+              _thevenin_measurement("L1 2.5", 2.5, "L1", 1.1 * np.exp(0.3j), ORDERS),
+              _thevenin_measurement("L2 5", 5.0, "L2", 0.9 * np.exp(-0.2j), ORDERS)]
+    fitted = equivalent_source.fit_equivalent_source(series, reference="pre_fault")
+    for impedance in ("median", "smallest"):
+        measured = equivalent_source.measured_source(fitted, impedance=impedance)
+        assert measured.settings["source"] == "measured" and fitted.settings["source"] == "fitted"
+        for m, (U, Zq) in ORDERS.items():
+            F = measured.fits[m]
+            assert F.method == "measured" and F.Zq == pytest.approx(Zq, abs=1e-9)
+            assert F.Uq == pytest.approx(-F.level_reference) and F.thevenin == pytest.approx(1.0)
+            assert F.resid_rel < 1e-9 and "measured" in F.comparison and "equation_error" in F.comparison
+        single = measured.single_test_table()
+        assert len(single) == 3 * len(ORDERS) and (single["Zq_deviation_pct"].abs() < 1e-6).all()
+        assert (measured.jackknife_table(10.0)["span_pct"] < 1e-6).all()
+        c = equivalent_source.compare_sources(measured, fitted, [0.0, 5.0, 12.0])
+        assert np.allclose(c["fitted_to_measured"], 1.0) and list(c["interpolation"]) == [True] * 6 + [False] * 3
+        assert list(c["order"]) == [5, 7, "I_RES"] * 3
+    assert any("Gemessene Quelle für die Ordnungen [5, 7]" in h for h in measured.hints)
+
+
+def test_measured_source_beyond_the_tested_range():
+    """The source impedance changes by 3–5 % and 5–8° between three tests (network state): the fitted source voltage
+    absorbs it (|U_q|/U_pre ≈ 0.8, hint), within the tested range both sources agree, beyond it the measured source
+    stays close to the truth and the fitted one does not."""
+    Zq = 9 * np.exp(-0.436j)
+    series = _state_change_series(Zq=Zq)
+    fitted = equivalent_source.fit_equivalent_source(series, reference="pre_fault", orders=[5])
+    th = fitted.fits[5].thevenin
+    assert abs(th) == pytest.approx(0.80, abs=0.03)
+    assert any("Thevenin-Kontrolle" in h and "10 % bzw. 10°" in h for h in fitted.fits[5].hints)
+    measured = equivalent_source.measured_source(fitted)
+    true = lambda z: 200.0 / abs(Zq + z)
+    assert measured.fits[5].current(12.0) == pytest.approx(true(12.0), rel=0.02)
+    assert fitted.fits[5].current(12.0) < 0.93 * true(12.0)
+    for k, z in enumerate((0.0, 2.0, 4.0)):              # within the tested range: both near the measured currents
+        i = abs(fitted.fits[5].I_fit[k])
+        assert fitted.fits[5].current(z) == pytest.approx(i, rel=0.05)
+        assert measured.fits[5].current(z) == pytest.approx(i, rel=0.05)
+    assert any("geschätzte Ersatzquelle: −U_q/Pegel = 0,8" in h for h in measured.fits[5].hints)
+    smallest = equivalent_source.measured_source(fitted, impedance="smallest")
+    assert smallest.fits[5].Zq == pytest.approx(Zq, abs=1e-9)                    # the 0-Ω test has no drift
+    f = smallest.forecast_table()
+    assert f["deviation_pct"].iloc[0] == pytest.approx(0.0, abs=1e-9) and f["deviation_pct"].abs().iloc[1:].max() > 1
+    s = measured.single_test_table()
+    assert s["Zq_Ohm"].round(3).tolist() == [round(abs(Zq * d), 3) for d in (1.0, 1.05, 0.97)]
+    with i18n.language("en"):
+        fitted_en = equivalent_source.fit_equivalent_source(series, reference="pre_fault", orders=[5])
+        assert any("deviates by more than 10 % or 10°" in h for h in fitted_en.fits[5].hints)
+        assert any(h.startswith("fitted equivalent source: −U_q/level = 0.8")
+                   for h in equivalent_source.measured_source(fitted_en).fits[5].hints)
+    loose = equivalent_source.fit_equivalent_source(series, reference="pre_fault", orders=[5],
+                                                    thevenin_tolerance=(0.3, 30.0))
+    assert not any("Thevenin" in h for h in loose.fits[5].hints)
+
+
+def test_loo_table_every_test_from_the_others():
+    """Leave-one-out: every test forecast with the model of the other tests (same rule). Exact Thevenin data give 0 %
+    with the fitted and the measured source; a change of the network between the tests appears as a deviation, the
+    permissible deviation is a parameter without a default; one test leaves nothing to compare."""
+    exact = [_thevenin_measurement("L3 0", 0.0, "L3", 1.0, ORDERS),
+             _thevenin_measurement("L1 2.5", 2.5, "L1", 1.1 * np.exp(0.3j), ORDERS),
+             _thevenin_measurement("L2 5", 5.0, "L2", 0.9 * np.exp(-0.2j), ORDERS)]
+    fitted = equivalent_source.fit_equivalent_source(exact, reference="pre_fault")
+    for source in (fitted, equivalent_source.measured_source(fitted)):
+        t = source.loo_table()
+        assert list(t.columns) == ["order", "measurement", "Z_Ohm", "I_measured_A", "I_from_others_A", "deviation_pct",
+                                   "deviation_A"]
+        assert len(t) == 3 * len(ORDERS) and (t["deviation_pct"].abs() < 1e-6).all()
+    measured = equivalent_source.measured_source(
+        equivalent_source.fit_equivalent_source(_state_change_series(), reference="pre_fault", orders=[5]))
+    t = measured.loo_table(limit_pct=1.0)
+    assert t["deviation_pct"].abs().max() > 1.0
+    assert list(t["within_limit"]) == [bool(abs(d) <= 1.0) for d in t["deviation_pct"]]
+    F = measured.fits[5]                                    # by hand: the first test from the median of the other two
+    zk = F.Uq / F.I_fit[1:] - F.Z[1:]
+    zq = complex(np.median(zk.real), np.median(zk.imag))
+    assert t["I_from_others_A"].iloc[0] == pytest.approx(abs(F.Uq / (zq + F.Z[0])))
+    assert set(i18n.localize(t, "de").columns) >= {"I_aus_uebrigen_A", "innerhalb_Grenze", "Abweichung_A"}
+    assert np.allclose(t["deviation_A"], t["I_from_others_A"] - t["I_measured_A"])
+    big = float(t["deviation_A"].abs().max())                  # an absolute tolerance covers what % does not
+    ta = measured.loo_table(limit_pct=1.0, limit_A=big)
+    assert ta["within_limit"].all() and not measured.loo_table(limit_A=0.5 * big)["within_limit"].all()
+    with pytest.raises(ValueError, match="limit_pct=-1 ist nicht zulässig"):
+        measured.loo_table(-1)
+    with pytest.raises(ValueError, match="limit_A=-0.5 ist nicht zulässig"):
+        measured.loo_table(limit_A=-0.5)
+    one = equivalent_source.measured_source([_thevenin_measurement("0 Ω", 0.0, "L2", 1.0, ORDERS)],
+                                            reference="pre_fault")
+    t1 = one.loo_table(15.0)
+    assert t1["deviation_pct"].isna().all() and t1["within_limit"].isna().all()
+
+
+def test_measured_source_keeps_zero_sequence_and_options(series):
+    """Zero-sequence orders keep the fitted equivalent (source in the fault), so do orders not selected; two
+    measurements are no longer 'exactly determined' – one calibrates, the other checks."""
+    fitted = equivalent_source.fit_equivalent_source(series)
+    measured = equivalent_source.measured_source(fitted)
+    assert measured.fits[3].method == fitted.fits[3].method != "measured"
+    assert measured.fits[3].Zq == fitted.fits[3].Zq
+    assert any("Quelle entsteht im Fehler" in h for h in measured.fits[3].hints)
+    assert not any("Quelle entsteht im Fehler" in h for h in fitted.fits[3].hints)      # the fitted series unchanged
+    assert measured.single_test_table()["order"].unique().tolist() == [5, 7, 11, 13]
+    only5 = equivalent_source.measured_source(fitted, orders=[5])
+    assert only5.fits[5].method == "measured" and only5.fits[7].method != "measured"
+    assert any("nicht unter den gewählten Ordnungen" in h for h in only5.fits[7].hints)
+    with pytest.raises(ValueError, match="impedance='zero' ist nicht zulässig"):
+        equivalent_source.measured_source(fitted, impedance="zero")
+    two = equivalent_source.fit_equivalent_source(series[:2])
+    assert any("exakt bestimmt" in h for h in two.hints)
+    m2 = equivalent_source.measured_source(two)
+    assert not any("exakt bestimmt" in h for h in m2.hints)
+    assert np.isfinite(m2.jackknife_table(10.0).query("order == 5")["span_pct"]).all()
+    none = equivalent_source.measured_source(equivalent_source.fit_equivalent_source(series, normalization="magnitude"))
+    assert all(F.method != "measured" for F in none.fits.values())
+    assert any("Gemessene Quelle für keine Ordnung" in h for h in none.hints)
+
+
+def test_measured_source_negative_resistance():
+    """A per-test source impedance with a negative real part (not a pure network impedance) → R_q = 0 with |Z_q|
+    kept: the current at Z_E = 0 stays the measured one, for an ohmic Z_E it becomes U/√(|Z_q|² + Z_E²)."""
+    o = {5: (150.0, -0.8 - 5.6j)}
+    series = [_thevenin_measurement(n, z, "L2", 1.0, o) for n, z in (("a", 0.0), ("b", 2.5), ("c", 5.0))]
+    fitted = equivalent_source.fit_equivalent_source(series, reference="pre_fault")
+    measured = equivalent_source.measured_source(fitted)
+    F = measured.fits[5]
+    assert F.Rq_fixed and F.Zq.real == 0 and F.Zq.imag == pytest.approx(-abs(o[5][1]))
+    assert F.current(0.0) == pytest.approx(150.0 / abs(o[5][1]))
+    assert F.current(7.0) == pytest.approx(150.0 / math.hypot(abs(o[5][1]), 7.0))
+    assert any("R_q < 0 mit gemessener Quelle" in h for h in F.hints)
+    free = equivalent_source.measured_source(fitted, rq_non_negative=False)
+    assert free.fits[5].Zq == pytest.approx(o[5][1]) and not free.fits[5].Rq_fixed
+
+
+def test_monte_carlo_and_residual_current_with_measured_source(series):
+    """Monte Carlo and the residual current work with the measured source; its spread of Z_q contains the demo
+    value and the median of I_RES lies at the deterministic value."""
+    measured = equivalent_source.measured_source(equivalent_source.fit_equivalent_source(series))
+    mc = equivalent_source.monte_carlo(measured, 10.0, n=300, seed=1)
+    r = equivalent_source.ires_at_impedance(measured, 10.0)
+    assert mc["IRES"][5] <= r["IRES"] <= mc["IRES"][95]
+    z = mc["Zq"][5]
+    assert z["Rq_P5"] <= 4.5 <= z["Rq_P95"] and z["Xq_P5"] <= -2.5 <= z["Xq_P95"]
+    line = equivalent_source.ires_over_line(measured, 2.5, Z1L=0.0, Z0L=0.0)
+    assert line["IRES"] == pytest.approx(equivalent_source.ires_at_impedance(measured, 2.5)["IRES"])
+    shown = i18n.localize(measured.source_table(), "de")
+    assert "gemessene Quelle" in set(shown["Methode"])
+    assert set(i18n.localize(measured.single_test_table(), "de").columns) >= {"Zq_Abweichung_proz", "Zq_Winkel_deg"}
+
+
+def test_measured_source_from_one_test():
+    """One test is enough for the measured source: Z_q = U_q/I − Z of that test (exact Thevenin data); an order of
+    the zero sequence stays in the remainder (largest current, independent of Z_E). From two or more different
+    additional impedances the measurements are fitted first – the same as measured_source(fit_equivalent_source(…))."""
+    one = [_thevenin_measurement("0 Ω", 0.0, "L2", 1.1 * np.exp(0.2j), ORDERS, extra={3: 4.0})]
+    with pytest.raises(ValueError, match="Mindestens zwei Messungen"):
+        equivalent_source.fit_equivalent_source(one)
+    measured = equivalent_source.measured_source(one, reference="pre_fault")
+    assert measured.settings["source"] == "measured" and sorted(measured.fits) == [5, 7]
+    for m, (U, Zq) in ORDERS.items():
+        F = measured.fits[m]
+        assert F.Zq == pytest.approx(Zq, abs=1e-9) and abs(F.Uq) == pytest.approx(abs(1.1 * U))
+    assert any("Ordnungen [3] ohne gemessene Quelle" in h for h in measured.hints)
+    r = equivalent_source.ires_at_impedance(measured, 10.0, rest=True)
+    assert r["IH_rest"] == pytest.approx(4.0) and r["parts"][5] == pytest.approx(abs(1.1 * ORDERS[5][0] / (ORDERS[5][1] + 10)))
+    assert np.isnan(measured.jackknife_table(10.0)["span_pct"]).all()
+    assert measured.pairwise_table().empty and len(measured.single_test_table()) == 2
+    mc = equivalent_source.monte_carlo(measured, 10.0, n=100, seed=2)
+    assert mc["IRES"][5] <= r["IRES"] <= mc["IRES"][95]
+    series = [_thevenin_measurement("a", 0.0, "L3", 1.0, ORDERS), _thevenin_measurement("b", 2.5, "L1", 0.9, ORDERS)]
+    direct = equivalent_source.measured_source(series, reference="pre_fault")
+    via_fit = equivalent_source.measured_source(equivalent_source.fit_equivalent_source(series, reference="pre_fault"))
+    assert {m: F.Zq for m, F in direct.fits.items()} == pytest.approx({m: F.Zq for m, F in via_fit.fits.items()})
+    with pytest.raises(ValueError, match="Mindestens eine Messung"):
+        equivalent_source.measured_source([])

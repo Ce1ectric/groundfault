@@ -526,39 +526,53 @@ def voltage_spectrum(res, orders: Optional[Sequence[int]] = None):
     return fig
 
 
-def source_fit(series, Z_E: Optional[float] = None):
+def source_fit(series, Z_E: Optional[float] = None, comparison=None):
     """Two-terminal (Thevenin) fit per order (slider): normalised measuring points and model curve
     |U_q/(Z_q + Z)| over the additional impedance.
 
     Parameters
     ----------
     series : SourceSeries
-        Fitted equivalent sources
-        ([`groundfault.equivalent_source.fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source]).
+        Equivalent sources
+        ([`groundfault.equivalent_source.fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source] or
+        [`groundfault.equivalent_source.measured_source`][groundfault.equivalent_source.measured_source]).
     Z_E : float, optional
         Earthing impedance in Ω (dashed vertical line).
+    comparison : SourceSeries, optional
+        A second series of the same measurements (e.g. the fitted source when ``series`` is the measured one): its
+        model curve dashed.
 
     Returns
     -------
     plotly.graph_objects.Figure
     """
     _check_plotly()
+    from .report import _source_label
     ords = sorted(series.fits)
     zz = np.array([abs(m.Z) for m in series.measurements])
     zg = np.linspace(0, max(zz.max() * 1.3, (Z_E or 0) * 1.3, 1.0), 200)
     fig = go.Figure()
+    per = 3 if comparison is not None else 2                          # traces per order
     for i, m in enumerate(ords):
         F = series.fits[m]
         fig.add_trace(go.Scatter(x=np.abs(F.Z), y=np.abs(F.I_fit), mode="markers",
                                  name=tr("interactive.measurement_normalised"),
                                  marker=dict(size=10, color=COLORS[1]), visible=(i == 0),
                                  text=[mm.name for mm in series.measurements]))
+        name = tr("interactive.model", formula="|U_q/(Z_q+Z)|")
         fig.add_trace(go.Scatter(x=zg, y=np.abs(F.Uq / (F.Zq + zg)), mode="lines",
-                                 name=tr("interactive.model", formula="|U_q/(Z_q+Z)|"),
+                                 name=name if comparison is None else "%s – %s" % (name, _source_label(series)),
                                  line=dict(color=COLORS[0]), visible=(i == 0)))
+        if comparison is not None:
+            G = comparison.fits.get(m, F)
+            fig.add_trace(go.Scatter(x=zg, y=np.abs(G.Uq / (G.Zq + zg)), mode="lines",
+                                     name="%s – %s" % (name, _source_label(comparison)),
+                                     line=dict(color=COLORS[0], dash="dash"), visible=(i == 0)))
     steps = []
     for i, m in enumerate(ords):
-        v = [False] * (2 * len(ords)); v[2 * i] = v[2 * i + 1] = True
+        v = [False] * (per * len(ords))
+        for j in range(per):
+            v[per * i + j] = True
         F = series.fits[m]
         title = tr("interactive.source_title_residual", f=_fmt(F.f_Hz, "g"), r=_fmt(F.Zq.real, ".2f"),
                    x=_fmt(F.Zq.imag, "+.2f"), u=_fmt(abs(F.Uq), ".1f"), residual=_fmt(100 * F.resid_rel, ".1f"))
@@ -573,14 +587,15 @@ def source_fit(series, Z_E: Optional[float] = None):
     return fig
 
 
-def ires_ze(series, Z_E_max: float = 10.0, limits=(), scaling: Optional[dict] = None):
+def ires_ze(series, Z_E_max: float = 10.0, limits=(), scaling: Optional[dict] = None, comparison=None):
     """Residual current I_RES over the earthing impedance Z_E from the equivalent sources (equivalent-source method),
     with the current per harmonic order and the limits given by the user.
 
     Parameters
     ----------
     series : SourceSeries
-        Fitted equivalent sources.
+        Equivalent sources (fitted, or measured with
+        [`groundfault.equivalent_source.measured_source`][groundfault.equivalent_source.measured_source]).
     Z_E_max : float
         End of the impedance axis in Ω.
     limits : sequence of float
@@ -590,6 +605,9 @@ def ires_ze(series, Z_E_max: float = 10.0, limits=(), scaling: Optional[dict] = 
         Keyword arguments of
         [`groundfault.equivalent_source.ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance] for the
         scaling of the harmonic currents → additional curve "I_RES scaled".
+    comparison : SourceSeries, optional
+        A second series of the same measurements (e.g. the fitted source when ``series`` is the measured one): its
+        I_RES (and I_RES scaled) dashed.
 
     Returns
     -------
@@ -598,13 +616,25 @@ def ires_ze(series, Z_E_max: float = 10.0, limits=(), scaling: Optional[dict] = 
     """
     _check_plotly()
     from .equivalent_source import ires_at_impedance
+    from .report import _source_label
     zg = np.linspace(0, Z_E_max, 201)
     res = [ires_at_impedance(series, z, **(scaling or {})) for z in zg]
+    other = [ires_at_impedance(comparison, z, **(scaling or {})) for z in zg] if comparison is not None else []
+    lab = (lambda s, x: tr("report.with_source", symbol=s, source=_source_label(x))) if other else (lambda s, x: s)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=zg, y=[r["IRES"] for r in res], name="I_RES", line=dict(color="#111111", width=3)))
+    fig.add_trace(go.Scatter(x=zg, y=[r["IRES"] for r in res], name=lab("I_RES", series),
+                             line=dict(color="#111111", width=3)))
+    if other:
+        fig.add_trace(go.Scatter(x=zg, y=[r["IRES"] for r in other], name=lab("I_RES", comparison),
+                                 line=dict(color="#111111", width=2, dash="dash")))
     if scaling:
-        fig.add_trace(go.Scatter(x=zg, y=[r["IRES_scaled"] for r in res], name=tr("report.scaled", symbol="I_RES"),
+        fig.add_trace(go.Scatter(x=zg, y=[r["IRES_scaled"] for r in res],
+                                 name=lab(tr("report.scaled", symbol="I_RES"), series),
                                  line=dict(color=COLORS[7], width=3)))
+        if other:
+            fig.add_trace(go.Scatter(x=zg, y=[r["IRES_scaled"] for r in other],
+                                     name=lab(tr("report.scaled", symbol="I_RES"), comparison),
+                                     line=dict(color=COLORS[7], width=2, dash="dash")))
     for i, m in enumerate(sorted(series.fits)):
         fig.add_trace(go.Scatter(x=zg, y=[r["parts"][m] for r in res], name="%g Hz" % round(series.fits[m].f_Hz),
                                  line=dict(color=COLORS[i % 8], width=1.5)))

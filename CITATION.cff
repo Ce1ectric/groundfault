@@ -8,13 +8,16 @@ abstract: >-
   measurement uncertainty; the residual current at any earthing impedance from a series of tests with different fault
   impedances (equivalent-source method); the earth potential rise and touch voltage at secondary substations per
   frequency, as measured and fault-related by superposition, the current into the LV network and the earthing
-  impedance of the LV network; and the reduction factor compared with earthing measurements stored in a groundmeas
-  database. Jupyter notebooks serve as the user interface; output is available in English and German.
+  impedance of the LV network; the reduction factor compared with earthing measurements stored in a groundmeas
+  database; and the forecast of the harmonic residual current from harmonic voltages – without an earth fault from
+  network data and undisturbed recordings of the transformer node, and with a network model of the busbar per
+  harmonic order, calibrated with staged tests and updated with recorded earth faults. Jupyter notebooks serve as the
+  user interface; output is available in English and German.
 authors:
   - family-names: Ehlert
     given-names: Christian
-version: "3.0.0"
-date-released: "2026-10-14"
+version: "3.1.0"
+date-released: "2026-10-18"
 license: MIT
 repository-code: "https://github.com/Ce1ectric/groundfault"
 url: "https://ce1ectric.github.io/groundfault/"

@@ -131,6 +131,10 @@ i18n.register({
     "report.order_axis": {"en": "Order {symbol}", "de": "Ordnung {symbol}"},
     "report.measured_range": {"en": "measured range", "de": "Messbereich"},
     "report.scaled": {"en": "{symbol} scaled", "de": "{symbol} skaliert"},
+    "report.source_measured": {"en": "measured source", "de": "gemessene Quelle"},
+    "report.source_fitted": {"en": "fitted source", "de": "geschätzte Quelle"},
+    "report.with_source": {"en": "{symbol} ({source})", "de": "{symbol} ({source})"},
+    "report.single_tests": {"en": "single tests", "de": "einzelne Versuche"},
     "report.remainder_not_fitted": {"en": "remainder (not fitted)", "de": "Rest (nicht gefittet)"},
     "report.per_100_a": {"en": "{symbol} in V per 100 A", "de": "{symbol} in V je 100 A"},
     "report.epr": {"en": "earth potential rise", "de": "Erdungsspannung"},
@@ -224,8 +228,15 @@ i18n.register({
     "report.assessment_value_of": {"en": "{name} assessment value", "de": "{name} Bewertung"},
     "report.residual_in_pct": {"en": "Residual in %", "de": "Residuum in %"},
     "report.uq_to_faulted_phase": {"en": "U_q/U_faulted phase,pre", "de": "U_q/U_Fehlerleiter,vor"},
+    "report.uq_fitted_to_faulted_phase": {"en": "U_q,fitted/U_faulted phase,pre",
+                                          "de": "U_q,geschätzt/U_Fehlerleiter,vor"},
     "report.angle_in_deg": {"en": "Angle in °", "de": "Winkel in °"},
     "report.current_at_ze": {"en": "I at Z_E = {impedance} Ω in A", "de": "I bei Z_E = {impedance} Ω in A"},
+    "report.current_at_ze_source": {"en": "I at Z_E = {impedance} Ω ({source}) in A",
+                                    "de": "I bei Z_E = {impedance} Ω ({source}) in A"},
+    "report.source_column": {"en": "Source", "de": "Quelle"},
+    "report.source_value_measured": {"en": "measured", "de": "gemessen"},
+    "report.source_value_fitted": {"en": "fitted", "de": "geschätzt"},
     "report.remainder": {"en": "Remainder", "de": "Rest"},
     # ---- table titles (DOCX headings) and sheet names of the export
     "report.title_voltages": {"en": "Voltages", "de": "Spannungen"},
@@ -296,6 +307,9 @@ i18n.register({
     "report.title_transformer_impedance": {
         "en": "Transformer node: upstream impedance from the fault-related change",
         "de": "Trafoknoten: Vorimpedanz aus der fehlerbedingten Änderung"},
+    "report.title_transformer_divider": {
+        "en": "HV share of the upstream impedance from HV and MV voltages (voltage divider)",
+        "de": "HS-Anteil der Vorimpedanz aus HS- und MS-Spannungen (Spannungsteiler)"},
     "report.title_of": {"en": "{title} – {name}", "de": "{title} – {name}"},
     "report.sheet_table": {"en": "Table", "de": "Tabelle"},
 })
@@ -566,6 +580,12 @@ def _metadata(fmt):
     if fmt == "svg":
         return {"Creator": "groundfault (Python)"}
     return None
+
+
+def _source_label(series) -> str:
+    """Legend text of the source of an equivalent-source series: measured or fitted source voltage."""
+    measured = (getattr(series, "settings", None) or {}).get("source") == "measured"
+    return tr("report.source_measured" if measured else "report.source_fitted")
 
 
 def _legend(ax, n: int, **kw):
@@ -1069,15 +1089,16 @@ def phasor_diagram(res, width="full", height_cm: float = 7.0, coils: bool = Fals
 
 
 def source_fit(series, orders: Optional[Sequence[int]] = None, Z_max: Optional[float] = None,
-               width="full", height_cm: float = 6.5, Z_E: Optional[float] = None):
+               width="full", height_cm: float = 6.5, Z_E: Optional[float] = None, comparison=None):
     """|I_m| over the additional impedance: measuring points (normalised) and the two-terminal (Thevenin) model
     |U_q/(Z_q + Z)| per order.
 
     Parameters
     ----------
     series : SourceSeries
-        Fitted equivalent sources
-        ([`groundfault.equivalent_source.fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source]).
+        Equivalent sources
+        ([`groundfault.equivalent_source.fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source] or
+        [`groundfault.equivalent_source.measured_source`][groundfault.equivalent_source.measured_source]).
     orders : sequence of int, optional
         Harmonic orders (default: all fitted ones).
     Z_max : float, optional
@@ -1088,6 +1109,10 @@ def source_fit(series, orders: Optional[Sequence[int]] = None, Z_max: Optional[f
         Figure height in cm.
     Z_E : float, optional
         Earthing impedance in Ω (dashed vertical line).
+    comparison : SourceSeries, optional
+        A second series of the same measurements, e.g. the fitted source when ``series`` is the measured one: its
+        model curves dashed in the same colours. Within the tested range both pass through the measuring points,
+        beyond it they show how far the two source voltages carry.
 
     Returns
     -------
@@ -1103,25 +1128,35 @@ def source_fit(series, orders: Optional[Sequence[int]] = None, Z_max: Optional[f
             F = series.fits[m]; c = COLORS[i % 8]
             ax.plot(zg, np.abs(F.Uq / (F.Zq + zg)), color=c, lw=STYLE.line_width,
                     label="%g Hz" % round(F.f_Hz))
+            G = comparison.fits.get(m) if comparison is not None else None
+            if G is not None:
+                ax.plot(zg, np.abs(G.Uq / (G.Zq + zg)), color=c, lw=0.8 * STYLE.line_width, ls="--")
             ax.plot(np.abs(F.Z), np.abs(F.I_fit), ls="none", marker="o", ms=4, mfc="white", mec=c, mew=1.0)
+        n = len(ords)
+        if comparison is not None:
+            from matplotlib.lines import Line2D
+            for label, ls in ((_source_label(series), "-"), (_source_label(comparison), "--")):
+                ax.add_line(Line2D([], [], color="#333333", lw=STYLE.line_width, ls=ls, label=label)); n += 1
         ax.set_xlim(0, Z_max); ax.set_ylim(bottom=0)
         if Z_E is not None:
             ax.axvline(Z_E, color=GREY, lw=0.7, ls="--")
             ax.text(Z_E, 0.02, r" $Z_\mathrm{E}$", transform=ax.get_xaxis_transform(), va="bottom", ha="left",
                     color=GREY, fontsize=STYLE.font_size_small)
         ax.set_xlabel("$Z$ in Ω"); ax.set_ylabel(r"$I_m$ in A")
-        _legend(ax, len(ords))
+        _legend(ax, n)
     return _finish(fig, axes)
 
 
 def source_plane(series, mc: Optional[dict] = None, width="half", height_cm: float = 7.0):
     """Source impedances Z_q per order in the complex plane (●), including the pairwise solutions of two
-    measurements each (×) and, with ``mc``, the Monte Carlo spread of Z_q (shaded box).
+    measurements each (×) and, with ``mc``, the Monte Carlo spread of Z_q (shaded box). For the measured source
+    ([`groundfault.equivalent_source.measured_source`][groundfault.equivalent_source.measured_source]) also the source
+    impedance of every single test, U_q/I_k − Z_k (+).
 
     Parameters
     ----------
     series : SourceSeries
-        Fitted equivalent sources.
+        Equivalent sources (fitted or measured).
     mc : dict, optional
         Result of [`groundfault.equivalent_source.monte_carlo`][groundfault.equivalent_source.monte_carlo] for the same
         series. Its entry ``Zq`` (per order ``Rq_P5``, ``Rq_P95``, ``Xq_P5``, ``Xq_P95``) is drawn as a shaded box per
@@ -1139,6 +1174,7 @@ def source_plane(series, mc: Optional[dict] = None, width="half", height_cm: flo
     from matplotlib.patches import Rectangle
     fig, axes = figure(width, height_cm); ax = axes[0, 0]
     pw = series.pairwise_table()
+    single = series.single_test_table() if (series.settings or {}).get("source") == "measured" else None
     spread = (mc or {}).get("Zq") or {}
     with _rc():
         for i, (m, F) in enumerate(sorted(series.fits.items())):
@@ -1152,6 +1188,9 @@ def source_plane(series, mc: Optional[dict] = None, width="half", height_cm: flo
             sub = pw[pw["order"] == m] if not pw.empty else pw
             if len(sub):
                 ax.plot(sub["Rq_Ohm"], sub["Xq_Ohm"], ls="none", marker="x", ms=4, color=c, mew=0.9)
+            if single is not None and F.method == "measured":
+                one = single[single["order"] == m]
+                ax.plot(one["Rq_Ohm"], one["Xq_Ohm"], ls="none", marker="+", ms=5, color=c, mew=0.9)
             ax.plot([F.Zq.real], [F.Zq.imag], ls="none", marker="o", ms=5, color=c, label="%g Hz" % round(F.f_Hz))
         ax.axhline(0, color="#999999", lw=0.5); ax.axvline(0, color="#999999", lw=0.5)
         ax.set_xlabel(r"$R_\mathrm{q}$ in Ω"); ax.set_ylabel(r"$X_\mathrm{q}$ in Ω")
@@ -1161,7 +1200,7 @@ def source_plane(series, mc: Optional[dict] = None, width="half", height_cm: flo
 
 def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
                  IG: Union[str, float] = "max", scaling: Optional[dict] = None, width="full",
-                 height_cm: float = 7.0, parts: bool = True):
+                 height_cm: float = 7.0, parts: bool = True, comparison=None):
     """Residual current I_RES over the earthing impedance Z_E from the equivalent sources (equivalent-source
     method), with horizontal lines at the limits given by the user; optionally scaled to the 95 % quantile of the
     harmonic voltage.
@@ -1172,7 +1211,8 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
     Parameters
     ----------
     series : SourceSeries
-        Fitted equivalent sources.
+        Equivalent sources (fitted, or measured with
+        [`groundfault.equivalent_source.measured_source`][groundfault.equivalent_source.measured_source]).
     Z_E_max : float
         End of the impedance axis in Ω.
     limits : sequence of float
@@ -1191,6 +1231,9 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
         Figure height in cm.
     parts : bool
         Also draw I_G, the current per harmonic order and the remainder that is not fitted.
+    comparison : SourceSeries, optional
+        A second series of the same measurements (e.g. the fitted source when ``series`` is the measured one): its
+        I_RES (and I_RES scaled) dashed, for comparison beyond the tested range.
 
     Returns
     -------
@@ -1199,17 +1242,25 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
     from .equivalent_source import ires_at_impedance
     zg = np.linspace(0, Z_E_max, 201)
     res = [ires_at_impedance(series, z, IG=IG, **(scaling or {})) for z in zg]
+    other = [ires_at_impedance(comparison, z, IG=IG, **(scaling or {})) for z in zg] if comparison is not None else []
     fig, axes = figure(width, height_cm); ax = axes[0, 0]
     zmin, zmax = series.Z_range
     n = 0
+    sym = r"$I_\mathrm{RES}$"
+    lab = (lambda s, x: tr("report.with_source", symbol=s, source=_source_label(x))) if other else (lambda s, x: s)
     with _rc():
         ax.axvspan(zmin, zmax, color="#eeeeee", lw=0, zorder=0)
         ax.text(0.5 * (zmin + zmax), 0.98, tr("report.measured_range"), transform=ax.get_xaxis_transform(),
                 ha="center", va="top", fontsize=STYLE.font_size_small, color=GREY)
-        ax.plot(zg, [r["IRES"] for r in res], color="#111111", lw=1.3, label=r"$I_\mathrm{RES}$"); n += 1
+        ax.plot(zg, [r["IRES"] for r in res], color="#111111", lw=1.3, label=lab(sym, series)); n += 1
+        if other:
+            ax.plot(zg, [r["IRES"] for r in other], color="#111111", lw=1.0, ls="--", label=lab(sym, comparison)); n += 1
         if scaling:
             ax.plot(zg, [r["IRES_scaled"] for r in res], color=COLORS[7], lw=1.3,
-                    label=tr("report.scaled", symbol=r"$I_\mathrm{RES}$")); n += 1
+                    label=lab(tr("report.scaled", symbol=sym), series)); n += 1
+            if other:
+                ax.plot(zg, [r["IRES_scaled"] for r in other], color=COLORS[7], lw=1.0, ls="--",
+                        label=lab(tr("report.scaled", symbol=sym), comparison)); n += 1
         if parts:
             ax.plot(zg, [r["IG"] for r in res], color=GREY, lw=0.8, ls="--", label=r"$I_\mathrm{G}$"); n += 1
             for i, m in enumerate(sorted(series.fits)):
@@ -2678,7 +2729,8 @@ _TABLE_TITLES = ("voltages", "residual_current", "split_50hz", "epr", "shield_cu
                  "harmonics", "coil_currents", "voltage_metrics", "voltage_pre_fault", "voltage_fault",
                  "voltage_post_fault", "station_metrics", "station_voltages", "station_currents",
                  "station_currents_frequency", "station_extrapolation", "transformer_power", "transformer_node",
-                 "transformer_power_change", "transformer_impedance", "transformer_summary", "steady_state_segments")
+                 "transformer_power_change", "transformer_impedance", "transformer_divider", "transformer_summary",
+                 "steady_state_segments")
 
 
 def table_title(name: str, names: Iterable[str] = ()) -> str:
@@ -2701,8 +2753,9 @@ def table_title(name: str, names: Iterable[str] = ()) -> str:
     -------
     str
         Title in the output language, e.g. ``"Residual earth-fault current"`` or ``"Earth potential rise and touch
-        voltage per frequency – M4 (Station)"``. Other names are shown as they are (German: with the German
-        column name if there is one).
+        voltage per frequency – M4 (Station)"``. A part of the package imported on demand registers the titles of
+        its tables as messages ``report.title_<name>`` ([`groundfault.i18n.register`][groundfault.i18n.register]).
+        Other names are shown as they are (German: with the German column name if there is one).
 
     Examples
     --------
@@ -2710,8 +2763,8 @@ def table_title(name: str, names: Iterable[str] = ()) -> str:
     'Earth potential rise and touch voltage per frequency – M4 (Station)'
     """
     name = str(name)
-    if name in _TABLE_TITLES:
-        return tr("report.title_" + name)
+    if name in _TABLE_TITLES or (name != "of" and i18n.has_message("report.title_" + name)):   # also registered
+        return tr("report.title_" + name)                                                       # by other parts
     splits = [(t, name[len(t) + 1:]) for t in _TABLE_TITLES if name.startswith(t + "_")]
     if splits:
         given = {slug(n): str(n) for n in names}
@@ -2742,7 +2795,7 @@ def _num(x) -> float:
 
 
 def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[float] = None,
-                  orders: Sequence[int] = (1, 3, 5, 7)) -> Dict[str, pd.DataFrame]:
+                  orders: Sequence[int] = (1, 3, 5, 7), comparison=None) -> Dict[str, pd.DataFrame]:
     """Tables in the layout of earlier test reports (one column per measurement).
 
     Parameters
@@ -2750,14 +2803,20 @@ def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[floa
     results : mapping of str to Result or ResultFile
         Results in report order, e.g. ``{"M1 (substation, 2.5 Ω)": result, …}``; the keys become column names.
     series : SourceSeries, optional
-        Fitted equivalent sources
-        ([`groundfault.equivalent_source.fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source]) →
-        table ``equivalent_sources``.
+        Equivalent sources
+        ([`groundfault.equivalent_source.fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source] or
+        [`groundfault.equivalent_source.measured_source`][groundfault.equivalent_source.measured_source]) → table
+        ``equivalent_sources``; with the measured source a column names the source of each order (the orders of the
+        zero sequence keep the fitted one).
     Z_E : float, optional
         Earthing impedance in Ω: adds the current per harmonic at Z_E, the remainder that is not fitted and I_RES to
         ``equivalent_sources``.
     orders : sequence of int
         Harmonic orders of the residual-current table (the fundamental is always included).
+    comparison : SourceSeries, optional
+        A second series of the same measurements (the fitted source when ``series`` is the measured one, or the
+        other way round): adds its current at Z_E; the Thevenin check U_q/U_faulted phase,pre is always that of the
+        fitted source.
 
     Returns
     -------
@@ -2911,20 +2970,41 @@ def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[floa
         f_column = "f in Hz"
         e = t[cols].rename(columns={"f_Hz": f_column, "Rq_Ohm": "R_q in Ω", "Xq_Ohm": "X_q in Ω", "Uq_V": "U_q in V",
                                     "residual_pct": tr("report.residual_in_pct")})
-        if "Uq_ref_faulted_phase" in t:                    # Thevenin check (expected ≈ 1∠0°)
-            e[tr("report.uq_to_faulted_phase")] = t["Uq_ref_faulted_phase"].values
-            e[tr("report.angle_in_deg")] = t["Uq_angle_ref_faulted_phase_deg"].values
+        measured = (series.settings or {}).get("source") == "measured"
+        if measured:                                       # source of each order (zero sequence: fitted)
+            e.insert(2, tr("report.source_column"),
+                     [tr("report.source_value_measured" if x == "measured" else "report.source_value_fitted")
+                      for x in t["method"]])
+        fitted = comparison if measured else series        # Thevenin check (expected ≈ 1∠0°) of the fitted source
+        if fitted is not None:
+            tf = fitted.source_table().set_index("order")
+            if "Uq_ref_faulted_phase" in tf:
+                label = tr("report.uq_fitted_to_faulted_phase" if measured else "report.uq_to_faulted_phase")
+                e[label] = [tf["Uq_ref_faulted_phase"].get(m, np.nan) for m in t["order"]]
+                e[tr("report.angle_in_deg")] = [tf["Uq_angle_ref_faulted_phase_deg"].get(m, np.nan)
+                                                for m in t["order"]]
         if Z_E is not None:
             from .equivalent_source import ires_at_impedance
             r = ires_at_impedance(series, Z_E)
-            i_column = tr("report.current_at_ze", impedance=number(Z_E))
+            rc = ires_at_impedance(comparison, Z_E) if comparison is not None else None
+            if rc is None:
+                i_column, c_column = tr("report.current_at_ze", impedance=number(Z_E)), None
+            else:
+                i_column, c_column = (tr("report.current_at_ze_source", impedance=number(Z_E), source=_source_label(x))
+                                      for x in (series, comparison))
             e[i_column] = [r["parts"][m] for m in t["order"]]
+            if rc is not None:
+                e[c_column] = [rc["parts"].get(m, np.nan) for m in t["order"]]
             if r.get("IH_rest", 0) > 0:
                 line = {c: np.nan for c in e.columns}
                 line.update({f_column: tr("report.remainder"), "sequence": "–", i_column: r["IH_rest"]})
+                if rc is not None:
+                    line[c_column] = rc["IH_rest"]
                 e = pd.concat([e.astype(object), pd.DataFrame([line])], ignore_index=True)
             total_ = {c: np.nan for c in e.columns}
             total_.update({f_column: "I_RES", "sequence": "", i_column: r["IRES"]})
+            if rc is not None:
+                total_[c_column] = rc["IRES"]
             e = pd.concat([e.astype(object), pd.DataFrame([total_])], ignore_index=True)
         tab["equivalent_sources"] = e
     return {name: _localize(df) for name, df in tab.items()}

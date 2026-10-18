@@ -12,8 +12,12 @@ the [API reference](../reference/index.md).
 | [Superposition at the station](superposition.md) | background and fault-related component, the three superposition methods, network frequency on both sides, uncertainty (null test, frequency reference), extrapolation, PEN currents, current into the LV network, probe maximum, parallel checks | [`station`](../reference/station.md) |
 | [Reduction factor and LV network](reduction-factor.md) | comparison with the earthing measurement per frequency, reduction factor per order and as RMS value, comparison methods, classification, trend, relevance for the assessment, physical interpretation | [`earthing`](../reference/earthing.md) |
 | [Equivalent-source method](equivalent-source.md) | active two-terminal equivalent per harmonic order from a series of tests, normalisation of the source fluctuation, estimators, checks, residual current at the earthing impedance | [`equivalent_source`](../reference/equivalent_source.md) |
-| [Transformer node](transformer-node.md) | power, apparent impedance and upstream impedance (transformer + HV network) per order and sequence before, during and after the fault, polarity of the current transformers, fault current estimated from the transformer currents | [`transformer`](../reference/transformer.md) |
+| [Transformer node](transformer-node.md) | power, apparent impedance and upstream impedance (transformer + HV network) per order and sequence before, during and after the fault, polarity of the current transformers, fault current estimated from the transformer currents; interpretation: sources of an order, resonance of the MV network, link to the harmonic residual current | [`transformer`](../reference/transformer.md) |
 | [Validation](validation.md) | synthetic recordings with known solution, second methods, test suite, limitations | [`demo`](../reference/demo.md) |
+
+The model behind the optional forecast of the harmonic residual current – the fault loop per order, calibrated with
+the staged tests and updated with recorded earth faults – is described in its own section,
+[Forecast → Model and equations](../forecast/model.md).
 
 ## Processing chain
 
@@ -32,6 +36,7 @@ COMTRADE recording (.cfg/.dat)
   ├─► transformer node: P, Q, U/I per order and sequence ──► upstream impedance Z_up = −ΔU/ΔI (transformer, HV)
   ▼
 result file (JSON) ──► campaign: consistency, equivalent sources per order ──► I_RES(Z_E), resistive approach
+                   └─► forecast (optional): network model of the busbar ──► I_H, I_RES from harmonic voltages
 ```
 
 ## Conventions

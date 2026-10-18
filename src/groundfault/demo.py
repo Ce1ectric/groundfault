@@ -11,9 +11,12 @@ Physical model (fault on line L3 or ``faulted_phase``, 20-kV network):
   I' = U0·(G + jB), G = Iw/|U0|, B = −Iv/|U0| ⇒ the angle method returns exactly (Iw, Iv).
   The fault branch (line → earth through Z_F) carries I_F = −I'; hence U_3E = Z_F·I_F and
   U0 = −E_3/(1 + Z_F·Y) (closed-form solution).
-* Harmonic of order m: active two-terminal (Thevenin) equivalent I'_m = s·U_q,m/(Z_q,m + Z_F) (referred to
-  L1-L2), source drift s per measurement (magnitude and phase). Before and after the fault: sequence voltage
-  s·U_pre,m in the natural sequence of the order (m mod 3).
+* Harmonic of order m: active two-terminal (Thevenin) equivalent I'_m = (s·U_q,m + U_s,m)/(Z_q,m + Z_F) (referred
+  to L1-L2), source drift s per measurement (magnitude and phase), U_s,m a source that only exists during the fault
+  (saturating coils; default 0). Before and after the fault: sequence voltage s·U_pre,m in the natural sequence of
+  the order (m mod 3). During the fault the busbar sequence voltages change by ΔU_1 = Z_1·I'/(3·p_1),
+  ΔU_2 = Z_2·I'/(3·p_2) (p_s = phase factor of the faulted phase) and ΔU_0 = Z_0·I'/3 − U_s with
+  Z_0 = 3·Z_q − Z_1 − Z_2 (default Z_1 = Z_2 = 0: the whole change in the zero sequence).
 * Coil currents I_L = U0/(jX_L) (including the harmonics U0,m/(j·m·X_L) and a decaying DC component when the
   fault starts), transient of the fault current, active residual current increase, decaying neutral
   displacement voltage after the fault clearance, noise and DC offset of the current clamps.
@@ -52,7 +55,8 @@ from .i18n import tr
 from .symmetrical import A, A2
 
 __all__ = ["DemoHarmonic", "DEFAULT_HARMONICS", "make_substation_recording", "make_substation_series",
-           "make_station_recording", "make_transformer_recording", "rms_file_from_instantaneous", "make_groundmeas_db",
+           "make_station_recording", "make_transformer_recording", "make_undisturbed_transformer_recording",
+           "rms_file_from_instantaneous", "make_groundmeas_db",
            "make_campaign", "GROUNDMEAS_SCHEMA", "polar", "U_PH"]
 
 U_PH = 20000.0 / math.sqrt(3.0)
@@ -87,21 +91,29 @@ class DemoHarmonic:
         Source voltage of the two-terminal equivalent, referred to L1-L2, in V.
     Zq : complex
         Internal impedance of the two-terminal equivalent in Ω.
+    Z1, Z2 : complex
+        Positive- and negative-sequence impedance at the busbar in Ω (default 0: Z_0 = 3·Z_q).
+    Us : complex
+        Source that only exists during the fault (e.g. saturating coils), referred to L1-L2, in V (default 0).
     """
 
     order: int
     U_pre: complex          # sequence voltage (L-E) before the fault, referred to L1-L2 [V]
     Uq: complex             # source voltage of the two-terminal equivalent, referred to L1-L2 [V]
     Zq: complex             # internal impedance of the two-terminal equivalent [Ω]
+    Z1: complex = 0j        # positive-sequence impedance at the busbar [Ω]
+    Z2: complex = 0j        # negative-sequence impedance at the busbar [Ω]
+    Us: complex = 0j        # source that only exists during the fault [V]
 
 
-def _thevenin_harmonic(order: int, U_pre: complex, Zq: complex, faulted_phase: str = "L3") -> DemoHarmonic:
+def _thevenin_harmonic(order: int, U_pre: complex, Zq: complex, faulted_phase: str = "L3", Z1: complex = 0j,
+                       Z2: complex = 0j, Us: complex = 0j) -> DemoHarmonic:
     """Harmonic source whose source voltage is the pre-fault voltage of the faulted phase (Thevenin):
     U_q = −(phase factor of the natural sequence)·U_pre in the orientation of the angle method."""
     seq = {1: "pos", 2: "neg", 0: "zero"}[order % 3]
     factor = {"pos": {"L1": 1.0, "L2": A2, "L3": A}, "neg": {"L1": 1.0, "L2": A, "L3": A2},
               "zero": {"L1": 1.0, "L2": 1.0, "L3": 1.0}}[seq][faulted_phase]
-    return DemoHarmonic(order, U_pre, -factor * U_pre, Zq)
+    return DemoHarmonic(order, U_pre, -factor * U_pre, Zq, Z1, Z2, Us)
 
 
 DEFAULT_HARMONICS: Tuple[DemoHarmonic, ...] = (
@@ -166,7 +178,8 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
                        polarity: int = 1, second_ct: Optional[Tuple[float, float]] = (1.01, 0.5),
                        dc_clamp_A: float = 2.0, noise_I: float = 0.05, noise_U: float = 3.0,
                        transient: bool = True, channel_names: str = "daneo", file_format: str = "BINARY",
-                       start: Optional[_dt.datetime] = None, seed: int = 0, trigger: bool = False) -> dict:
+                       start: Optional[_dt.datetime] = None, seed: int = 0, trigger: bool = False,
+                       fault_current: bool = True, fault_source_in_coils: bool = False) -> dict:
     """Write a COMTRADE recording of a staged earth-fault test in a substation (HV/MV) with known solution.
 
     The recording contains the three line-to-earth voltages, the fault current (one or two CTs) and the coil
@@ -234,6 +247,12 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
         Seed of the random generator (noise).
     trigger : bool, optional
         Add a digital trigger channel (1 from the fault inception on).
+    fault_current : bool, optional
+        False: no fault-current channel (an earth fault recorded at the busbar, e.g. by a disturbance recorder).
+    fault_source_in_coils : bool, optional
+        True: the coils carry the source that arises in the fault (saturating coils) – their currents contain
+        I_Nh,m = 3·U_s,m/Z_0,m in addition to the linear part, split in proportion to ``coils_A``; False: the source
+        sits elsewhere in the zero sequence (e.g. voltage transformers), the coil currents are linear.
 
     Returns
     -------
@@ -309,22 +328,34 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
     I_F = sum(mask * _wave(t, f1, Ip1_s) for _, Ip1_s, mask in states.values())
     true_h = {}
     U0_h = {}
+    Ish_h = {}
+    p_pos, p_neg = (1.0, A2, A)[fl], (1.0, A, A2)[fl]           # phase factors of the faulted phase
+    f_pos, f_neg = (1.0, A2, A), (1.0, A, A2)                   # sequence → phase L1, L2, L3
     for h in harmonic_sources:
         m = h.order
         fm = m * f1
-        I_ll = drift * h.Uq / (h.Zq + Z_F)                       # I'_m referred to L1-L2
+        Z1_, Z2_, Us_ = complex(getattr(h, "Z1", 0j)), complex(getattr(h, "Z2", 0j)), complex(getattr(h, "Us", 0j))
+        I_ll = (drift * h.Uq + Us_) / (h.Zq + Z_F)               # I'_m referred to L1-L2
         Upre_ll = drift * h.U_pre
         I_t = _rotate_phase(I_ll, m, phi_ll)
         Upre_t = _rotate_phase(Upre_ll, m, phi_ll)
         fac = _seq_factors(m)
-        # fault: U_flE,m = Z_F·I_F,m = −Z_F·I'_m  ⇒  U0,m = −Z_F·I'_m − U_fl,pre
-        U0m_t = -Z_F * I_t - Upre_t * fac[fl]
+        # fault: U_flE,m = Z_F·I_F,m = −Z_F·I'_m ⇒ ΔU0,m = −Z_F·I'_m − U_fl,pre − (Z_1 + Z_2)·I'_m/3
+        dU1 = Z1_ * I_ll / (3 * p_pos)
+        dU2 = Z2_ * I_ll / (3 * p_neg)
+        dU0 = -Z_F * I_ll - Upre_ll * fac[fl] - (Z1_ + Z2_) * I_ll / 3
+        U0m_t = _rotate_phase(dU0, m, phi_ll)
         U0_h[m] = U0m_t
+        Z0_ = 3 * h.Zq - Z1_ - Z2_
+        if fault_source_in_coils and Us_ and Z0_:
+            Ish_h[m] = _rotate_phase(3 * Us_ / Z0_, m, phi_ll)          # nonlinear coil current (angle method)
         for x in range(3):
-            U[x] += _wave(t, fm, Upre_t * fac[x]) + gate * _wave(t, fm, U0m_t)
+            dUx = U0m_t if not (Z1_ or Z2_) else _rotate_phase(dU0 + f_pos[x] * dU1 + f_neg[x] * dU2, m, phi_ll)
+            U[x] += _wave(t, fm, Upre_t * fac[x]) + gate * _wave(t, fm, dUx)
         I_F += gate * _wave(t, fm, I_t)
-        true_h[m] = dict(I_ll=I_ll, U_pre_ll=Upre_ll, U0_fault_ll=U0m_t * np.exp(-1j * m * phi_ll),
-                         Uq=drift * h.Uq, Zq=h.Zq, sequence={1: "pos", 2: "neg", 0: "zero"}[m % 3])
+        true_h[m] = dict(I_ll=I_ll, U_pre_ll=Upre_ll, U0_fault_ll=dU0, Uq=drift * h.Uq, Zq=h.Zq,
+                         Z0=3 * h.Zq - Z1_ - Z2_, Z1=Z1_, Z2=Z2_, Us=Us_,
+                         sequence={1: "pos", 2: "neg", 0: "zero"}[m % 3])
     if dc_offset:
         amp, tau = dc_offset
         I_F += gate * amp * np.exp(-np.clip(t - t_on, 0, None) / tau)
@@ -347,7 +378,8 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
                 il = il * (1 + reactive_step[2] / abs(il))
             i += mask * _wave(t, f1, il)
         for h in harmonic_sources:
-            i += gate * _wave(t, h.order * f1, U0_h[h.order] / (1j * h.order * XL))
+            i += gate * _wave(t, h.order * f1, U0_h[h.order] / (1j * h.order * XL)
+                              + Ish_h.get(h.order, 0j) * IL / sum(coils_A))
         if transient:
             after_on = t >= t_on
             i[after_on] += 0.4 * math.sqrt(2) * IL * np.exp(-(t[after_on] - t_on) / 0.15)       # DC at switch-on
@@ -366,8 +398,9 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
                   sp=["DANEO 1_Ströme_ISp%d Inst" % (21 + k) for k in range(len(coils))])
     for x in range(3):
         signals[nm["u"][x]] = ("V", U_meas[x])
-    signals[nm["i1"]] = ("A", i_f1)
-    if second_ct:
+    if fault_current:
+        signals[nm["i1"]] = ("A", i_f1)
+    if second_ct and fault_current:
         g, dphi = second_ct
         # second CT: gain g, phase error dphi (degrees, applied to all orders as a time offset)
         dt = np.deg2rad(dphi) / w1
@@ -398,7 +431,8 @@ def make_substation_recording(path: str, Z_F: float = 0.0, *, fs: float = 10000.
         UH5g_pre=abs(U_pre_seq.get(5, 0)), UH7m_pre=abs(U_pre_seq.get(7, 0)),
         coils_H1_A=[abs(U0_f) / (U_PH / IL) for IL in coils_A],
         harmonic_sources={m: dict(I=abs(v["I_ll"]), I_ll=v["I_ll"], U_pre_ll=v["U_pre_ll"], Uq=v["Uq"],
-                                  Zq=v["Zq"], sequence=v["sequence"]) for m, v in true_h.items()},
+                                  Zq=v["Zq"], Z0=v["Z0"], Z1=v["Z1"], Z2=v["Z2"], Us=v["Us"],
+                                  sequence=v["sequence"]) for m, v in true_h.items()},
         intervals=dict(steady_state=(t_on + 0.6, min([x[0] - 0.2 for x in (active_step, reactive_step, network_step)
                                                      if x] + [t_off - 0.2])),
                       pre_fault=(0.2, t_on - 0.2), post_fault=(t_off + 1.0, duration - 0.2)),
@@ -830,6 +864,144 @@ def make_transformer_recording(path: str, *, fs: float = 10000.0, duration: floa
                 active_step=list(active_step) if active_step else None,
                 intervals=dict(steady_state=(t_on + 0.5, t_off - 0.2), pre_fault=(0.2, t_on - 0.2),
                               post_fault=(t_off + 0.3, duration - 0.2)))
+    _save_truth(path, truth)
+    return truth
+
+
+def make_undisturbed_transformer_recording(path: str, *, fs: float = 10000.0, duration: float = 60.0,
+                                           f1: float = 50.0, theta0_deg: float = 25.0,
+                                           Z_mv: Optional[Dict[int, complex]] = None,
+                                           Z_transformer: complex = complex(0.05, 1.8),
+                                           Z_hv: complex = complex(0.03, 0.12),
+                                           E_hv: Optional[Dict[int, Tuple[complex, complex]]] = None,
+                                           J_mv: Optional[Dict[int, Tuple[complex, complex]]] = None,
+                                           hv_fluctuation: float = 0.08, mv_fluctuation: float = 0.08,
+                                           tau: float = 0.3, generator_reference: bool = False,
+                                           ct_angle_deg=None, reference_clamp: bool = False,
+                                           start: Optional[_dt.datetime] = None, seed: int = 5) -> dict:
+    """Write a COMTRADE recording of a transformer node in undisturbed operation (no earth fault): MV line currents
+    of the transformer, MV busbar and HV voltages, with harmonic sources on both sides that fluctuate independently.
+
+    Model per order m and sequence (positive, negative; MV side, consumer reference arrow system of the MV network):
+    the HV network is a source E(t) behind the upstream impedance Z_up(m) = Z_T(m) + Z_HV(m) (Z(m) = R + j·m·X from the
+    values at the fundamental), the MV network an impedance ``Z_mv`` (the quantity to identify) parallel to a current
+    source J(t) (its harmonic sources):
+
+        U = (E/Z_up + J) / (1/Z_up + 1/Z_mv),   I = (E − U)/Z_up (from the HV into the MV network),
+        U_HV = t_s·(U + Z_T·I)
+
+    with t_s the ratio 110 kV/20 kV and the phase shift of vector group 5 (positive sequence +150°, negative −150°).
+    E and J vary as E₀·(1 + ``hv_fluctuation``·ξ_E(t)) and J₀·(1 + ``mv_fluctuation``·ξ_J(t)) with independent smooth
+    random processes ξ (time constant ``tau``). Then ΔU = Z_mv·ΔI for the HV-driven part of the variation and
+    ΔU = −Z_up·ΔI for the MV-driven part.
+
+    Parameters
+    ----------
+    path : str
+        Path of the ``.cfg`` file to write.
+    fs, duration, f1, theta0_deg : float, optional
+        Sampling rate in Hz, duration in s, mains frequency in Hz, phase angle at t = 0 in degrees.
+    Z_mv : dict, optional
+        ``{order: impedance of the MV network in Ω}`` (positive and negative sequence alike).
+    Z_transformer, Z_hv : complex, optional
+        Impedance of the transformer and of the HV network (referred to the MV side) at the fundamental in Ω.
+    E_hv, J_mv : dict, optional
+        ``{order: (positive, negative sequence)}`` – HV source voltage in V and MV source current in A (mean values).
+    hv_fluctuation, mv_fluctuation : float, optional
+        Relative RMS fluctuation of the HV and MV sources.
+    tau : float, optional
+        Time constant of the fluctuations in s.
+    generator_reference : bool, optional
+        Record the currents reversed (generator reference arrow system).
+    ct_angle_deg : float or dict, optional
+        Angle error of the current transformers of the transformer currents in degrees (phase of the recorded minus
+        phase of the true current): one value for all harmonic orders or ``{order: angle}`` (order 1 for the
+        fundamental). None: no angle error.
+    reference_clamp : bool, optional
+        Add a reference current clamp on L1 without angle error (channel ``IRef``, same orientation as the
+        transformer current channels) – for [`ct_angle_from_reference`][groundfault.transformer.ct_angle_from_reference].
+    start : datetime.datetime, optional
+        Start time of the recording (default 15 January 2026, 11:00).
+    seed : int, optional
+        Seed of the random generator.
+
+    Returns
+    -------
+    dict
+        True values (also saved as ``<stem>_truth.json``): ``Z_mv`` and ``Z_up`` per order (``re``, ``im``),
+        ``hv_share`` per order and sequence (``pos``, ``neg``: share of the HV-driven variation in the variance of the
+        busbar voltage, from the fluctuation settings), ``ct_angle_deg`` per order and ``sign`` (+1, −1 with
+        ``generator_reference``).
+    """
+    rng = np.random.default_rng(seed)
+    n = int(round(duration * fs)); t = np.arange(n) / fs
+    th = np.deg2rad(theta0_deg)
+    Z_mv = Z_mv or {5: polar(8.0, -55.0), 7: polar(6.0, -40.0)}
+    E_hv = E_hv or {5: (polar(8.0, 30.0), polar(60.0, -10.0)), 7: (polar(25.0, 70.0), polar(4.0, 20.0))}
+    J_mv = J_mv or {5: (polar(1.0, 120.0), polar(6.0, 100.0)), 7: (polar(3.0, -80.0), polar(0.5, 60.0))}
+
+    def z_at(Z: complex, m: int) -> complex:
+        return complex(Z.real, m * Z.imag)
+
+    if isinstance(ct_angle_deg, dict):
+        ct = {int(m): float(a) for m, a in ct_angle_deg.items()}
+    else:
+        ct = {m: float(ct_angle_deg or 0.0) for m in Z_mv}
+    ct_rot = lambda m: np.exp(1j * np.deg2rad(ct.get(m, 0.0)))
+    ref_w = np.zeros(n)
+    hv_share = {}
+    ratio = 110000.0 / 20000.0
+    fac = {1: ratio * np.exp(1j * np.deg2rad(150.0)), 2: ratio * np.exp(-1j * np.deg2rad(150.0))}
+    seq_phase = {1: np.array([1, A2, A]), 2: np.array([1, A, A2])}
+    U_w = [np.zeros(n) for _ in range(3)]; I_w = [np.zeros(n) for _ in range(3)]; H_w = [np.zeros(n) for _ in range(3)]
+    # fundamental: positive sequence, load current (HV → MV)
+    U1 = U_PH * np.exp(1j * th)
+    I1 = np.conj(complex(8e6, 2e6) / (3 * U1))
+    for x in range(3):
+        p = seq_phase[1][x]
+        U_w[x] += _wave(t, f1, U1 * p)
+        I_w[x] += _wave(t, f1, I1 * ct_rot(1) * p)
+        H_w[x] += _wave(t, f1, fac[1] * (U1 + z_at(Z_transformer, 1) * I1) * p)
+    ref_w += _wave(t, f1, I1)
+    k = 0
+    for m in sorted(Z_mv):
+        Zup = z_at(Z_transformer, m) + z_at(Z_hv, m)
+        Zt = z_at(Z_transformer, m)
+        Y = 1.0 / Zup + 1.0 / Z_mv[m]
+        hv_share[m] = {}
+        for s in (1, 2):
+            var_h = abs(Z_mv[m] / (Zup + Z_mv[m]) * E_hv[m][s - 1] * hv_fluctuation) ** 2
+            var_m = abs(J_mv[m][s - 1] * mv_fluctuation / Y) ** 2
+            hv_share[m]["pos" if s == 1 else "neg"] = float(var_h / (var_h + var_m)) if var_h + var_m > 0 else 0.0
+            k += 1
+            E = E_hv[m][s - 1] * (1.0 + hv_fluctuation * _fluctuation(np.random.default_rng(seed + 10 * k), t, tau))
+            J = J_mv[m][s - 1] * (1.0 + mv_fluctuation * _fluctuation(np.random.default_rng(seed + 10 * k + 5), t, tau))
+            U = (E / Zup + J) / Y
+            I = (E - U) / Zup
+            H = fac[s] * (U + Zt * I)
+            carrier = np.exp(2j * np.pi * m * f1 * t + 1j * m * th)
+            for x in range(3):
+                p = seq_phase[s][x]
+                U_w[x] += math.sqrt(2.0) * np.real(U * p * carrier)
+                I_w[x] += math.sqrt(2.0) * np.real(I * ct_rot(m) * p * carrier)
+                H_w[x] += math.sqrt(2.0) * np.real(H * p * carrier)
+            ref_w += math.sqrt(2.0) * np.real(I * carrier)
+    sgn = -1.0 if generator_reference else 1.0
+    signals = {}
+    for x in range(3):
+        signals["DANEO 1_System 1_V%d Inst" % (x + 1)] = ("V", U_w[x] + _noise(rng, n, 1.0))
+    for x in range(3):
+        signals["DANEO 1_System 2_I%d Inst" % (x + 1)] = ("A", sgn * I_w[x] + _noise(rng, n, 0.02))
+    for x in range(3):
+        signals["DANEO 1_System 3_V%dHS Inst" % (x + 1)] = ("V", H_w[x] + _noise(rng, n, 5.0))
+    if reference_clamp:
+        signals["DANEO 1_System 4_IRef Inst"] = ("A", sgn * ref_w + _noise(rng, n, 0.02))
+    write_comtrade(path, signals, fs, t_start=start or _dt.datetime(2026, 1, 15, 11, 0, 0), trigger_s=0.0)
+    cx = lambda z: dict(re=float(np.real(z)), im=float(np.imag(z)))
+    truth = dict(file=os.path.basename(path), f1=f1, Z_mv={m: cx(z) for m, z in Z_mv.items()},
+                 Z_up={m: cx(z_at(Z_transformer, m) + z_at(Z_hv, m)) for m in Z_mv},
+                 hv_share=hv_share, ct_angle_deg={m: ct.get(m, 0.0) for m in [1] + sorted(Z_mv)},
+                 sign=-1 if generator_reference else 1)
     _save_truth(path, truth)
     return truth
 

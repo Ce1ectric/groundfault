@@ -1040,6 +1040,8 @@ def evaluate(rec: Recording, intervals: Intervals, settings: Optional[Settings] 
             res.hints.append(tr("evaluation.station_failed", error=ex))
     if roles.capabilities()["transformer"]:
         trafo.node_analysis(res)
+    if roles.line_to_earth is not None and roles.line_to_earth_hv is not None:
+        trafo.voltage_divider(res)
     _plausibility(res, rec, bl)
     _statistics(res)
     _result_set(res, rec, z_fault_ohm, _campaign_metadata(rec, metadata), alignment)
@@ -1218,6 +1220,12 @@ def _voltage_analysis(res: Result) -> None:
                                                                "U_L2E", "U_L3E")}
         sp[name] = {k: [float(x) for x in v] for k, v in mags.items()}
         sp[name + "_phasor"] = {k: [_cx(z) for z in v] for k, v in ph.items()}
+        if name == "pre_fault":
+            # coil currents before the fault, same windows and reference (change of the coil current, node rule)
+            coils = res.roles.with_role("i_coil")
+            if coils:
+                sp["coil_pre_phasor"] = {k.name: [_cx(z) for z in np.mean((b.X[:, k.index, :] * rot)[ok], axis=0)]
+                                         for k in coils}
         sp["harmonics_hz"] = [float(m * b.f1["f1_used"]) for m in ords]
         tab_magnitude[name] = pd.DataFrame(mags, index=pd.Index(ords, name="order"))
         # characteristic values
@@ -1235,6 +1243,22 @@ def _voltage_analysis(res: Result) -> None:
             tag["UH%s_V" % short] = uh
         tag["Uzero_H1_V"] = float(mags["U_zero"][b.ix(1)])
         tab_metrics.append(tag)
+    # fault: complex sequence phasors averaged over the used windows of the steady state (the max window above is a
+    # single window) – busbar voltages of an earth fault for the network model
+    use = res.reference_windows
+    ok = (use & ~st.nan_window) if len(use) == len(st.nan_window) else ~st.nan_window
+    if ok.any():
+        q = _voltage_quantities(st, le, None)
+        phi1 = np.angle(q["U_L12"][:, st.ix(1)])
+        rot = np.exp(-1j * np.outer(phi1, np.asarray(ords, float)))
+        sp["fault_mean_phasor"] = {k: [_cx(z) for z in np.mean((q[k] * rot)[ok], axis=0)]
+                                   for k in ("U_pos", "U_neg", "U_zero", "U_L1E", "U_L2E", "U_L3E")}
+        sp["fault_mean_windows"] = int(ok.sum())
+        # coil currents averaged over the same windows (as recorded – orientation and sum are left to the user)
+        coils = res.roles.with_role("i_coil")
+        if coils:
+            sp["coil_mean_phasor"] = {k.name: [_cx(z) for z in np.mean((st.X[:, k.index, :] * rot)[ok], axis=0)]
+                                      for k in coils}
     res.values["voltage"] = sp
     res.tables["voltage_metrics"] = pd.DataFrame(tab_metrics)
     for name, df in tab_magnitude.items():
@@ -1695,6 +1719,8 @@ def _result_set(res: Result, rec: Recording, z_fault_ohm, metadata: dict, alignm
         res.result_set["station_lv_network"] = _json_simple(res.values["station_lv_network"])
     if "transformer" in res.values:                         # transformer node: polarity, voltages, X_up/m, HV side
         res.result_set["transformer"] = _json_simple(res.values["transformer"])
+    if "transformer_divider" in res.values:                 # HV share from HV and MV voltages (voltage divider)
+        res.result_set["transformer_divider"] = _json_simple(res.values["transformer_divider"])
     # all tables (for campaign evaluations and report tables without raw data)
     for t, df in res.tables.items():
         if df is None or df.empty:

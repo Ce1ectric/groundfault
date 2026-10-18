@@ -127,7 +127,7 @@ Z_k gives the currents I_m,k = U_q,m/(Z_q,m + Z_k), from which U_q,m and Z_q,m a
 gives the harmonic current – and the residual current – for any earthing impedance, not only for the tested ones.
 
 **What the series needs:** at least two substation tests with different additional impedances (three or more for a
-goodness of fit and the jackknife), the line-to-earth voltages and pre- and post-fault intervals in every recording
+goodness of fit and the jackknife; the [measured source](#measured-source) needs only one), the line-to-earth voltages and pre- and post-fault intervals in every recording
 (they provide the angle reference and the harmonic level of the network), and the evaluated orders in every result
 file (the result file stores the orders 1 to 25).
 
@@ -173,6 +173,9 @@ current usually arises only during the earth fault.)
 | `NORMALIZATION` | `normalization` | `"complex"` | reference of the currents to the harmonic level of the network: `"complex"` (magnitude and phase, recommended), `"magnitude"` or `None` |
 | `LEVEL` | `reference` | `"mean"` | level used for the normalisation: `"pre_fault"`, `"post_fault"` or the `"mean"` of both |
 | `METHOD` | `method` | `"equation_error"` | estimator of the result: `"equation_error"` (linear least squares) or `"output_error"` (nonlinear, minimises the current deviation); both are always computed |
+| `SOURCE` | – | `"measured"` | source of the result I_RES(Z_E) in the notebook: `"measured"` ([measured source](#measured-source), `measured_source`) or `"fitted"`; the other one is drawn dashed for comparison |
+| `SOURCE_IMPEDANCE` | `impedance` of `measured_source` | `"median"` | Z_q of the measured source: `"median"` over the tests (each test checked against the others with `loo_table`) or `"smallest"` (the test with the smallest additional impedance; the others check it) |
+| – | `thevenin_tolerance` | `(0.10, 10.0)` | tolerance of the Thevenin check (magnitude, angle in degrees) for the hint that the fitted source deviates from the measured one |
 | – | `rq_non_negative` | `True` | if the free fit gives R_q < 0 (impossible for a passive network), use the boundary solution R_q = 0 |
 | – | `min_current_A`, `min_level_V` | `0.5`, `1.0` | current threshold of the automatic selection; smallest usable level (below: no normalisation for this order) |
 | – | `normalize_zero` | `False` | also normalise the zero-sequence orders (3, 9 …) |
@@ -199,16 +202,20 @@ default: their current arises only during the earth fault, and the tiny pre-faul
 | `source_table()` | per order: `Uq_V`, `Uq_angle_deg`, `Rq_Ohm`, `Xq_Ohm`, `Zq_Ohm`, `I_short_circuit_A`, `residual_pct`, `condition_number`, `dZq_rel_per_1pct`, `Rq_fixed`, `normalization`, `level_reference_V`, the Thevenin check `Uq_ref_faulted_phase`/`Uq_angle_ref_faulted_phase_deg` and per estimator `Zq_<method>`, `Uq_<method>_V` |
 | `pairwise_table()` | the exact solution of every pair of measurements (`Rq_Ohm`, `Xq_Ohm`, `Uq_V`, `assessment` `ok` or `R_q < 0`) – consistency of the model assumption |
 | `forecast_table()` | per order and measurement: model current against the (normalised) measured current, `deviation_pct`, power in the additional impedance |
-| `jackknife_table(Z_E)` | current at Z_E per order with one measurement left out at a time (`min_A`, `max_A`, `span_pct`; needs three measurements) |
+| `loo_table(limit_pct=None, limit_A=None)` | leave-one-out check: every measurement forecast with the model of the other measurements (same rule; `I_from_others_A`, `deviation_pct`, `deviation_A`; with your permissible deviation in % and/or A also `within_limit`); large deviations show a change of the network between the tests |
+| `jackknife_table(Z_E)` | current at Z_E per order with one measurement left out at a time (`min_A`, `max_A`, `span_pct`; needs three measurements, with the measured source two) |
 | `check_table()` | residual current of the model at the tested impedances against the measured true RMS value (`deviation_pct`, `IH_rest_A`, `I_low_frequency_A`) |
+| `single_test_table()` | source impedance of every single test with the measured source voltage, Z_q,k = U_q/I_k − Z_k (`Rq_Ohm`, `Xq_Ohm`, `Zq_Ohm`, `Zq_angle_deg`, deviation from the median of the tests `Zq_deviation_pct`, `Zq_angle_deviation_deg`) – the change of the network between the tests |
 
 ### Checks and hints
 
 How to judge the fit:
 
 * **Thevenin check** – physically, U_q is the pre-fault voltage of the faulted phase. With complex normalisation
-  `Uq_ref_faulted_phase` should be close to 1 and `Uq_angle_ref_faulted_phase_deg` close to 0°; outside 0.5…2 or ±45°
-  a hint asks to check the normalisation, the polarity or the series.
+  `Uq_ref_faulted_phase` should be close to 1 and `Uq_angle_ref_faulted_phase_deg` close to 0°. Beyond ±10 % or ±10°
+  a hint says that the fitted source has absorbed changes of the network between the tests: its currents are reliable
+  within the tested additional impedances, beyond them use the [measured source](#measured-source). Outside 0.5…2 or
+  ±45° the hint first asks to check the normalisation, the polarity or the series.
 * **Sensitivity** – `dZq_rel_per_1pct` is the largest relative change of Z_q for an error of 1 % (or 0.5°) in one
   current; above 0.1 the order is ill-conditioned (additional impedances small compared with |Z_q|).
 * **Residual and forecast** – `residual_pct` and `forecast_table()` show how well the model reproduces the measured
@@ -260,7 +267,12 @@ notebook keeps the result as `MC` and draws this spread in the figure of the sou
 | `Estimators disagree on Z_q (… Ω and … Ω) → U_q/Z_q individually uncertain; current at Z = … Ω: … (…)` | U_q and Z_q scale together; the verdict says whether the current within the tested range is stable nevertheless |
 | `R_q < 0 (not possible for a passive network) → boundary solution R_q = 0; …` | the boundary solution is used; it is not necessarily conservative – compare the two currents given |
 | `ill-conditioned: …` | the additional impedances are too small compared with \|Z_q\|; U_q and Z_q of limited reliability |
-| `Thevenin check: −U_q/level = …` | see above |
+| `Thevenin check: −U_q/level = … deviates by more than 10 % or 10° …` | the fitted source voltage has absorbed changes of the network; within the tested range reliable, beyond it use the measured source |
+| `Thevenin check: −U_q/level = … (expected ≈ 1∠0° …) – check the normalization, polarity or measurement series; …` | far off: first check normalisation, polarity and series; if they are right, as above |
+| `Measured source for the orders …` | measured source: which orders, and how Z_q is formed (`SOURCE_IMPEDANCE`) |
+| `zero-sequence order: the source arises in the fault … → fitted equivalent source kept` | the measured source does not apply to the zero sequence; the fitted equivalent stays |
+| `R_q < 0 with the measured source (Z_q = … Ω …) → R_q = 0 …` | Z_q of the tests has a negative real part (changing network or a source in the fault); the bound \|U_q\|/√(\|Z_q\|² + Z_E²) is used, with \|Z_q\| kept |
+| `fitted equivalent source: −U_q/level = …; current fitted/measured source … at Z = … Ω (tested range), … at Z = … Ω` | how far the two sources differ within and beyond the tested range |
 
 ![Equivalent-source fit of the demo series: measured and modelled currents per order over the additional
 impedance](../assets/equivalent_source_fit.png)
@@ -269,6 +281,54 @@ impedance](../assets/equivalent_source_fit.png)
 impedance; `report.source_plane(series, mc)` the source impedances in the complex plane (●) with the solutions of
 every pair of measurements (×) and, given the Monte Carlo result `mc`, a shaded box per order over the 5–95 % range of
 R_q and X_q; `interactive.source_fit(series, Z_E)` is the interactive version in the notebook.
+
+### Measured source
+
+The fitted U_q is the slope of 1/I over the additional impedance. When the additional impedances are small compared
+with |Z_q| of the dominant order – the current falls over the tested range only to 60 or 80 % –, small changes of the
+network between the tests (loads, switching, the harmonic sources: some percent in Z_q) end up in U_q. Within the tested range the fitted
+Z_q compensates this and the model current stays right; at a larger earthing impedance or behind a line it does not.
+The **measured source** avoids this: U_q is the pre-fault voltage of the faulted phase as measured – the voltage a
+power-quality measurement records in undisturbed operation – and Z_q = U_q/I_k − Z_k follows from the tests; one
+test suffices, the others check it ([Measured source](../methods/equivalent-source.md#measured-source)). The orders
+of the zero sequence keep the fitted equivalent, since their source arises in the fault.
+
+```python
+measured = equivalent_source.measured_source(series)                     # SOURCE_IMPEDANCE = "median"
+print(measured.source_table()[["order", "method", "Uq_V", "Rq_Ohm", "Xq_Ohm", "residual_pct"]].round(3)
+      .to_string(index=False))
+print(measured.hints[-1])
+print(measured.fits[3].hints[-1])
+c = equivalent_source.compare_sources(measured, series, [0.0, 5.0, 10.0])
+print(c[c["order"] == "I_RES"][["Z_E_Ohm", "I_measured_source_A", "I_fitted_source_A", "fitted_to_measured",
+                                "interpolation"]].round(3).to_string(index=False))
+```
+
+```text
+ order         method    Uq_V  Rq_Ohm  Xq_Ohm  residual_pct
+     3 equation_error  18.470   3.638  -1.886        16.563
+     5       measured 219.985   4.500  -2.500         0.006
+     7       measured 109.988   6.999  -3.501         0.015
+    11       measured  35.022   2.500  -2.200         0.069
+    13       measured  25.012   5.001  -2.803         0.078
+Measured source for the orders [5, 7, 11, 13]: U_q = pre-fault voltage of the faulted phase (level of the series), Z_q = median of U_q/I_k − Z_k over the tests
+zero-sequence order: the source arises in the fault, the pre-fault voltage does not drive the current → fitted equivalent source kept
+Z_E_Ohm  I_measured_source_A  I_fitted_source_A  fitted_to_measured  interpolation
+      0               56.559             56.559                 1.0           True
+      5               40.426             40.426                 1.0           True
+     10               36.067             36.067                 1.0          False
+```
+
+In the demo the network does not change between the tests, so both sources coincide; with a changing network they
+part beyond the tested range ([example](../methods/equivalent-source.md#measured-source)). A campaign with a single
+substation test – or only equal additional impedances – has no fitted source; the notebook then computes with the
+measured source alone (`measured_source(load_series(entries))`), and the zero-sequence orders stay in the remainder.
+The campaign notebook shows both: the fitted source with its Thevenin check, the measured source with
+`single_test_table()` (Z_q of every single test – the spread is the change of the network between the tests), the
+leave-one-out check `loo_table(LOO_LIMIT_PCT, LOO_LIMIT_A)` (every test from the model of the others) and `compare_sources` at 0 Ω,
+the largest and twice the largest additional impedance and at `Z_E`. The result of the checks and of section 4 uses the source selected by
+`SOURCE` (`"measured"` by default; the notebook keeps it as `MAIN`, the other as `OTHER`), and every figure draws the
+other source dashed. `report.source_plane` marks the Z_q of the single tests of a measured series (+).
 
 ## Residual current at the earthing impedance
 
@@ -307,7 +367,9 @@ of the residual current if you set them (`LIMITS`; groundfault contains none):
 ![Residual earth-fault current over the earthing impedance from the equivalent sources of the demo series](../assets/equivalent_source_ires_over_ze.png)
 
 `report.ires_over_ze(series, Z_E_max, limits, IG, scaling)` and `interactive.ires_ze(series, Z_E_max, limits,
-scaling)` draw it.
+scaling)` draw it; with `comparison=` a second series (the notebook: the source not selected by `SOURCE`) is drawn
+dashed, and `report.report_tables(…, series=…, comparison=…)` adds its current at Z_E to the table of the equivalent
+sources.
 
 ### Scaling to a power-quality measurement
 

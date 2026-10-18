@@ -6,8 +6,9 @@ groundfault reads the COMTRADE recordings (IEEE C37.111) of staged earth-fault t
 secondary substations – and computes everything that is needed to assess the residual earth-fault current and the
 earthing systems of a resonant-earthed network: assessment quantities with measurement uncertainty, harmonics,
 voltages, the earth potential rise and touch voltage per frequency, the current into the LV network and the reduction
-factor compared with earthing measurements. All algorithms live in a Python package; two Jupyter notebooks serve as the
-user interface. Tables, hints and figures are available in English and German.
+factor compared with earthing measurements. All algorithms live in a Python package; Jupyter notebooks serve as the
+user interface – two for the evaluation, two for the optional forecast. Tables, hints and figures are available in
+English and German.
 
 ![Reduction factor over the frequency from a staged fault test and an earthing measurement of the same station (top)
 and the two compared quantities r·Z_E and Z_E (bottom) – demo station](assets/station_reduction_factor.png)
@@ -32,7 +33,10 @@ and the two compared quantities (bottom).*
     additional impedances: the **equivalent-source method** – an active two-terminal equivalent per harmonic order and
     the residual current at any earthing impedance Z_E. With the line currents of the transformer: the **transformer
     node** – power and impedance per harmonic before, during and after the fault, and the upstream impedance of
-    transformer and HV network from the fault-related change.
+    transformer and HV network from the fault-related change. Optional: the **forecast** of the
+    harmonic residual current, arranged by methods – without an earth fault from network data and the MV network
+    measured in undisturbed operation at the transformer, with staged tests and recorded earth faults by a network
+    model per harmonic order – from the harmonic voltages of a power-quality measurement, at the busbar or behind a line.
 
 -   __Secondary substation__
 

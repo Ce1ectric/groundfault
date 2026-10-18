@@ -10,7 +10,8 @@ There are two ways of working, and they give the same results:
 
 * **Notebooks** – two Jupyter notebooks are the user interface: `evaluate_measurement.ipynb` for one recording and
   `evaluate_campaign.ipynb` for all recordings of a campaign. You enter a few settings (campaign, file, analysis
-  intervals) and run them; see [Notebooks](notebooks.md).
+  intervals) and run them; see [Notebooks](notebooks.md). The optional [forecast](../forecast/index.md) has a notebook
+  of its own.
 * **Python** – all computations live in the package; the notebooks only call its functions. Every page of this guide
   shows the corresponding calls, so you can build your own evaluations.
 
@@ -73,6 +74,9 @@ the result files of step 9.
 * [Language and folder layout](language.md) – English and German output, folder layouts, files of the predecessor
   tool.
 * [Troubleshooting](troubleshooting.md) – messages and what to do.
+
+The forecast of the harmonic residual current from the staged tests and the earth faults recorded at a busbar is an
+optional part with its own section: [Forecast](../forecast/index.md).
 
 ## Trying it with the demo campaign
 

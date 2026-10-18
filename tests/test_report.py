@@ -92,6 +92,38 @@ def test_campaign_figures(demo_results):
         assert all(ax.get_title() == "" for ax in f.axes)
 
 
+def test_campaign_figures_and_table_with_the_measured_source(demo_results):
+    """Measured source as the main result, the fitted source as comparison: the figures draw both (dashed: the
+    comparison), source_plane adds the single tests (+), and the report table names the source per order and gives
+    the current at Z_E with both sources."""
+    import matplotlib.pyplot as plt
+    entry = [dict(file=p, Z=Z, name="%g Ω" % Z) for Z, (_, _, p, _) in sorted(demo_results.items())]
+    fitted = equivalent_source.fit_equivalent_source(equivalent_source.load_series(entry))
+    measured = equivalent_source.measured_source(fitted)
+    f = report.source_fit(measured, Z_E=2.5, comparison=fitted)
+    dashed = [l for l in f.axes[0].lines if l.get_linestyle() == "--" and len(l.get_xdata()) > 2]
+    assert len(dashed) == len(fitted.fits)
+    assert {"gemessene Quelle", "geschätzte Quelle"} <= {t.get_text() for t in f.axes[0].get_legend().get_texts()}
+    f = report.ires_over_ze(measured, 8.0, comparison=fitted)
+    assert {"$I_\\mathrm{RES}$ (gemessene Quelle)", "$I_\\mathrm{RES}$ (geschätzte Quelle)"} <= {
+        t.get_text() for t in f.axes[0].get_legend().get_texts()}
+    plus = [l for l in report.source_plane(measured).axes[0].lines if l.get_marker() == "+"]
+    assert len(plus) == 4 and not [l for l in report.source_plane(fitted).axes[0].lines if l.get_marker() == "+"]
+    dat = {e.name: e for e, *_ in demo_results.values()}
+    e = report.report_tables(dat, series=measured, Z_E=10.0, comparison=fitted)["equivalent_sources"]
+    assert list(e["Quelle"][:5]) == ["geschätzt", "gemessen", "gemessen", "gemessen", "gemessen"]
+    cols = [c for c in e.columns if str(c).startswith("I bei Z_E = 10")]
+    assert cols == ["I bei Z_E = 10,0 Ω (gemessene Quelle) in A", "I bei Z_E = 10,0 Ω (geschätzte Quelle) in A"]
+    assert "U_q,geschätzt/U_Fehlerleiter,vor" in e.columns
+    plain = report.report_tables(dat, series=measured, Z_E=10.0)["equivalent_sources"]
+    assert "I bei Z_E = 10,0 Ω in A" in plain.columns and "U_q,geschätzt/U_Fehlerleiter,vor" not in plain.columns
+    fig = interactive.source_fit(measured, 2.5, comparison=fitted)
+    assert len(fig.data) == 3 * len(measured.fits) and fig.data[2].line.dash == "dash"
+    fig = interactive.ires_ze(measured, 8.0, comparison=fitted)
+    assert [d.name for d in fig.data[:2]] == ["I_RES (gemessene Quelle)", "I_RES (geschätzte Quelle)"]
+    plt.close("all")
+
+
 def test_source_plane_draws_monte_carlo_spread(demo_results):
     """With the Monte Carlo result, source_plane draws one box per order spanning the 5–95 % range of R_q and X_q
     (and the axes include it); without it, no box."""
@@ -588,12 +620,15 @@ def test_table_titles_complete_in_both_languages(demo_results):
         "station_lv_network_eff", "reduction_factor", "reduction_factor_eff", "lv_network_check",
         "lv_network_check_eff", "station_metrics", "station_voltages", "station_currents", "station_currents_frequency",
         "station_extrapolation", "transformer_power", "transformer", "epr", "shield_current", "equivalent_sources"}
+    import groundfault.forecast  # noqa: F401  – the optional part registers the titles of its tables
+    forecast = {"forecast_calibrations", "forecast_model", "forecast_checks", "forecast_faults", "forecast"}
+    names |= forecast
     titles = {}
     for lang in ("en", "de"):
         with i18n.language(lang):
             titles[lang] = {n: report.table_title(n) for n in names}
     for n in names:
-        assert n in report._TABLE_TITLES, n
+        assert n in report._TABLE_TITLES or n in forecast, n
         assert titles["en"][n] != titles["de"][n], n                      # a German title of its own
         assert "_" not in titles["en"][n] + titles["de"][n], n
     assert titles["de"]["overview"] == "Übersicht der Messungen"

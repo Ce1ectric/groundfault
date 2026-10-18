@@ -30,6 +30,12 @@ complex RMS phasors, English column names and language-neutral codes in all tabl
 | [formulas](formulas.md) | closed-form formulas (residual current, √2 method, angle method, measurement uncertainty, harmonics, resistive approach, limits, line parameters) |
 | [campaign](campaign.md) | overview and consistency check of a measurement campaign, resistive approach |
 
+**Forecast (optional, not loaded by `import groundfault`)**
+
+| Module | Content |
+|---|---|
+| [forecast](forecast.md) | network model of the earth-fault loop per harmonic order at a busbar (`model`), its input from result files and other tools (`data`), lines to fault locations in the network (`line`), campaigns of a work folder (`campaigns`), estimates without an earth fault (`bounds`) and their impedances from network data (`network_data`) |
+
 **Building blocks**
 
 | Module | Content |
@@ -74,6 +80,9 @@ complex RMS phasors, English column names and language-neutral codes in all tabl
 | enter a test in groundmeas | [`earthing.export_to_groundmeas`](earthing.md#groundfault.earthing.export_to_groundmeas) |
 | evaluate a campaign | [`campaign.overview`](campaign.md#groundfault.campaign.overview), [`consistency`](campaign.md#groundfault.campaign.consistency), [`resistive_approach`](campaign.md#groundfault.campaign.resistive_approach) |
 | transformer node | tables `transformer_node`, `transformer_impedance` of [`evaluate`](evaluation.md#groundfault.evaluation.evaluate), [`transformer.power_overview`](transformer.md#groundfault.transformer.power_overview), [`report.transformer_impedance`](report.md#groundfault.report.transformer_impedance) |
+| MV network from undisturbed operation (V3) | [`transformer.mv_network_impedance`](transformer.md#groundfault.transformer.mv_network_impedance), angle error of the current transformers with [`transformer.ct_angle_from_reference`](transformer.md#groundfault.transformer.ct_angle_from_reference) |
+| forecast without an earth fault (V0–V3) | [`forecast.classical_bound`](forecast.md#groundfault.forecast.bounds.classical_bound), [`resonance_bound`](forecast.md#groundfault.forecast.bounds.resonance_bound), [`network_data_estimate`](forecast.md#groundfault.forecast.bounds.network_data_estimate), [`network_data_envelope`](forecast.md#groundfault.forecast.bounds.network_data_envelope), [`network_estimate`](forecast.md#groundfault.forecast.bounds.network_estimate) |
+| forecast with staged tests and recorded earth faults (V4–V7) | [`forecast.build_model`](forecast.md#groundfault.forecast.campaigns.build_model) → [`NetworkModel`](forecast.md#groundfault.forecast.model.NetworkModel) |
 | equivalent sources | [`equivalent_source.load_series`](equivalent_source.md#groundfault.equivalent_source.load_series), [`fit_equivalent_source`](equivalent_source.md#groundfault.equivalent_source.fit_equivalent_source), [`ires_at_impedance`](equivalent_source.md#groundfault.equivalent_source.ires_at_impedance), [`monte_carlo`](equivalent_source.md#groundfault.equivalent_source.monte_carlo) |
 | figures and tables for the report | [`report.all_figures`](report.md#groundfault.report.all_figures), [`report.report_tables`](report.md#groundfault.report.report_tables), [`report.export_tables`](report.md#groundfault.report.export_tables) |
 | signal explorer | [`explorer.explorer`](explorer.md#groundfault.explorer.explorer), [`explorer.explorer_html`](explorer.md#groundfault.explorer.explorer_html) |

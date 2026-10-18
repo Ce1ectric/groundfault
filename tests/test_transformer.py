@@ -57,6 +57,70 @@ def test_upstream_impedance_per_order(plain):
     assert v["sign"] == 1 and v["polarity_source"] == "automatic"
 
 
+def test_natural_sequence_and_summary_rows(plain):
+    res, w, _ = plain
+    assert transformer.is_natural(5, "neg") and transformer.is_natural(7, "pos") and transformer.is_natural(9, "zero")
+    assert not transformer.is_natural(5, "pos") and not transformer.is_natural(7, "neg")
+    assert transformer.is_natural(2, "neg") and transformer.is_natural(4, "pos")
+    zi = res.table("transformer_impedance").set_index(["order", "sequence"])
+    assert bool(zi.at[(5, "neg"), "natural_sequence"]) and not bool(zi.at[(5, "pos"), "natural_sequence"])
+    assert bool(zi.at[(7, "pos"), "natural_sequence"]) and not bool(zi.at[(7, "neg"), "natural_sequence"])
+    # the summary value uses the sequence other than the natural one (hardly any pre-fault harmonic) …
+    v = res.values["transformer"]
+    assert v["X1_up_other_sequence"] is True
+    other = zi[(~zi["natural_sequence"].astype(bool)) & zi["significant"] & (zi.index.get_level_values(0) >= 2)
+               & (zi.index.get_level_values(0) % 3 != 0)]
+    assert v["X1_up_count"] == len(other)
+    with i18n.language("de"):
+        rows = transformer.plausibility_rows(res)
+    assert any("nicht natürlichen Drehsystem" in r["value"] for r in rows)
+    # … and falls back to both sequences without a significant entry there
+    orders = [1, 5, 7]
+    u = np.full((3, 3), 0.05)
+    z = dict(u_rel=u, Z=np.full((3, 3), 1 + 2j))
+    rows_, flag = transformer._summary_rows(z, orders)
+    assert flag and sorted(rows_) == [(1, 1), (2, 2)]           # 5: positive, 7: negative sequence
+    u[1, 1] = u[2, 2] = 0.5
+    rows_, flag = transformer._summary_rows(z, orders)
+    assert not flag and sorted(rows_) == [(1, 2), (2, 1)]
+
+
+def test_voltage_divider_gives_the_hv_share(plain):
+    res, w, _ = plain
+    d = res.values["transformer_divider"]
+    assert d["group"] == 5 and d["k_other_sequence"]
+    assert d["k"] == pytest.approx(w["X1_hv"] / w["X1_up"], rel=0.05)
+    assert d["X1_hv_Ohm"] == pytest.approx(w["X1_hv"], rel=0.05)              # second method beside the HV current
+    assert d["X1_transformer_Ohm"] == pytest.approx(w["X1_transformer"], rel=0.01)
+    tab = res.table("transformer_divider").set_index(["order", "sequence"])
+    for m in (5, 7):
+        for seq in ("pos", "neg"):
+            assert tab.at[(m, seq), "significant"]
+            assert tab.at[(m, seq), "Z_hv_Ohm"] == pytest.approx(abs(_complex(w["Z_hv"][m])), rel=0.1)
+    with i18n.language("en"):
+        rows = transformer.plausibility_rows(res)
+    assert any(r["check"].startswith("HV share of the upstream impedance") for r in rows)
+    assert "transformer_divider" in res.result_set and "transformer_divider" in res.result_set["tables"]
+
+
+def test_voltage_divider_without_transformer_currents(plain):
+    _, w, path = plain
+    rec = open_recording(path)
+    from groundfault import detect_roles
+    currents = {k.name: None for k in detect_roles(rec.channel_names, rec.units).channels
+                if k.role in ("i_l1", "i_l2", "i_l3")}
+    assert len(currents) == 3
+    roles = detect_roles(rec.channel_names, rec.units, currents)
+    with i18n.language("en"):
+        res = evaluate(rec, _intervals(w), roles=roles)
+    assert "transformer" not in res.values and "transformer_impedance" not in res.tables
+    d = res.values["transformer_divider"]
+    assert d["k"] == pytest.approx(w["X1_hv"] / w["X1_up"], rel=0.05) and "X1_hv_Ohm" not in d
+    assert "Z_hv_Ohm" not in res.table("transformer_divider").columns
+    pr = res.table("plausibility").set_index("check")
+    assert "HV share of the upstream impedance (voltage divider)" in pr.index
+
+
 def test_hv_side_splits_transformer_and_hv_network(plain):
     res, w, _ = plain
     v = res.values["transformer"]
@@ -305,3 +369,209 @@ def test_estimate_noise_is_robust_against_steps():
     noise = transformer.estimate_noise(I1, U0)
     assert noise == pytest.approx(0.8, rel=0.3)                       # the step does not inflate it
     assert transformer.estimate_noise(I1[:2], U0[:2]) == 0.0
+
+
+# ---------------------------------------------------------------- MV network from undisturbed operation
+@pytest.fixture(scope="module")
+def undisturbed(tmp_path_factory):
+    """Undisturbed transformer node with independently fluctuating sources on the HV and on the MV side."""
+    d = tmp_path_factory.mktemp("iv")
+    out = {}
+    for gen in (False, True):
+        path = str(d / ("TRU%s_10_000kHz.cfg" % ("_gen" if gen else "")))
+        out[gen] = (path, demo.make_undisturbed_transformer_recording(path, generator_reference=gen))
+    return out
+
+
+def _z_true(w, m):
+    z = w["Z_mv"][m]
+    return complex(z["re"], z["im"])
+
+
+def test_mv_network_impedance_from_undisturbed_operation(undisturbed):
+    """The HV voltage as instrument gives the impedance of the MV network – not the mix of Z_MV and −Z_up that
+    U/I of the undisturbed node shows."""
+    path, w = undisturbed[False]
+    with i18n.language("en"):
+        df = transformer.mv_network_impedance(path, orders=(5, 7), n_boot=100)
+    assert df.attrs["sign"] == 1.0 and df.attrs["group"] == 5 and df.attrs["ratio"] == pytest.approx(5.5, rel=0.05)
+    assert set(df.sequence) == {"pos", "neg"} and len(df) == 4
+    for _, r in df.iterrows():
+        z = _z_true(w, r.order)
+        assert r.Z_Ohm == pytest.approx(abs(z), rel=0.12)
+        assert abs(r.Z_angle_deg - np.degrees(np.angle(z))) < 10.0
+        assert r.reliable and r.instrument == "U_hv" and r.corr_I_hv > 0.5
+        assert r.Z_low_Ohm <= r.Z_Ohm <= r.Z_high_Ohm
+        y = 1.0 / complex(r.R_Ohm, r.X_Ohm)
+        assert (r.G_S, r.B_S) == pytest.approx((y.real, y.imag))
+    assert df.set_index(["order", "sequence"]).loc[(5, "neg"), "natural_sequence"]
+
+
+def test_mv_network_impedance_with_hv_network_and_reversed_currents(undisturbed):
+    """Currents in the generator reference arrow system are recognised from the passivity of Z_MV; with the HV network
+    impedance the instrument is the HV source voltage and the bias of the MV sources disappears."""
+    path, w = undisturbed[True]
+    with i18n.language("en"):
+        df = transformer.mv_network_impedance(path, orders=(5, 7), n_boot=50, Z_hv=complex(0.03, 0.12))
+    assert df.attrs["sign"] == -1.0 and any("reversed" in h for h in df.attrs["hints"])
+    for _, r in df.iterrows():
+        z = _z_true(w, r.order)
+        assert r.instrument == "E_hv" and r.reliable
+        assert r.Z_Ohm == pytest.approx(abs(z), rel=0.08)
+        assert abs(r.Z_angle_deg - np.degrees(np.angle(z))) < 6.0
+    # explicit sign and Z_hv per order give the same estimate
+    again = transformer.mv_network_impedance(path, orders=(5,), n_boot=10, sign=-1, Z_hv={5: complex(0.03, 0.6)})
+    assert np.allclose(again.Z_Ohm, df[df.order == 5].Z_Ohm)
+
+
+@pytest.fixture(scope="module")
+def shares(tmp_path_factory):
+    """Undisturbed recordings with a decreasing share of the HV-driven variation; current transformers with an angle
+    error of 3° at 250 Hz and 4° at 350 Hz, a reference clamp on L1."""
+    d = tmp_path_factory.mktemp("share")
+    out = {}
+    for name, hf, mf in (("high", 0.08, 0.08), ("low", 0.03, 0.12)):
+        path = str(d / ("TRS_%s_10_000kHz.cfg" % name))
+        out[name] = (path, demo.make_undisturbed_transformer_recording(
+            path, hv_fluctuation=hf, mv_fluctuation=mf, duration=60.0, ct_angle_deg={5: 3.0, 7: 4.0},
+            reference_clamp=True))
+    return out
+
+
+def test_ct_angle_from_reference_clamp(shares, tmp_path):
+    """The angle error of the transformer current channel against a reference clamp on the same conductor – also
+    with the clamp connected the other way round."""
+    path, w = shares["high"]
+    ref = transformer.ct_angle_from_reference(path, "I1", "IRef", orders=(1, 5, 7)).set_index("order")
+    for m in (1, 5, 7):
+        assert ref.loc[m, "angle_deg"] == pytest.approx(w["ct_angle_deg"][m], abs=0.05)
+        assert ref.loc[m, "ratio"] == pytest.approx(1.0, abs=0.01)
+        assert ref.loc[m, "angle_low_deg"] <= ref.loc[m, "angle_deg"] <= ref.loc[m, "angle_high_deg"]
+    assert not ref.reference_reversed.any()
+    # the clamp reversed
+    rec = open_recording(path)
+    data = rec.read(0, rec.n)
+    names = list(rec.channel_names)
+    j = names.index("DANEO 1_System 4_IRef Inst")
+    data[:, j] *= -1.0
+    rev = str(tmp_path / "TRS_rev_10_000kHz.cfg")
+    demo.write_comtrade(rev, {nm: (u, data[:, k]) for k, (nm, u) in enumerate(zip(names, rec.units))}, rec.fs)
+    again = transformer.ct_angle_from_reference(rev, 3, j, orders=(5,))
+    assert bool(again.reference_reversed.iloc[0]) and again.angle_deg.iloc[0] == pytest.approx(3.0, abs=0.05)
+    with i18n.language("en"):
+        with pytest.raises(ValueError, match="not found"):
+            transformer.ct_angle_from_reference(path, "I9", "IRef")
+
+
+def test_mv_network_impedance_ct_angle_and_hv_share(shares):
+    """The angle correction rotates the estimate by the angle error of the current transformers; the share of the
+    HV-driven variation follows the true share (natural sequence, corrected instrument) and – with a limit – marks
+    a recording driven from the MV side as not reliable."""
+    path, w = shares["high"]
+    z_up = {m: _complex(z) for m, z in w["Z_up"].items()}
+    ref = transformer.ct_angle_from_reference(path, "I1", "IRef", orders=(5, 7))
+    # with the HV voltage as instrument the correction only rotates the estimate
+    raw = transformer.mv_network_impedance(path, orders=(5, 7), n_boot=10)
+    rot = transformer.mv_network_impedance(path, orders=(5, 7), n_boot=10, ct_angle_deg=ref)
+    assert rot.attrs["ct_angle_deg"] == pytest.approx({5: 3.0, 7: 4.0}, abs=0.05)
+    assert np.allclose(rot.Z_Ohm, raw.Z_Ohm, rtol=1e-6)
+    assert np.allclose((rot.Z_angle_deg - raw.Z_angle_deg).to_numpy(), [3.0, 4.0, 3.0, 4.0], atol=0.06)
+    assert raw.hv_share.isna().all()
+    # corrected instrument, angle correction and the share of the HV-driven variation
+    cor = transformer.mv_network_impedance(path, orders=(5, 7), n_boot=10, Z_hv=complex(0.03, 0.12), Z_up=z_up,
+                                           ct_angle_deg=ref, min_hv_share=0.2)
+    nat = cor[cor.natural_sequence]
+    for _, r in nat.iterrows():
+        z = _z_true(w, r.order)
+        assert abs(r.Z_angle_deg - np.degrees(np.angle(z))) < 4.0
+        assert r.hv_share == pytest.approx(w["hv_share"][r.order][r.sequence], abs=0.05)
+        assert r.corr_U_hv ** 2 == pytest.approx(r.hv_share, abs=0.05)
+        assert r.reliable
+    # the same angle as one value or per order
+    assert np.allclose(transformer.mv_network_impedance(path, orders=(5,), n_boot=5, ct_angle_deg={5: 3.0}).Z_angle_deg,
+                       transformer.mv_network_impedance(path, orders=(5,), n_boot=5, ct_angle_deg=3.0).Z_angle_deg)
+    # driven from the MV side: the share shows it, the other checks do not
+    path, w = shares["low"]
+    z_up = {m: _complex(z) for m, z in w["Z_up"].items()}
+    with i18n.language("en"):
+        low = transformer.mv_network_impedance(path, orders=(5, 7), n_boot=10, Z_hv=complex(0.03, 0.12), Z_up=z_up,
+                                               ct_angle_deg={5: 3.0, 7: 4.0}, min_hv_share=0.25)
+    nat = low[low.natural_sequence].set_index("order")
+    assert nat.loc[5, "hv_share"] == pytest.approx(w["hv_share"][5]["neg"], abs=0.05) and nat.loc[5, "hv_share"] < 0.25
+    assert nat.loc[5, "corr_I_hv"] >= 0.2 and not nat.loc[5, "reliable"]
+    assert any("MV network dominate" in h for h in low.attrs["hints"])
+    with i18n.language("de"):
+        again = transformer.mv_network_impedance(path, orders=(5,), n_boot=5, Z_hv=complex(0.03, 0.12), Z_up=z_up,
+                                                 ct_angle_deg=3.0, min_hv_share=0.25)
+        assert any("MS-Netz überwiegen" in h for h in again.attrs["hints"])
+        with pytest.raises(ValueError, match="Z_hv"):
+            transformer.mv_network_impedance(path, orders=(5,), Z_up=z_up, min_hv_share=0.25)
+    with i18n.language("en"):
+        with pytest.raises(ValueError, match="Z_up"):
+            transformer.mv_network_impedance(path, orders=(5,), Z_hv=complex(0.03, 0.12), min_hv_share=0.25)
+        with pytest.raises(ValueError, match="angle error"):
+            transformer.mv_network_impedance(path, orders=(5, 7), ct_angle_deg={5: 3.0})
+        with pytest.raises(ValueError, match="no value for the orders"):
+            transformer.mv_network_impedance(path, orders=(5, 7), Z_up={5: complex(0.1, 9.0)})
+
+
+def test_mv_network_series_pools_the_reliable_recordings(tmp_path):
+    """A measuring day in brief: recordings with a falling share of the HV-driven variation, each evaluated on its
+    own; with a limit for the share only the HV-driven ones are pooled, and the pooled estimate is close to the
+    true MV network."""
+    import datetime
+    paths, truths = [], []
+    for k, (hf, mf) in enumerate(((0.10, 0.05), (0.08, 0.08), (0.03, 0.12), (0.02, 0.14))):
+        p = str(tmp_path / ("TRD_%02d_10_000kHz.cfg" % k))
+        truths.append(demo.make_undisturbed_transformer_recording(
+            p, hv_fluctuation=hf, mv_fluctuation=mf, duration=40.0, ct_angle_deg=2.0, seed=20 + k,
+            start=datetime.datetime(2026, 3, 10, 2 + 4 * k, 0)))
+        paths.append(p)
+    z_up = {m: _complex(z) for m, z in truths[0]["Z_up"].items()}
+    with i18n.language("en"):
+        table, pooled = transformer.mv_network_series(paths, (5, 7), Z_hv=complex(0.03, 0.12), Z_up=z_up,
+                                                      ct_angle_deg=2.0, min_hv_share=0.25, n_boot=20)
+    assert table.attrs["sign"] == 1.0 and len(table) == 8 and table.natural_sequence.all()
+    assert list(table.start.unique()) == ["2026-03-10 %02d:00:00" % h for h in (2, 6, 10, 14)]
+    for _, r in table.iterrows():
+        true = truths[int(r.recording[4:6])]["hv_share"][r.order][r.sequence]
+        if true >= 0.2:
+            assert r.hv_share == pytest.approx(true, abs=0.06)
+        else:                         # a weak instrument: the share is less precise but stays below the limit
+            assert r.hv_share < 0.25 and not r.reliable
+    assert set(table[table.reliable].recording) == {"TRD_00_10_000kHz", "TRD_01_10_000kHz"}
+    for _, r in pooled.iterrows():
+        assert r.recordings == 2 and r.reliable
+        z = _z_true(truths[0], r.order)
+        assert r.Z_Ohm == pytest.approx(abs(z), rel=0.06)
+        assert abs(r.Z_angle_deg - np.degrees(np.angle(z))) < 5.0
+    # without a reliable recording the pooled row is empty
+    _, none = transformer.mv_network_series(paths[2:], (5,), Z_hv=complex(0.03, 0.12), Z_up=z_up, ct_angle_deg=2.0,
+                                            min_hv_share=0.25, n_boot=5)
+    assert none.recordings.iloc[0] == 0 and not none.reliable.iloc[0] and np.isnan(none.get("Z_Ohm", np.nan)).all()
+    with pytest.raises(ValueError):
+        transformer.mv_network_series(paths, (5,), intervals=[None])
+
+
+def test_mv_network_impedance_weak_instrument_and_errors(tmp_path):
+    path = str(tmp_path / "TRW_10_000kHz.cfg")
+    demo.make_undisturbed_transformer_recording(path, hv_fluctuation=0.0005, duration=20.0)
+    with i18n.language("en"):
+        df = transformer.mv_network_impedance(path, orders=(5,), intervals=[(0.5, 10.0), (10.0, 19.5)], n_boot=10)
+        # only MV-driven variation: the HV voltage follows the current through the HV network, the estimate is the
+        # upstream impedance (inductive) – not reliable
+        assert not df.reliable.any()
+        assert (df.Z_angle_deg > 45).all()
+        assert any("upstream impedance" in h for h in df.attrs["hints"])
+        with pytest.raises(ValueError, match="interval lists"):
+            transformer.mv_network_impedance([path, path], intervals=[[(0.5, 5.0)]])
+        with pytest.raises(ValueError, match="not computed"):
+            transformer.mv_network_impedance(path, orders=(5, 11), settings=Settings(
+                harmonics=(1, 5), export_orders=(1, 5), voltage_harmonics=(1, 5), thd_max_order=5))
+        nohv = str(tmp_path / "TRN_10_000kHz.cfg")
+        demo.make_transformer_recording(nohv, hv=False)
+        with pytest.raises(ValueError, match="HV voltages"):
+            transformer.mv_network_impedance(nohv)
+    with i18n.language("de"):
+        with pytest.raises(ValueError, match="HS-Spannungen"):
+            transformer.mv_network_impedance(nohv)

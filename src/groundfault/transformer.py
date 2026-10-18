@@ -60,6 +60,7 @@ loads, generators and a parallel transformer take part of the negative-sequence 
 from __future__ import annotations
 
 import math
+import os
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -72,7 +73,8 @@ from .symmetrical import A, A2, fortescue
 __all__ = ["STATES", "SEQUENCES", "SIGNIFICANCE", "T_SETTLE_S", "NOISE_FACTOR", "sequence_windows", "state_means", "upstream_impedance",
            "polarity", "faulted_phase", "fault_current_estimate", "detection_input", "fault_times", "settled_index",
            "fault_end_index", "estimate_noise", "node_analysis", "plausibility_rows", "power_overview",
-           "summary_text"]
+           "summary_text", "is_natural", "voltage_windows", "voltage_divider", "IV_MIN_CORRELATION",
+           "IV_MAX_ANGLE_DEG", "mv_network_impedance", "mv_network_series", "ct_angle_from_reference"]
 
 STATES = ("pre_fault", "fault", "post_fault")
 """States of the transformer node: before, during (reference windows of the steady-state interval) and after the
@@ -128,10 +130,19 @@ i18n.register({
     "transformer.value_upstream": {
         "en": "X_up/m = {x1:.3f} Ω ({count} significant orders/sequences, spread {spread:.0f} %)",
         "de": "X_vor/m = {x1:.3f} Ω ({count} signifikante Ordnungen/Systeme, Streuung {spread:.0f} %)"},
+    "transformer.value_upstream_other": {
+        "en": "X_up/m = {x1:.3f} Ω ({count} significant orders in the sequence other than the natural one, spread "
+              "{spread:.0f} %)",
+        "de": "X_vor/m = {x1:.3f} Ω ({count} signifikante Ordnungen im nicht natürlichen Drehsystem, Streuung "
+              "{spread:.0f} %)"},
     "transformer.value_upstream_none": {"en": "no significant order", "de": "keine signifikante Ordnung"},
     "transformer.upstream_comment": {
-        "en": "from the fault-related change ΔU = −Z_up·ΔI; X_up/m is about constant for an inductive impedance",
-        "de": "aus der fehlerbedingten Änderung ΔU = −Z_vor·ΔI; X_vor/m ist bei induktiver Impedanz etwa konstant"},
+        "en": "from the fault-related change ΔU = −Z_up·ΔI; X_up/m is about constant for an inductive impedance; the "
+              "sequence other than the natural one carries hardly any pre-fault harmonic (m = 5, 11 …: positive, "
+              "m = 7, 13 …: negative sequence)",
+        "de": "aus der fehlerbedingten Änderung ΔU = −Z_vor·ΔI; X_vor/m ist bei induktiver Impedanz etwa konstant; "
+              "das nicht natürliche Drehsystem trägt kaum Vorbelastung (m = 5, 11 …: Mitsystem, m = 7, 13 …: "
+              "Gegensystem)"},
     "transformer.summary_polarity": {"en": "currents: {system}", "de": "Ströme: {system}"},
     "transformer.system_consumer": {"en": "consumer reference arrow system", "de": "Verbraucherzählpfeilsystem"},
     "transformer.system_generator": {"en": "generator reference arrow system (reversed)",
@@ -142,13 +153,97 @@ i18n.register({
                                   "de": "Trafo {xt:.3f} Ω, HS-Netz {xh:.3f} Ω (Übersetzung {ratio:.3f}, Kennzahl {group})"},
     "transformer.summary_dp1": {"en": "fault − pre-fault at 50 Hz: ΔP = {dp:+.0f} kW, ΔQ = {dq:+.0f} kvar",
                                 "de": "Erdschluss − Vorfehler bei 50 Hz: ΔP = {dp:+.0f} kW, ΔQ = {dq:+.0f} kvar"},
+    "transformer.check_divider": {"en": "HV share of the upstream impedance (voltage divider)",
+                                  "de": "HS-Anteil der Vorimpedanz (Spannungsteiler)"},
+    "transformer.value_divider": {
+        "en": "k = {k:.3f} ({count} significant orders in the sequence other than the natural one, spread "
+              "{spread:.0f} %)",
+        "de": "k = {k:.3f} ({count} signifikante Ordnungen im nicht natürlichen Drehsystem, Streuung {spread:.0f} %)"},
+    "transformer.value_divider_x": {"en": "{base}; X_HV/m = {xh:.3f} Ω, X_T/m = {xt:.3f} Ω",
+                                    "de": "{base}; X_HS/m = {xh:.3f} Ω, X_T/m = {xt:.3f} Ω"},
+    "transformer.value_divider_none": {"en": "no significant order", "de": "keine signifikante Ordnung"},
+    "transformer.divider_comment": {
+        "en": "k = Z_HV/(Z_T + Z_HV) from the fault-related change of the HV and MV voltages – without transformer "
+              "currents; with them Z_HV = k·Z_up, a second method beside Z_HV from HV voltage and current",
+        "de": "k = Z_HS/(Z_T + Z_HS) aus der fehlerbedingten Änderung der HS- und MS-Spannungen – ohne Trafoströme; "
+              "mit ihnen Z_HS = k·Z_vor, ein zweites Verfahren neben Z_HS aus HS-Spannung und Strom"},
     "transformer.check_hv": {"en": "HV side: ratio and vector group", "de": "HS-Seite: Übersetzung und Schaltgruppe"},
     "transformer.value_hv": {"en": "{ratio:.3f}, {shift:.0f}° (group {group})",
                              "de": "{ratio:.3f}, {shift:.0f}° (Kennzahl {group})"},
     "transformer.hv_comment": {
         "en": "from the fundamental of the positive sequence; the HV voltages are referred to the MV side with it",
         "de": "aus der Grundschwingung des Mitsystems; damit werden die HS-Spannungen auf die MS-Seite bezogen"},
+    "transformer.iv_intervals": {
+        "en": "{n} recordings but {k} interval lists – give one list of undisturbed ranges per recording.",
+        "de": "{n} Aufzeichnungen, aber {k} Bereichslisten – je Aufzeichnung eine Liste ungestörter Bereiche angeben."},
+    "transformer.iv_roles": {
+        "en": "{name}: the MV network impedance needs the transformer currents (i_l1 … i_l3), the MV busbar voltages "
+              "(u_l1e …) and the HV voltages (u_hv_l1e …) in one recording.",
+        "de": "{name}: Die Impedanz des MS-Netzes braucht die Trafoströme (i_l1 … i_l3), die Spannungen der "
+              "MS-Sammelschiene (u_l1e …) und die HS-Spannungen (u_hv_l1e …) in einer Aufzeichnung."},
+    "transformer.iv_orders": {
+        "en": "Orders {orders} are not computed by the window analysis – extend Settings.export_orders.",
+        "de": "Die Ordnungen {orders} berechnet die Fensteranalyse nicht – Settings.export_orders erweitern."},
+    "transformer.iv_no_windows": {
+        "en": "No undisturbed window with all channels – check the intervals.",
+        "de": "Kein ungestörtes Fenster mit allen Kanälen – Bereiche prüfen."},
+    "transformer.iv_reversed": {
+        "en": "Transformer currents reversed (generator reference arrow system): the MV network impedance from the HV "
+              "instrument had a negative real part.",
+        "de": "Trafoströme umgekehrt (Erzeugerzählpfeilsystem): Die Impedanz des MS-Netzes aus dem HS-Instrument hatte "
+              "einen negativen Wirkanteil."},
+    "transformer.iv_sign_unknown": {
+        "en": "Polarity of the transformer currents not determinable (no order with a strong instrument) – currents "
+              "taken as measured; give sign= from the evaluation of an earth fault of the same recorder.",
+        "de": "Polarität der Trafoströme nicht bestimmbar (keine Ordnung mit starkem Instrument) – Ströme wie gemessen; "
+              "sign= aus der Auswertung eines Erdschlusses desselben Geräts angeben."},
+    "transformer.iv_inductive": {
+        "en": "Orders {orders}: the estimate is inductive (above {angle:g}°) – the variation was driven from the MV side "
+              "and the result is the upstream impedance, not the MV network; not reliable.",
+        "de": "Ordnungen {orders}: Die Schätzung ist induktiv (über {angle:g}°) – die Schwankung kam aus dem MS-Netz, "
+              "das Ergebnis ist die Vorimpedanz, nicht das MS-Netz; nicht verlässlich."},
+    "transformer.iv_mv_driven": {
+        "en": "Orders {orders}: the HV network drives only part of the variation of the busbar voltage ({shares}; "
+              "natural sequence, below min_hv_share = {limit:g}) – the sources in the MV network dominate and the "
+              "estimate is not reliable. Record at another time (e.g. at night) or use a staged fault test.",
+        "de": "Ordnungen {orders}: Das HS-Netz treibt nur einen Teil der Schwankung der Sammelschienenspannung "
+              "({shares}; natürliches Drehsystem, unter min_hv_share = {limit:g}) – die Quellen im MS-Netz überwiegen, "
+              "die Schätzung ist nicht verlässlich. Zu einer anderen Zeit aufzeichnen (z. B. nachts) oder einen "
+              "Erdschlussversuch nutzen."},
+    "transformer.iv_share_needs_z": {
+        "en": "min_hv_share needs the upstream impedance Z_up (transformer and HV network) and the impedance of the HV "
+              "network Z_hv: the share of the HV-driven variation is computed with Z_up, and it holds only with the "
+              "instrument corrected by Z_hv.",
+        "de": "min_hv_share braucht die Vorimpedanz Z_up (Trafo und HS-Netz) und die Impedanz des HS-Netzes Z_hv: Der "
+              "Anteil der HS-getriebenen Schwankung wird mit Z_up berechnet und gilt nur mit dem über Z_hv "
+              "korrigierten Instrument."},
+    "transformer.iv_impedance_missing": {
+        "en": "{name} has no value for the orders {orders}.",
+        "de": "{name} enthält keinen Wert für die Ordnungen {orders}."},
+    "transformer.iv_ct_angle_missing": {
+        "en": "No angle error of the current transformers for the orders {orders} – give one value per order or one "
+              "for all.",
+        "de": "Kein Winkelfehler der Stromwandler für die Ordnungen {orders} – je Ordnung einen Wert oder einen für "
+              "alle angeben."},
+    "transformer.channel_unknown": {
+        "en": "Channel {channel!r} not found (or not unique). Channels: {names}",
+        "de": "Kanal {channel!r} nicht gefunden (oder nicht eindeutig). Kanäle: {names}"},
+    "transformer.iv_weak": {
+        "en": "Orders {orders}: the HV voltage drives too little of the variation (correlation below {corr:g}) or the "
+              "result is not passive – not reliable; longer undisturbed ranges help.",
+        "de": "Ordnungen {orders}: Die HS-Spannung treibt zu wenig der Schwankung (Korrelation unter {corr:g}) oder das "
+              "Ergebnis ist nicht passiv – nicht verlässlich; längere ungestörte Bereiche helfen."},
 })
+
+
+# German column names of the tables of the MV network from undisturbed operation
+i18n.register_labels(
+    columns={"Z_low_Ohm": "Z_unten_Ohm", "Z_high_Ohm": "Z_oben_Ohm", "angle_low_deg": "Winkel_unten_deg",
+             "angle_high_deg": "Winkel_oben_deg", "corr_I_hv": "Korrelation_I_HS", "corr_U_hv": "Korrelation_U_HS",
+             "hv_share": "HS_Anteil", "instrument": "Instrument", "reliable": "verlaesslich",
+             "recording": "Aufzeichnung", "start": "Beginn", "recordings": "Aufzeichnungen", "names": "Namen",
+             "angle_deg": "Winkel_deg", "I_reference_A": "I_Referenz_A", "reference_reversed": "Referenz_umgekehrt"},
+    values={"instrument": {"U_hv": "U_HS", "E_hv": "E_HS (korrigiert)"}})
 
 
 # ====================================================================== windows and states
@@ -276,6 +371,23 @@ def _decision_rows(z: dict, orders: Sequence[int]) -> List[Tuple[int, int]]:
             if np.isfinite(u) and u <= SIGNIFICANCE and np.isfinite(z["Z"][s, j]):
                 out.append((s, j))
     return out
+
+
+def is_natural(m: int, sequence: str) -> bool:
+    """True if ``sequence`` is the natural sequence of order m (m mod 3 = 1: positive, m mod 3 = 2: negative, m mod 3
+    = 0: zero sequence) – the sequence in which the harmonic of a symmetrical source appears in normal operation and
+    in which the pre-fault harmonic voltage is large."""
+    return sequence == ("zero", "pos", "neg")[int(m) % 3]
+
+
+def _summary_rows(z: dict, orders: Sequence[int]) -> Tuple[List[Tuple[int, int]], bool]:
+    """Entries of the summary value X_up/m: the significant entries of the sequence other than the natural one
+    (m = 5, 11 …: positive, m = 7, 13 …: negative sequence; ``True``) – the pre-fault harmonic of the natural
+    sequence is ten to a hundred times larger, and its drift between the states enters ΔU and ΔI –, without such
+    an entry all entries of the polarity decision, both sequences (``False``)."""
+    rows = _decision_rows(z, orders)
+    other = [(s, j) for s, j in rows if not is_natural(orders[j], SEQUENCES[s])]
+    return (other, True) if other else (rows, False)
 
 
 def polarity(fault: Optional[dict], pre: Optional[dict], post: Optional[dict],
@@ -532,6 +644,632 @@ def fault_end_index(magnitude: np.ndarray, share: float = 0.8) -> int:
     return int(full[-1]) + 1 if full.size else m.size
 
 
+# ====================================================================== voltage divider (HV and MV voltages)
+def voltage_windows(block, roles, orders: Sequence[int], windows: Optional[np.ndarray] = None) -> Optional[dict]:
+    """Per window of an interval: symmetrical components of the MV and the HV line-to-earth voltages per order,
+    referred to the fundamental of U_L1-L2 of the MV voltages of the window.
+
+    Returns
+    -------
+    dict or None
+        ``mv`` and ``hv`` – arrays (windows × 3 sequences × orders) – and ``t`` (window centres in s); None without
+        both voltage sets or without a window.
+    """
+    mv, hv = roles.line_to_earth, roles.line_to_earth_hv
+    if block is None or mv is None or hv is None:
+        return None
+    ok = ~block.nan_window if windows is None else (np.asarray(windows, bool) & ~block.nan_window)
+    if not ok.any():
+        return None
+    ix = [block.ix(int(m)) for m in orders]
+    X = block.X[ok]
+    ref = X[:, mv[0], block.ix(1)] - X[:, mv[1], block.ix(1)]
+    rot = np.exp(-1j * np.outer(np.angle(ref), np.asarray(orders, float)))[:, None, :]
+    out = dict(t=block.t_mid[ok])
+    for name, ch in (("mv", mv), ("hv", hv)):
+        U = X[:, ch, :][:, :, ix] * rot
+        out[name] = np.stack(fortescue(U[:, 0], U[:, 1], U[:, 2]), axis=1)
+    return out
+
+
+def _voltage_means(w: dict) -> dict:
+    n = int(w["mv"].shape[0])
+    dof = max(n - 1, 1) * n
+    out = dict(n=n)
+    for name in ("mv", "hv"):
+        U = w[name].mean(axis=0)
+        out[name] = U
+        out["se_" + name] = np.sqrt((np.abs(w[name] - U) ** 2).sum(axis=0) / dof)
+    return out
+
+
+def voltage_divider(res) -> None:
+    """Share of the HV network in the upstream impedance from the HV and MV voltages of the same recording – table
+    ``transformer_divider`` and ``res.values["transformer_divider"]``.
+
+    Per order m ≥ 2 not divisible by 3 and sequence s (positive, negative) the fault-related changes of the MV
+    voltage and of the HV voltage referred to the MV side form a voltage divider,
+
+        k_s,m = (ΔU_HV,s,m / (t·e^{±jk·30°})) / ΔU_MV,s,m = Z_HV,m / (Z_T,m + Z_HV,m),
+
+    with the ratio t and the vector group k from the fundamental of the positive sequence (negative sequence: −k).
+    It needs no transformer currents: a recording of the HV and MV busbar voltages alone gives the share of the HV
+    network. With the transformer currents in the recording ([`node_analysis`][groundfault.transformer.node_analysis]
+    first) the table also gives Z_HV = k·Z_up and Z_T = (1 − k)·Z_up – a second method beside Z_HV from the HV
+    voltage and the transformer current.
+
+    Columns: ``order``, ``f_Hz``, ``sequence``, ``natural_sequence``, ``dU_V`` (MV), ``dU_hv_V`` (HV referred to the
+    MV side), ``k``, ``k_angle_deg``, ``uncertainty_pct`` (from the spread of the windows and, with a pre- and a
+    post-fault interval, the null test of both voltages), ``significant`` (≤
+    [`SIGNIFICANCE`][groundfault.transformer.SIGNIFICANCE]); with Z_up also ``Z_hv_Ohm``, ``Z_hv_angle_deg``,
+    ``X_hv_per_order_Ohm``, ``Z_transformer_Ohm``, ``Z_transformer_angle_deg``, ``X_transformer_per_order_Ohm``.
+    The summary value ``k`` (and ``X1_hv_Ohm``, ``X1_transformer_Ohm`` with Z_up) is the 1/uncertainty²-weighted
+    mean over the significant orders in the sequence other than the natural one, as for X_up/m.
+
+    Parameters
+    ----------
+    res : Result
+        Evaluation result with the line-to-earth voltages of the MV and of the HV side.
+    """
+    roles, e = res.roles, res.settings
+    if roles.line_to_earth is None or roles.line_to_earth_hv is None:
+        return
+    st = res.steady_state
+    orders = [m for m in sorted(set(int(x) for x in e.export_orders) | {1}) if m in st.orders]
+    blocks = {"pre_fault": res.pre_fault, "fault": st, "post_fault": res.post_fault}
+    masks = {"fault": res.reference_windows}
+    means = {}
+    for s_name, b in blocks.items():
+        w = voltage_windows(b, roles, orders, masks.get(s_name))
+        if w is not None:
+            means[s_name] = _voltage_means(w)
+    base_name = "pre_fault" if "pre_fault" in means else ("post_fault" if "post_fault" in means else None)
+    if "fault" not in means or base_name is None:
+        return
+    ref = means[base_name]
+    t = ref["hv"][1, 0] / ref["mv"][1, 0]
+    if not (np.isfinite(t) and abs(t) > 0):
+        return
+    ratio, group = float(abs(t)), int(round(np.degrees(np.angle(t)) / 30.0)) % 12
+    f, b = means["fault"], means[base_name]
+    post = means.get("post_fault") if base_name == "pre_fault" else None
+    zup = {}
+    zi = res.tables.get("transformer_impedance")
+    if zi is not None and not zi.empty:
+        for _, r in zi.iterrows():
+            z = r["Z_up_Ohm"] * np.exp(1j * np.radians(r["Z_up_angle_deg"]))
+            if np.isfinite(z):
+                zup[(int(r["order"]), r["sequence"])] = complex(z)
+    f1 = st.f1["f1_used"]
+    rows, est = [], []
+    for j, m in enumerate(orders):
+        if m < 2 or m % 3 == 0:
+            continue
+        for q in (1, 2):
+            fac = _hv_factor(q, ratio, group)
+            dmv = f["mv"][q, j] - b["mv"][q, j]
+            dhv = (f["hv"][q, j] - b["hv"][q, j]) / fac
+            d_mv = np.hypot(f["se_mv"][q, j], b["se_mv"][q, j])
+            d_hv = np.hypot(f["se_hv"][q, j], b["se_hv"][q, j]) / ratio
+            if post is not None:
+                d_mv = max(d_mv, abs(post["mv"][q, j] - b["mv"][q, j]))
+                d_hv = max(d_hv, abs(post["hv"][q, j] - b["hv"][q, j]) / ratio)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                k = dhv / dmv
+                u = float(np.hypot(d_mv / abs(dmv), d_hv / abs(dhv)))
+            seq = SEQUENCES[q]
+            sig = bool(np.isfinite(u) and u <= SIGNIFICANCE and np.isfinite(k))
+            r = dict(order=m, f_Hz=m * f1, sequence=seq, natural_sequence=is_natural(m, seq), dU_V=_f(abs(dmv)),
+                     dU_hv_V=_f(abs(dhv)), k=_f(abs(k)), k_angle_deg=_deg(k), uncertainty_pct=_f(100 * u),
+                     significant=sig)
+            z = zup.get((m, seq))
+            if z is not None:
+                zh, zt = k * z, (1 - k) * z
+                r.update(Z_hv_Ohm=_f(abs(zh)), Z_hv_angle_deg=_deg(zh), X_hv_per_order_Ohm=_f(zh.imag / m),
+                         Z_transformer_Ohm=_f(abs(zt)), Z_transformer_angle_deg=_deg(zt),
+                         X_transformer_per_order_Ohm=_f(zt.imag / m))
+            rows.append(r)
+            if sig:
+                est.append((m, seq, k, u, z))
+    res.tables["transformer_divider"] = pd.DataFrame(rows)
+    other = [x for x in est if not is_natural(x[0], x[1])]
+    use = other or est
+    vals = dict(ratio=ratio, group=group, shift_deg=30.0 * group, k_count=len(use), k_other_sequence=bool(other))
+    if use:
+        wgt = np.array([1.0 / max(x[3], 1e-3) ** 2 for x in use])
+        kk = np.array([abs(x[2]) for x in use])
+        k1 = float(np.sum(wgt * kk) / np.sum(wgt))
+        vals.update(k=k1, k_spread=float(np.sqrt(np.sum(wgt * (kk - k1) ** 2) / np.sum(wgt)) / k1) if k1 else
+                    float("nan"))
+        withz = [(x, wi) for x, wi in zip(use, wgt) if x[4] is not None]
+        if withz:
+            ww = np.array([wi for _, wi in withz])
+            xh = np.array([(x[2] * x[4]).imag / x[0] for x, _ in withz])
+            xt = np.array([((1 - x[2]) * x[4]).imag / x[0] for x, _ in withz])
+            vals.update(X1_hv_Ohm=float(np.sum(ww * xh) / np.sum(ww)), X1_transformer_Ohm=float(np.sum(ww * xt) / np.sum(ww)))
+    res.values["transformer_divider"] = vals
+
+
+# ====================================================================== MV network from undisturbed operation
+IV_MIN_CORRELATION = 0.3
+"""Smallest correlation between the transformer current and the HV voltage (the instrument) for which
+[`mv_network_impedance`][groundfault.transformer.mv_network_impedance] marks an estimate as reliable – below it the
+HV side drives too little of the variation."""
+IV_MAX_ANGLE_DEG = 45.0
+"""Largest angle of a plausible MV network impedance in
+[`mv_network_impedance`][groundfault.transformer.mv_network_impedance]: the cables make the MV network capacitive at
+the harmonic orders, the loads add damping. A strongly inductive result is the upstream impedance – the variation was
+driven from the MV side, and the HV voltage only followed it through the HV network."""
+
+
+def _iv_estimate(U: np.ndarray, I: np.ndarray, H: np.ndarray) -> np.ndarray:
+    """Z = Σ ΔU·ΔH* / Σ ΔI·ΔH* over the first axis (windows)."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return (U * np.conj(H)).sum(axis=0) / (I * np.conj(H)).sum(axis=0)
+
+
+def _impedance_per_order(Z, orders: Sequence[int], name: str) -> np.ndarray:
+    """Impedance per order from ``{order: Z}`` or from one value at the fundamental, Z(m) = R + j·m·X."""
+    if isinstance(Z, dict):
+        table = {int(m): complex(v) for m, v in Z.items()}
+        missing = [m for m in orders if m not in table]
+        if missing:
+            raise ValueError(tr("transformer.iv_impedance_missing", name=name, orders=missing))
+        return np.array([table[m] for m in orders])
+    z = complex(Z)
+    return np.array([complex(z.real, m * z.imag) for m in orders])
+
+
+def _angles_per_order(angle_deg, orders: Sequence[int]) -> np.ndarray:
+    """Angle error of the current transformers per order in degrees: one value for all orders, ``{order: angle}``
+    or the table of [`ct_angle_from_reference`][groundfault.transformer.ct_angle_from_reference]."""
+    if angle_deg is None:
+        return np.zeros(len(orders))
+    if isinstance(angle_deg, pd.DataFrame):
+        table = {int(m): float(a) for m, a in zip(angle_deg["order"], angle_deg["angle_deg"])}
+    elif isinstance(angle_deg, (dict, pd.Series)):
+        table = {int(m): float(a) for m, a in angle_deg.items()}
+    else:
+        return np.full(len(orders), float(angle_deg))
+    missing = [m for m in orders if m not in table or not math.isfinite(table[m])]
+    if missing:
+        raise ValueError(tr("transformer.iv_ct_angle_missing", orders=missing))
+    return np.array([table[m] for m in orders])
+
+
+def mv_network_impedance(recordings, orders: Sequence[int] = (5, 7), intervals=None, settings=None, roles=None,
+                         sign: Optional[float] = None, Z_hv=None, Z_up=None, ct_angle_deg=None, n_boot: int = 1000,
+                         block_windows: int = 10, seed: int = 0, min_correlation: float = IV_MIN_CORRELATION,
+                         max_angle_deg: float = IV_MAX_ANGLE_DEG,
+                         min_hv_share: Optional[float] = None) -> pd.DataFrame:
+    """Impedance of the MV network seen from the busbar per order, Z_MV = ΔU/ΔI, from undisturbed operation – with
+    the HV voltage as instrumental variable.
+
+    In undisturbed operation the harmonic voltages of the busbar vary because the sources on both sides vary: those
+    of the HV network (behind the upstream impedance Z_up) and those of the MV network. A variation driven from the HV
+    side changes busbar voltage and transformer current by ΔU = Z_MV·ΔI (current from the HV into the MV network),
+    one driven from the MV side by ΔU = −Z_up·ΔI. The ratio U/I of the undisturbed transformer node mixes both and
+    shows neither. The HV voltage follows the HV sources – the MV sources change it only through the small HV
+    share of Z_up – and serves as instrument: with the deviations of the windows from the mean of their interval,
+
+        Z_MV = Σ ΔU·ΔU_HV* / Σ ΔI·ΔU_HV*
+
+    per order and sequence. Z_MV is the MV network with its damping – the quantity that sets the harmonic fault
+    current near the parallel resonance of the busbar and that the earth fault otherwise gives (Y_MV = 1/Z_1 −
+    1/Z_up). G and B are the conductance and susceptance of Y_MV = 1/Z_MV.
+
+    The MV sources still reach the HV voltage through the HV network: ΔU_HV = −Z_HV·ΔI for a variation driven from
+    the MV side (referred to the MV side). Where they dominate the variation, this biases the estimate. With the
+    impedance of the HV network ``Z_hv`` (from S″_k or from the fault evaluation of the same transformer) the
+    instrument becomes the voltage of the HV source, E = U_HV/(t·e^{±jk·30°}) + Z_HV·I, which the MV sources do not
+    change; the ratio t and the vector group k come from the fundamental.
+
+    **Share of the HV-driven variation.** The estimate holds only if the HV network drives a fair share of the
+    variation. With the upstream impedance ``Z_up`` the recording itself shows that share: ΔU + Z_up·ΔI is the
+    variation of the HV source referred to the MV side, and Z_MV/(Z_up + Z_MV) of it reaches the busbar, so
+
+        s_HV = |Z_MV/(Z_up + Z_MV)|²·Σ|ΔU + Z_up·ΔI|² / Σ|ΔU|²
+
+    is the share of the HV-driven variation in the variance of the busbar voltage (column ``hv_share``). The square of
+    ``corr_U_hv`` estimates the same share without Z_up (the part of the busbar voltage that varies with the
+    instrument). Both hold only with the corrected instrument (``Z_hv``): with the HV voltage itself as instrument
+    the MV variations that reach it through the HV network make the estimate drift towards −Z_up where the MV side
+    dominates, and the share is then overestimated. Neither the mean harmonic power flow through the transformer nor
+    its direction shows the share: the level may come mainly from either side, and the active power of the
+    variation flows into the MV network as long as the MV network carries most of the damping.
+
+    **Angle error of the current transformers.** Z_MV is capacitive with a damping that is small against its
+    susceptance near the resonance, so a few degrees of angle error of the transformer current change G
+    noticeably (about 1–2.5 % of the forecast current per degree). ``ct_angle_deg`` – e.g. from a reference clamp,
+    [`ct_angle_from_reference`][groundfault.transformer.ct_angle_from_reference] – rotates the current phasors back
+    before the estimate.
+
+    Parameters
+    ----------
+    recordings : Recording, str or sequence
+        Recording(s) with the transformer line currents (``i_l1`` … ``i_l3``, MV side), the MV busbar voltages
+        (``u_l1e`` …) and the HV voltages (``u_hv_l1e`` …) in one device; a path opens the ``.cfg`` file. Several
+        recordings are pooled (same transformer, same polarity of the current transformers).
+    orders : sequence of int, optional
+        Orders (computed by the window analysis of ``settings``).
+    intervals : list, optional
+        Undisturbed time ranges in s, ``[(t0, t1), …]`` for one recording or one such list per recording; None = the
+        whole recording. For a recording of an earth fault: the pre-fault and post-fault ranges.
+    settings : Settings, optional
+        Window analysis (window length, frequency estimation); default ``Settings()``.
+    roles : RoleAssignment, optional
+        Channel roles (default: detected from the channel names of each recording).
+    sign : float, optional
+        Factor of the currents to the consumer reference arrow system of the MV network (+1 as measured, −1
+        reversed). None: from the passivity of the result – Z_MV has a positive real part; the hints say so.
+    Z_hv : complex or dict, optional
+        Impedance of the HV network referred to the MV side: a value at the fundamental (Z(m) = R + j·m·X) or
+        ``{order: Z in Ω}``. None: the HV voltage itself is the instrument.
+    Z_up : complex or dict, optional
+        Upstream impedance (transformer and HV network) referred to the MV side, as ``Z_hv``: a value at the
+        fundamental or ``{order: Z in Ω}``. Needed for the share of the HV-driven variation (``hv_share``).
+    ct_angle_deg : float, dict or pandas.DataFrame, optional
+        Angle error of the current transformers of the transformer currents in degrees – phase of the measured minus
+        phase of the true current: one value for all orders, ``{order: angle}`` or the table of
+        [`ct_angle_from_reference`][groundfault.transformer.ct_angle_from_reference]. The current phasors are rotated
+        back by it. None: no correction.
+    n_boot : int, optional
+        Bootstrap replications for the 5–95 % range (blocks of ``block_windows`` consecutive windows).
+    block_windows : int, optional
+        Block length of the bootstrap in windows (the variations are correlated over neighbouring windows).
+    seed : int, optional
+        Seed of the bootstrap.
+    min_correlation : float, optional
+        Smallest correlation between transformer current and HV voltage of a reliable estimate.
+    max_angle_deg : float, optional
+        Largest angle of a reliable estimate (see [`IV_MAX_ANGLE_DEG`][groundfault.transformer.IV_MAX_ANGLE_DEG]).
+    min_hv_share : float, optional
+        Smallest share of the HV-driven variation (``hv_share``) of a reliable estimate – a value you define; needs
+        ``Z_up`` and ``Z_hv``. None: the share is listed but not assessed.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per order and sequence (``pos``, ``neg``): ``order``, ``sequence``, ``natural_sequence``,
+        ``windows``, ``Z_Ohm``, ``Z_angle_deg``, ``R_Ohm``, ``X_Ohm``, ``G_S``, ``B_S``, the bootstrap ranges
+        ``Z_low_Ohm``, ``Z_high_Ohm``, ``angle_low_deg``, ``angle_high_deg``, the correlations ``corr_I_hv`` (strength
+        of the instrument) and ``corr_U_hv``, ``hv_share`` (NaN without ``Z_up``), ``instrument`` (``U_hv`` or
+        ``E_hv``) and ``reliable``. ``df.attrs`` holds ``sign``, ``ratio``, ``group``, ``ct_angle_deg`` (per order),
+        ``min_hv_share`` and ``hints``.
+
+    Raises
+    ------
+    ValueError
+        If a recording lacks transformer currents, MV or HV voltages, if an order is not computed, if no window is
+        left, if ``ct_angle_deg``, ``Z_hv`` or ``Z_up`` lack an order, or if ``min_hv_share`` is given without
+        ``Z_up`` and ``Z_hv``.
+
+    Notes
+    -----
+    The estimate needs variations driven from the HV side. If the MV side drives nearly all of them, the HV voltage
+    only follows the current through the HV network, the correlation stays high and the estimate becomes the upstream
+    impedance −Z_up: inductive instead of capacitive – such rows are not reliable (``max_angle_deg``), and the
+    polarity is best taken from the evaluation of an earth fault of the same recorder (``sign``). Between these
+    limits the correlation and the angle do not show a dominant MV side; ``hv_share`` does. The precision grows with
+    the duration: roughly (MV-driven/HV-driven variation)/√(number of independent fluctuations); minutes of
+    undisturbed operation give about ±10 % at the dominant order, seconds are not enough – the bootstrap range shows
+    it. Evaluate the natural sequence of an order (column ``natural_sequence``): the other sequence varies little.
+    Systematic limits: an MV source whose emission follows the HV voltage is treated as part of the MV network, and
+    without ``Z_hv`` the HV share of Z_up couples the MV variations weakly into the instrument.
+    """
+    from .channels import detect_roles
+    from .comtrade import open_recording
+    from .evaluation import Settings, _analyse, load_blocks
+
+    e = settings or Settings()
+    recs = list(recordings) if isinstance(recordings, (list, tuple)) else [recordings]
+    if intervals is None:
+        ivs = [None] * len(recs)
+    elif len(recs) == 1 and len(intervals) and np.ndim(intervals[0]) == 1 and not isinstance(intervals[0][0],
+                                                                                              (list, tuple)):
+        ivs = [list(intervals)]
+    else:
+        ivs = list(intervals)
+    if len(ivs) != len(recs):
+        raise ValueError(tr("transformer.iv_intervals", n=len(recs), k=len(ivs)))
+    orders = [int(m) for m in orders]
+    if min_hv_share is not None and (Z_up is None or Z_hv is None):
+        raise ValueError(tr("transformer.iv_share_needs_z"))
+    ct_angles = _angles_per_order(ct_angle_deg, orders)
+    z_up = _impedance_per_order(Z_up, orders, "Z_up") if Z_up is not None else None
+    z_hv = _impedance_per_order(Z_hv, orders, "Z_hv") if Z_hv is not None else None
+    rot = np.exp(-1j * np.radians(ct_angles))[None, None, :]
+    parts = {"U": [], "I": [], "H": []}
+    t_ratio = []
+    for r, iv in zip(recs, ivs):
+        rec = open_recording(r, emit_warnings=False) if isinstance(r, str) else r
+        ro = roles if roles is not None else detect_roles(rec.channel_names, rec.units)
+        if ro.line_currents is None or ro.line_to_earth is None or ro.line_to_earth_hv is None:
+            raise ValueError(tr("transformer.iv_roles", name=os.path.basename(rec.cfg_path)))
+        for t0, t1 in (iv or [(0.0, rec.duration_s)]):
+            bl = load_blocks(rec, {"u": (float(t0), float(t1))})
+            b = _analyse("undisturbed", *bl["u"], rec, ro, e)
+            missing = [m for m in orders if m not in b.orders]
+            if missing:
+                raise ValueError(tr("transformer.iv_orders", orders=missing))
+            mv = sequence_windows(b, ro, orders, "mv")
+            hv = sequence_windows(b, ro, orders, "hv")
+            if mv is None or hv is None or mv["U"].shape[0] < 2:
+                continue
+            parts["U"].append(mv["U"] - mv["U"].mean(axis=0))
+            parts["I"].append((mv["I"] - mv["I"].mean(axis=0)) * rot)
+            parts["H"].append(hv["U"] - hv["U"].mean(axis=0))
+            f = voltage_windows(b, ro, [1])
+            if f is not None:
+                t_ratio.append(complex(np.mean(f["hv"][:, 1, 0] / f["mv"][:, 1, 0])))
+    if not parts["U"]:
+        raise ValueError(tr("transformer.iv_no_windows"))
+    U, I, H = (np.concatenate(parts[k]) for k in ("U", "I", "H"))
+    n = U.shape[0]
+    tt = complex(np.median(np.real(t_ratio)), np.median(np.imag(t_ratio))) if t_ratio else complex("nan")
+    ratio = float(abs(tt))
+    group = int(round(np.degrees(np.angle(tt)) / 30.0)) % 12 if np.isfinite(tt) else 0
+
+    def correlations(H_):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            hh = (np.abs(H_) ** 2).sum(axis=0)
+            c_i = np.abs((I * np.conj(H_)).sum(axis=0)) / np.sqrt((np.abs(I) ** 2).sum(axis=0) * hh)
+            c_u = np.abs((U * np.conj(H_)).sum(axis=0)) / np.sqrt((np.abs(U) ** 2).sum(axis=0) * hh)
+        return c_i, c_u
+
+    Z = _iv_estimate(U, I, H)
+    c_ih, c_uh = correlations(H)
+    hints = []
+    if sign is None:
+        use = [(s, j) for s in (1, 2) for j, m in enumerate(orders)
+               if m % 3 and np.isfinite(Z[s, j]) and c_ih[s, j] >= min_correlation]
+        if use:
+            c = sum(c_ih[s, j] * math.cos(np.angle(Z[s, j])) for s, j in use) / sum(c_ih[s, j] for s, j in use)
+            sign = -1.0 if c < 0 else 1.0
+            if sign < 0:
+                hints.append(tr("transformer.iv_reversed"))
+        else:
+            sign = 1.0
+            hints.append(tr("transformer.iv_sign_unknown"))
+    sign = float(sign)
+    instrument = "U_hv"
+    if z_hv is not None and np.isfinite(ratio) and ratio > 0:
+        fac = np.array([1.0, _hv_factor(1, ratio, group), _hv_factor(2, ratio, group)])[:, None]
+        H = H / fac + z_hv[None, None, :] * sign * I        # voltage of the HV source, referred to the MV side
+        instrument = "E_hv"
+        Z = _iv_estimate(U, I, H)
+        c_ih, c_uh = correlations(H)
+    Z = Z / sign
+    share = np.full(Z.shape, np.nan)
+    if z_up is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            E_up = U + z_up[None, None, :] * sign * I            # HV source behind Z_up, from the MV side
+            share = (np.abs(Z / (z_up[None, :] + Z)) ** 2 * (np.abs(E_up) ** 2).sum(axis=0)
+                     / (np.abs(U) ** 2).sum(axis=0))
+    # moving-block bootstrap over the windows
+    rng = np.random.default_rng(seed)
+    L = max(1, min(int(block_windows), n))
+    nb = max(1, n // L)
+    boot = np.empty((int(n_boot),) + Z.shape, complex)
+    for k in range(int(n_boot)):
+        starts = rng.integers(0, n - L + 1, nb)
+        idx = (starts[:, None] + np.arange(L)[None, :]).ravel()
+        boot[k] = _iv_estimate(U[idx], I[idx], H[idx]) / sign
+    rows = []
+    for s, s_name in ((1, "pos"), (2, "neg")):
+        for j, m in enumerate(orders):
+            z = complex(Z[s, j])
+            zb = boot[:, s, j]
+            zb = zb[np.isfinite(zb)]
+            y = 1.0 / z if z != 0 and np.isfinite(z) else complex("nan")
+            lo, hi = (np.percentile(np.abs(zb), [5, 95]) if zb.size else (np.nan, np.nan))
+            alo, ahi = (np.percentile(np.degrees(np.angle(zb / z)), [5, 95]) + _deg(z) if zb.size and np.isfinite(z)
+                        else (np.nan, np.nan))
+            sh = _f(share[s, j])
+            share_ok = min_hv_share is None or (math.isfinite(sh) and sh >= min_hv_share)
+            ok = bool(np.isfinite(z) and c_ih[s, j] >= min_correlation and z.real > 0
+                      and _deg(z) <= max_angle_deg and share_ok)
+            rows.append(dict(order=m, sequence=s_name, natural_sequence=is_natural(m, s_name), windows=n,
+                             Z_Ohm=abs(z), Z_angle_deg=_deg(z), R_Ohm=z.real, X_Ohm=z.imag, G_S=y.real, B_S=y.imag,
+                             Z_low_Ohm=float(lo), Z_high_Ohm=float(hi), angle_low_deg=float(alo),
+                             angle_high_deg=float(ahi), corr_I_hv=float(c_ih[s, j]), corr_U_hv=float(c_uh[s, j]),
+                             hv_share=sh, instrument=instrument, reliable=ok))
+    inductive = [r["order"] for r in rows if r["Z_angle_deg"] > max_angle_deg and r["order"] % 3]
+    weak = [r["order"] for r in rows if r["order"] % 3 and r["order"] not in inductive
+            and not (r["corr_I_hv"] >= min_correlation and r["R_Ohm"] > 0)]
+    if inductive:
+        hints.append(tr("transformer.iv_inductive", orders=sorted(set(inductive)), angle=max_angle_deg))
+    if weak:
+        hints.append(tr("transformer.iv_weak", orders=sorted(set(weak)), corr=min_correlation))
+    if min_hv_share is not None:
+        low = sorted((r["order"], r["hv_share"]) for r in rows if r["natural_sequence"] and r["order"] % 3
+                     and r["order"] not in inductive and not (r["hv_share"] >= min_hv_share))
+        if low:
+            shares = ", ".join("m = %d: %s" % (m, i18n.format_number(v, 2, "decimals")) for m, v in low)
+            hints.append(tr("transformer.iv_mv_driven", orders=[m for m, _ in low], shares=shares,
+                            limit=min_hv_share))
+    df = pd.DataFrame(rows)
+    df.attrs["sign"] = sign
+    df.attrs["ratio"] = ratio
+    df.attrs["group"] = group
+    df.attrs["ct_angle_deg"] = {m: float(a) for m, a in zip(orders, ct_angles)}
+    df.attrs["min_hv_share"] = min_hv_share
+    df.attrs["hints"] = hints
+    return df
+
+
+_IV_COLUMNS = ("order", "sequence", "natural_sequence", "windows", "Z_Ohm", "Z_angle_deg", "R_Ohm", "X_Ohm", "G_S", "B_S",
+               "Z_low_Ohm", "Z_high_Ohm", "angle_low_deg", "angle_high_deg", "corr_I_hv", "corr_U_hv", "hv_share",
+               "instrument", "reliable")
+
+
+def mv_network_series(recordings, orders: Sequence[int] = (5, 7), intervals=None, settings=None, roles=None,
+                      sign: Optional[float] = None, Z_hv=None, Z_up=None, ct_angle_deg=None, n_boot: int = 200,
+                      block_windows: int = 10, seed: int = 0, min_correlation: float = IV_MIN_CORRELATION,
+                      max_angle_deg: float = IV_MAX_ANGLE_DEG,
+                      min_hv_share: Optional[float] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """A series of undisturbed recordings of the same transformer node – e.g. one every hour of a measuring day –
+    each evaluated on its own, and the pooled estimate of the reliable ones.
+
+    Every recording gives the impedance of the MV network with
+    [`mv_network_impedance`][groundfault.transformer.mv_network_impedance] and its checks, in the natural sequence of
+    each order. Whether a recording is reliable depends on who drove the variation during it, so it changes over the
+    day; the share of the HV-driven variation (``hv_share``) shows it. The reliable recordings of an order are then
+    pooled (the sums of all their windows, like one long recording) – the estimate for the forecast. Without ``sign``
+    the polarity of the currents is taken once from all recordings together, so a recording driven from the MV side
+    cannot turn it.
+
+    Parameters
+    ----------
+    recordings : sequence
+        Recordings or paths of ``.cfg`` files.
+    orders, settings, roles, sign, Z_hv, Z_up, ct_angle_deg, n_boot, block_windows, seed, min_correlation, \
+max_angle_deg, min_hv_share
+        As in [`mv_network_impedance`][groundfault.transformer.mv_network_impedance].
+    intervals : list, optional
+        One list of undisturbed time ranges per recording (None = the whole recordings).
+
+    Returns
+    -------
+    (pandas.DataFrame, pandas.DataFrame)
+        Per recording and order (natural sequence): ``recording``, ``start`` (time of the recording if known) and the
+        columns of [`mv_network_impedance`][groundfault.transformer.mv_network_impedance]; and per order the pooled
+        estimate of the reliable recordings with ``recordings`` (their number) and ``names`` – NaN where no recording
+        of the order is reliable. The first table's ``attrs`` hold ``sign`` and the ``hints`` per recording.
+
+    Raises
+    ------
+    ValueError
+        As [`mv_network_impedance`][groundfault.transformer.mv_network_impedance]; also if ``intervals`` does not
+        have one entry per recording.
+    """
+    from .comtrade import open_recording
+
+    recs = [open_recording(r, emit_warnings=False) if isinstance(r, str) else r for r in recordings]
+    ivs = [None] * len(recs) if intervals is None else list(intervals)
+    if len(ivs) != len(recs):
+        raise ValueError(tr("transformer.iv_intervals", n=len(recs), k=len(ivs)))
+    orders = [int(m) for m in orders]
+    common = dict(settings=settings, roles=roles, Z_hv=Z_hv, Z_up=Z_up, ct_angle_deg=ct_angle_deg,
+                  block_windows=block_windows, seed=seed, min_correlation=min_correlation,
+                  max_angle_deg=max_angle_deg, min_hv_share=min_hv_share)
+    if sign is None:
+        sign = mv_network_impedance(recs, orders, intervals=ivs, n_boot=1, **common).attrs["sign"]
+    rows, hints = [], {}
+    for rec, iv in zip(recs, ivs):
+        name = os.path.splitext(os.path.basename(rec.cfg_path))[0]
+        df = mv_network_impedance(rec, orders, intervals=iv, sign=sign, n_boot=n_boot, **common)
+        hints[name] = df.attrs["hints"]
+        start = rec.t_start.isoformat(sep=" ") if getattr(rec, "t_start", None) else None
+        for _, r in df[df.natural_sequence].sort_values("order").iterrows():
+            rows.append(dict(recording=name, start=start, **r.to_dict()))
+    table = pd.DataFrame(rows)
+    pooled = []
+    for m in orders:
+        ok = table[(table.order == m) & table.reliable] if len(table) else table
+        use = [rec for rec in recs if os.path.splitext(os.path.basename(rec.cfg_path))[0] in set(ok.recording)]
+        if use:
+            sel = [iv for rec, iv in zip(recs, ivs) if rec in use]
+            df = mv_network_impedance(use, [m], intervals=sel, sign=sign, n_boot=n_boot, **common)
+            row = df[df.natural_sequence].iloc[0].to_dict()
+        else:
+            row = {c: float("nan") for c in _IV_COLUMNS}
+            row.update(order=m, sequence="pos" if is_natural(m, "pos") else "neg", natural_sequence=True, windows=0,
+                       instrument="", reliable=False)
+        row.update(recordings=len(use), names=", ".join(os.path.splitext(os.path.basename(r.cfg_path))[0] for r in use))
+        pooled.append(row)
+    pooled = pd.DataFrame(pooled)
+    table.attrs["sign"] = float(sign)
+    table.attrs["hints"] = hints
+    return table, pooled
+
+
+def _channel_index(rec, channel) -> int:
+    """Index of a channel given by its index, its full name, its short name or a unique part of its name."""
+    try:
+        return rec.index(channel)
+    except (IndexError, KeyError):
+        raise ValueError(tr("transformer.channel_unknown", channel=channel,
+                            names=", ".join(rec.channel_names))) from None
+
+
+def ct_angle_from_reference(recording, channel, reference, orders: Sequence[int] = (5, 7), interval=None,
+                            settings=None) -> pd.DataFrame:
+    """Angle and ratio error of a current channel per order against a reference clamp on the same conductor.
+
+    Record the channel (e.g. the transformer current of L1 through its current transformer) and a reference current
+    clamp with a known small angle error on the same conductor in one device for a few minutes. Per 200-ms window and
+    order the ratio of the two phasors is the error of the channel against the reference; over the windows
+
+        φ_m = arg Σ I_channel,m·I_reference,m*,   ratio_m = |Σ I_channel,m·I_reference,m*| / Σ |I_reference,m|²
+
+    (each window weighted with its current). Give the result to
+    [`mv_network_impedance`][groundfault.transformer.mv_network_impedance] as ``ct_angle_deg``. A reference clamp
+    connected the other way round is recognised from the fundamental (column ``reference_reversed``).
+
+    Parameters
+    ----------
+    recording : Recording or str
+        Recording with both channels; a path opens the ``.cfg`` file.
+    channel, reference : int or str
+        The channel to check and the reference: index, full channel name or short name (e.g. ``"I1"``).
+    orders : sequence of int, optional
+        Orders (computed by the window analysis of ``settings``).
+    interval : tuple, optional
+        Time range ``(t0, t1)`` in s; None = the whole recording.
+    settings : Settings, optional
+        Window analysis; default ``Settings()``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per order: ``order``, ``f_Hz``, ``windows``, ``angle_deg`` (channel minus reference), the 5–95 % range
+        of the window angles ``angle_low_deg`` and ``angle_high_deg`` (windows with at least half the median current),
+        ``ratio``, ``I_reference_A`` (mean RMS value of the order) and ``reference_reversed``.
+
+    Raises
+    ------
+    ValueError
+        If a channel is unknown or an order is not computed.
+    """
+    from .comtrade import open_recording
+    from .evaluation import Settings, _analyse, load_blocks
+    from .channels import detect_roles
+
+    e = settings or Settings()
+    rec = open_recording(recording, emit_warnings=False) if isinstance(recording, str) else recording
+    j_ch, j_ref = _channel_index(rec, channel), _channel_index(rec, reference)
+    t0, t1 = interval if interval is not None else (0.0, rec.duration_s)
+    ro = detect_roles(rec.channel_names, rec.units)
+    bl = load_blocks(rec, {"u": (float(t0), float(t1))})
+    b = _analyse("reference", *bl["u"], rec, ro, e)
+    orders = [int(m) for m in orders]
+    missing = [m for m in orders if m not in b.orders]
+    if missing:
+        raise ValueError(tr("transformer.iv_orders", orders=missing))
+    ok = ~b.nan_window
+    X = b.X[ok]
+    x1 = (X[:, j_ch, b.ix(1)] * np.conj(X[:, j_ref, b.ix(1)])).sum()
+    reversed_ = bool(np.isfinite(x1) and np.cos(np.angle(x1)) < 0)
+    pol = -1.0 if reversed_ else 1.0
+    f1 = b.f1["f1_used"]
+    rows = []
+    for m in orders:
+        a = X[:, j_ch, b.ix(m)]
+        r = pol * X[:, j_ref, b.ix(m)]
+        cross = (a * np.conj(r)).sum()
+        mag = np.abs(r)
+        big = mag >= 0.5 * np.median(mag) if mag.size else mag.astype(bool)
+        ang = np.degrees(np.angle(a[big] / r[big])) if big.any() else np.array([np.nan])
+        phi = float(np.degrees(np.angle(cross)))
+        ang = (ang - phi + 180.0) % 360.0 - 180.0 + phi                      # unwrap around the mean
+        rows.append(dict(order=m, f_Hz=m * f1, windows=int(ok.sum()), angle_deg=phi,
+                         angle_low_deg=float(np.percentile(ang, 5)), angle_high_deg=float(np.percentile(ang, 95)),
+                         ratio=_f(abs(cross) / (mag ** 2).sum()), I_reference_A=_f(np.sqrt(np.mean(mag ** 2))),
+                         reference_reversed=reversed_))
+    return pd.DataFrame(rows)
+
+
 # ====================================================================== tables
 def _deg(z) -> float:
     return float(np.degrees(np.angle(z))) if np.isfinite(z) else float("nan")
@@ -559,7 +1297,9 @@ def node_analysis(res) -> None:
     and ``dP_post_kW``, ``dQ_post_kvar`` (post-fault − pre-fault, the null test); without a pre-fault state relative
     to the post-fault state.
 
-    ``transformer_impedance`` – per order, positive and negative sequence: ``dU_V``, ``dI_A`` (fault-related change),
+    ``transformer_impedance`` – per order, positive and negative sequence (``natural_sequence``: True for the
+    natural sequence of the order, see [`is_natural`][groundfault.transformer.is_natural]): ``dU_V``, ``dI_A``
+    (fault-related change),
     the upstream impedance ``Z_up_Ohm``, ``Z_up_angle_deg``, ``R_up_Ohm``, ``X_up_Ohm``, ``X_up_per_order_Ohm``
     (X_up/m), the second estimate ``Z_up_post_Ohm``, ``Z_up_post_angle_deg``, ``deviation_pct``, the deviation
     between positive and negative sequence ``pos_neg_deviation_pct`` (equal for a symmetrical passive upstream
@@ -661,7 +1401,8 @@ def node_analysis(res) -> None:
         for j, m in enumerate(orders):
             for q in (1, 2):
                 Zu = z["Z"][q, j]
-                r = dict(order=m, f_Hz=m * f1["fault"], sequence=SEQUENCES[q], dU_V=_f(abs(z["dU"][q, j])),
+                r = dict(order=m, f_Hz=m * f1["fault"], sequence=SEQUENCES[q], natural_sequence=is_natural(m, SEQUENCES[q]),
+                         dU_V=_f(abs(z["dU"][q, j])),
                          dI_A=_f(abs(z["dI"][q, j])), Z_up_Ohm=_f(abs(Zu)), Z_up_angle_deg=_deg(Zu),
                          R_up_Ohm=_f(Zu.real), X_up_Ohm=_f(Zu.imag), X_up_per_order_Ohm=_f(Zu.imag / m),
                          Z_up_post_Ohm=_f(abs(z["Z_post"][q, j])), Z_up_post_angle_deg=_deg(z["Z_post"][q, j]),
@@ -706,13 +1447,13 @@ def node_analysis(res) -> None:
     vals = dict(sign=sign, polarity_source=source, polarity_auto=auto, polarity_angle_deg=angle,
                 polarity_count=count, voltages=near, orders=list(orders))
     if z is not None:
-        rows_d = _decision_rows(z, orders)
+        rows_d, other = _summary_rows(z, orders)
         if rows_d:
             x = np.array([z["Z"][s, j].imag / orders[j] for s, j in rows_d])
             wgt = np.array([1.0 / max(z["u_rel"][s, j], 1e-3) ** 2 for s, j in rows_d])
             x1 = float(np.sum(wgt * x) / np.sum(wgt))
             spread = float(np.sqrt(np.sum(wgt * (x - x1) ** 2) / np.sum(wgt)) / abs(x1)) if x1 else float("nan")
-            vals.update(X1_up_Ohm=x1, X1_up_spread=spread, X1_up_count=len(rows_d))
+            vals.update(X1_up_Ohm=x1, X1_up_spread=spread, X1_up_count=len(rows_d), X1_up_other_sequence=other)
             if hv is not None:
                 zf = hv["z"]
                 xh = []
@@ -735,7 +1476,23 @@ def node_analysis(res) -> None:
 
 
 def plausibility_rows(res) -> List[dict]:
-    """Rows of the plausibility table for the transformer node (polarity, upstream impedance, HV side)."""
+    """Rows of the plausibility table for the transformer node (polarity, upstream impedance, HV side) and the
+    voltage divider of HV and MV voltages."""
+    out = _node_rows(res)
+    d = res.values.get("transformer_divider")
+    if d:
+        if d.get("k_count"):
+            val = tr("transformer.value_divider", k=d["k"], count=d["k_count"], spread=100 * d.get("k_spread", np.nan))
+            if "X1_hv_Ohm" in d:
+                val = tr("transformer.value_divider_x", base=val, xh=d["X1_hv_Ohm"], xt=d["X1_transformer_Ohm"])
+        else:
+            val = tr("transformer.value_divider_none")
+        out.append(dict(check=tr("transformer.check_divider"), status="INFO", value=val,
+                        comment=tr("transformer.divider_comment")))
+    return out
+
+
+def _node_rows(res) -> List[dict]:
     v = res.values.get("transformer")
     if not v:
         return []
@@ -755,7 +1512,8 @@ def plausibility_rows(res) -> List[dict]:
                     value=tr(key, source=src), comment=tr("transformer.polarity_comment")))
     if "X1_up_Ohm" in v:
         if v.get("X1_up_count"):
-            val = tr("transformer.value_upstream", x1=v["X1_up_Ohm"], count=v["X1_up_count"],
+            val = tr("transformer.value_upstream_other" if v.get("X1_up_other_sequence") else
+                     "transformer.value_upstream", x1=v["X1_up_Ohm"], count=v["X1_up_count"],
                      spread=100 * v.get("X1_up_spread", float("nan")))
         else:
             val = tr("transformer.value_upstream_none")
