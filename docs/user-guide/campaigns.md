@@ -23,6 +23,7 @@ of the notebooks:
       │  ├─ corrections.csv           corrections of the measuring chain (applied automatically)
       │  └─ sites.csv                 location, coordinates and asset type per site (for groundmeas)
       ├─ raw/
+      │  ├─ PQ/                       export(s) of a power-quality measurement of the busbar (optional)
       │  ├─ SUB/                      substation: SUB_0_10_000kHz.cfg/.dat, SUB_2_5_10_000kHz.cfg/.dat, …
       │  └─ Station_Elm_Road/         secondary substation: …_10_000kHz.cfg (instantaneous values),
       │                               …_10_000Hz.cfg (RMS export of the recorder)
@@ -77,6 +78,7 @@ campaigns/2026-01-15_Demo/README.md
 campaigns/2026-01-15_Demo/notes/corrections.csv
 campaigns/2026-01-15_Demo/notes/notes.txt
 campaigns/2026-01-15_Demo/notes/sites.csv
+campaigns/2026-01-15_Demo/raw/PQ/SUB_PQ_export.csv
 campaigns/2026-01-15_Demo/raw/SUB/SUB_0_10_000kHz.cfg
 campaigns/2026-01-15_Demo/raw/SUB/SUB_2_5_10_000kHz.cfg
 campaigns/2026-01-15_Demo/raw/SUB/SUB_5_10_000kHz.cfg

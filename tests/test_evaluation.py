@@ -8,6 +8,8 @@ import re
 import numpy as np
 import pytest
 
+from groundfault import formulas as fml
+
 from groundfault import (Intervals, Settings, campaign, corrections, demo, detect_roles, i18n, open_recording,
                          evaluate, write_comtrade)
 from groundfault.evaluation import load_result
@@ -138,10 +140,21 @@ def test_harmonic_scaling(demo_series):
     res = evaluate(rec, _intervals(w), Settings(u_thd95_percent=2.5, thd_reference="pre_fault"))
     v = res.values
     assert v["UTHD_meas"] == pytest.approx(w["UTHD_LL_pre_pct"], rel=0.01)
-    assert v["IH_scaled"] == pytest.approx(v["IH_total"] * 2.5 / v["UTHD_meas"], rel=1e-9)
+    # the THD alone: every order of the positive or negative sequence × U_95/U_meas; the zero sequence (the demo's 3rd
+    # harmonic), the even orders and the content without an order keep their measured value
+    t = res.tables["harmonic_scaling"]
+    f = 2.5 / v["UTHD_meas"]
+    pn = t[t["category"] == "pos_neg"]
+    assert np.allclose(pn["factor"], f) and set(pn["rule"]) == {"THD"} and {5, 7, 11, 13} <= set(pn["order"])
+    assert (t.loc[t["category"] != "pos_neg", "factor"] == 1.0).all() and 3 in set(t.loc[t["category"] == "zero", "order"])
+    i_pn = math.sqrt(float((pn["I_A"] ** 2).sum()))
+    i_unscaled = math.sqrt(v["IH_total"] ** 2 - i_pn ** 2)
+    assert v["IH_zero"] > 1.0 and v["IH_zero"] <= i_unscaled + 1e-9
+    assert v["IH_scaled"] == pytest.approx(math.sqrt((i_pn * f) ** 2 + i_unscaled ** 2), rel=1e-9)
+    assert v["IH_scaled"] == pytest.approx(fml.scaled_harmonic_current(v["IH_total"], 2.5, v["UTHD_meas"], i_unscaled))
     assert v["IRES_scaled"] == pytest.approx(math.hypot(v["IG"], v["IH_scaled"]), rel=1e-9)
     eq = res.table("assessment_quantities").set_index("quantity")["equation"]
-    assert eq["IH_scaled"] == "I_H,scaled = I_H·U_95/U_meas" and eq["IH_total"] == "I_H = √(I_RES² − I_G²)"
+    assert eq["IH_scaled"].startswith("I_H,scaled = √(Σ (k_m·I_Hm)²") and eq["IH_total"] == "I_H = √(I_RES² − I_G²)"
 
 
 def test_station(tmp_path):
@@ -398,12 +411,15 @@ def test_uncertainty_margins_of_the_user(demo_series):
     a0 = evaluate(rec, _intervals(w), Settings(u_thd95_percent=2.5)).table("assessment_quantities")
     a0 = a0.set_index("quantity")
     assert (a0["assessment"] == a0["measured_value"]).all()
-    a = evaluate(rec, _intervals(w), Settings(u_thd95_percent=2.5, uncertainty_I=0.03, uncertainty_U=0.02))
-    v, a = a.values, a.table("assessment_quantities").set_index("quantity")
+    r = evaluate(rec, _intervals(w), Settings(u_thd95_percent=2.5, uncertainty_I=0.03, uncertainty_U=0.02))
+    v, a = r.values, r.table("assessment_quantities").set_index("quantity")
     assert a.at["IRES", "assessment"] == pytest.approx(1.03 * a.at["IRES", "measured_value"])
     assert a.at["UH1n", "assessment"] == pytest.approx(0.98 * a.at["UH1n", "measured_value"])
     assert a.at["UTHD_meas", "assessment"] == pytest.approx(0.98 * v["UTHD_meas"])
-    assert a.at["IH_scaled", "assessment"] == pytest.approx(1.03 * v["IH_total"] * 2.5 / (0.98 * v["UTHD_meas"]))
+    t = r.tables["harmonic_scaling"]
+    i_pn2 = float((t.loc[t["category"] == "pos_neg", "I_A"] ** 2).sum())        # the scaled orders
+    f_a = 2.5 / (0.98 * v["UTHD_meas"])
+    assert a.at["IH_scaled", "assessment"] == pytest.approx(1.03 * math.sqrt(i_pn2 * f_a ** 2 + v["IH_total"] ** 2 - i_pn2))
     assert a.at["IH_scaled", "measured_value"] == a0.at["IH_scaled", "measured_value"]     # measured values unchanged
 
 

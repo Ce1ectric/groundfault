@@ -38,7 +38,7 @@ import os
 import unicodedata
 import warnings
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -131,6 +131,12 @@ i18n.register({
     "evaluation.desc_uthd_95": {"en": "95 % quantile of the PQ measurement (× safety factor {factor:.2f})",
                                 "de": "95-%-Quantil PQ-Messung (× Sicherheitsfaktor {factor:.2f})"},
     "evaluation.desc_ih_scaled": {"en": "harmonic content, scaled", "de": "Oberschwingungsanteil skaliert"},
+    "evaluation.desc_ih_zero": {"en": "harmonic content of the zero sequence (not scaled)",
+                                "de": "Oberschwingungsanteil des Nullsystems (nicht skaliert)"},
+    "evaluation.desc_ih_even": {"en": "harmonic content of the even orders (not scaled)",
+                                "de": "Oberschwingungsanteil der geraden Ordnungen (nicht skaliert)"},
+    "evaluation.desc_ih_other": {"en": "harmonic content not assigned to an order (not scaled)",
+                                 "de": "keiner Ordnung zugeordneter Oberschwingungsanteil (nicht skaliert)"},
     "evaluation.desc_irms_forecast": {"en": "residual earth-fault current with scaled harmonic content",
                                       "de": "Erdschlussreststrom mit skaliertem OS-Anteil"},
     # ---- hints of the assessment
@@ -309,6 +315,28 @@ i18n.register({
               "{value!r}.",
         "de": "ires_limits muss eine Folge von Grenzwerten des Reststroms in A > 0 sein, z. B. (I_1, I_2), oder leer – "
               "erhalten: {value!r}."},
+    "evaluation.pq_u95_invalid": {
+        "en": "pq_u95 must be a mapping {{order: quantile in V}} or None – got {value!r}.",
+        "de": "pq_u95 muss eine Zuordnung {{Ordnung: Quantil in V}} oder None sein – erhalten: {value!r}."},
+    "evaluation.pq_min_level_invalid": {
+        "en": "pq_min_level_V must be a number ≥ 0 in V – got {value!r}.",
+        "de": "pq_min_level_V muss eine Zahl ≥ 0 in V sein – erhalten: {value!r}."},
+    "evaluation.scaling_without_own": {
+        "en": "Scaling: orders {orders} without their own value (no quantile or no level of at least {min_level:g} V in "
+              "the test): {fallback}",
+        "de": "Skalierung: Ordnungen {orders} ohne eigenen Wert (kein Quantil oder kein Pegel von mindestens "
+              "{min_level:g} V im Versuch): {fallback}"},
+    "evaluation.scaling_thd_used": {"en": "THD factor {factor:.3g}", "de": "THD-Faktor {factor:.3g}"},
+    "evaluation.scaling_as_measured": {"en": "as measured (no THD given)", "de": "wie gemessen (kein THD angegeben)"},
+    "evaluation.even_orders": {
+        "en": "Even orders in the fault current: {current:.2f} A ({share:.0f} % of the harmonic content; largest order "
+              "{order} with {largest:.2f} A) – included as measured, not scaled. Even harmonics are unusual for the "
+              "voltage of a network: check for another cause (e.g. a DC component or saturation at the fault "
+              "inception, current clamps).",
+        "de": "Gerade Ordnungen im Fehlerstrom: {current:.2f} A ({share:.0f} % des Oberschwingungsanteils; größte "
+              "Ordnung {order} mit {largest:.2f} A) – wie gemessen enthalten, nicht skaliert. Gerade Harmonische sind "
+              "für die Spannung eines Netzes ungewöhnlich: auf eine andere Ursache prüfen (z. B. Gleichanteil oder "
+              "Sättigung beim Fehlereintritt, Stromzangen)."},
     "evaluation.positive_or_none": {
         "en": "{name} must be a number > 0 or None (not set) – got {value!r}.",
         "de": "{name} muss eine Zahl > 0 oder None (nicht festgelegt) sein – erhalten: {value!r}."},
@@ -329,6 +357,8 @@ i18n.register({
         "de": "{name} muss None (automatisch), +1 oder −1 sein – erhalten: {value!r}."},
 })
 
+i18n.register_labels(values={"quantity": {"IH_zero": "IH_null", "IH_even": "IH_gerade", "IH_other": "IH_sonstige"}})
+
 #: Formulas in the column ``equation`` of the table ``assessment_quantities`` (language-neutral)
 _EQUATIONS = {
     "IRES": "I_RES = √(Σ i[n]²/N)",
@@ -337,7 +367,10 @@ _EQUATIONS = {
     "IH_total": "I_H = √(I_RES² − I_G²)",
     "UTHD_meas": "U_assess = U_meas·(1 − m_U)",
     "UTHD_95": "U_95 = U_PQ,95%·k_s",
-    "IH_scaled": "I_H,scaled = I_H·U_95/U_meas",
+    "IH_scaled": "I_H,scaled = √(Σ (k_m·I_Hm)² + I_0² + I_even² + I_other²), k_m = U_95,m/U_m or U_95/U_meas",
+    "IH_zero": "I_0 = √(Σ I_Hm²), m = 3, 9, 15 …",
+    "IH_even": "I_even = √(Σ I_Hm²), m = 2, 4, 6 …",
+    "IH_other": "I_other = √(I_H² − Σ I_Hm²)",
     "IRMS_forecast": "I_RMS = √(I_G² + I_H,scaled²)",
 }
 
@@ -392,14 +425,26 @@ class Settings:
         Finer hop in s for the search of the max window; None = ``T_hop``.
     u_thd95_percent : float or None
         95 % quantile of the THD (line-to-line) of a power-quality (PQ) measurement in %; enables the scaling of
-        the harmonic content.
+        the harmonic content – with the flat factor U_95/U_meas for the orders of the positive or negative sequence
+        without their own quantile (alone: for all of them).
     u_thd95_volt : float or None
         Alternatively the 95 % quantile of the harmonic voltage (line-to-line) in V.
+    pq_u95 : dict or None
+        95 % quantile of the harmonic voltage per order in V, ``{order: U}`` (e.g. from
+        [`groundfault.pq.PQAssessment.settings`][groundfault.pq.PQAssessment.settings]); enables the scaling per order:
+        every order of the positive or negative sequence (5, 7, 11, 13 …) with a quantile and a level of at least
+        ``pq_min_level_V`` in the test is scaled with its own voltage, k_m = k_s·U_95,m/U_m (U_m = level of the natural
+        sequence of m, interval ``thd_reference``). The orders of the zero sequence (3, 9, 15 …), the even orders
+        and the content not assigned to an order keep their measured value.
+    pq_u95_reference : str
+        Reference of ``pq_u95``: ``"seq"`` (line-to-earth, default) or ``"LL"`` (line-to-line, divided by √3).
+    pq_min_level_V : float
+        Smallest level of an order in the test for its own factor in V (below it: the THD factor).
     pq_safety_factor : float
-        Factor k_s applied to the 95 % quantile, U_95 = k_s·U_PQ,95% (1 = no factor).
+        Factor k_s applied to the 95 % quantiles, U_95 = k_s·U_PQ,95% (1 = no factor).
     thd_reference : str
-        Interval of the measured THD the scaling refers to: ``"pre_fault"``, ``"post_fault"`` or ``"mean"`` (mean
-        of both).
+        Interval of the measured THD and of the levels per order the scaling refers to: ``"pre_fault"``,
+        ``"post_fault"`` or ``"mean"`` (mean of both).
     transformer_voltage : str
         Side of the transformer currents, i.e. the voltage set of the transformer node: ``"mv"`` (medium voltage,
         default; with HV voltages the upstream impedance is split into HV network and transformer) or ``"hv"``.
@@ -462,6 +507,9 @@ class Settings:
     # scaling of the harmonic content to the 95 % quantile of a power-quality (PQ) measurement
     u_thd95_percent: Optional[float] = None    # THD (L-L), 95 % quantile in %
     u_thd95_volt: Optional[float] = None       # alternatively harmonic voltage (L-L) in V
+    pq_u95: Optional[Dict[int, float]] = None  # 95 % quantile per order in V (positive/negative sequence scaled with it)
+    pq_u95_reference: str = "seq"           # reference of pq_u95: "seq" (line-to-earth) | "LL" (line-to-line)
+    pq_min_level_V: float = 1.0             # smallest level of an order in the test for its own factor in V
     pq_safety_factor: float = 1.0          # factor k_s on the 95 % quantile (1 = none)
     thd_reference: str = "mean"                  # reference of the measured THD: "pre_fault"|"post_fault"|"mean"
     transformer_voltage: str = "mv"                 # side of the transformer currents: "mv" | "hv"
@@ -491,6 +539,7 @@ class Settings:
 
 # allowed values of the text options of Settings
 _THD_REFERENCES = ("pre_fault", "post_fault", "mean")
+_U95_REFERENCES = ("seq", "LL")
 _TRANSFORMER_VOLTAGES = ("mv", "hv")
 
 
@@ -509,6 +558,12 @@ def _check_settings(e: Settings) -> None:
     check_option("dc", e.dc, dsp.DC_METHODS, aliases=(None,))
     check_option("f1_method", e.f1_method, dsp.F1_METHODS)
     check_option("thd_reference", e.thd_reference, _THD_REFERENCES)
+    check_option("pq_u95_reference", e.pq_u95_reference, _U95_REFERENCES)
+    if e.pq_u95 is not None and not isinstance(e.pq_u95, Mapping):
+        raise ValueError(tr("evaluation.pq_u95_invalid", value=e.pq_u95))
+    if not (isinstance(e.pq_min_level_V, (int, float)) and not isinstance(e.pq_min_level_V, bool)
+            and math.isfinite(float(e.pq_min_level_V)) and float(e.pq_min_level_V) >= 0):
+        raise ValueError(tr("evaluation.pq_min_level_invalid", value=e.pq_min_level_V))
     check_option("transformer_voltage", e.transformer_voltage, _TRANSFORMER_VOLTAGES)
     limits = e.ires_limits
     if isinstance(limits, (str, bytes)) or not hasattr(limits, "__iter__") or \
@@ -1266,47 +1321,123 @@ def _voltage_analysis(res: Result) -> None:
 
 
 def _harmonic_scaling(res: Result) -> None:
-    """Scale the harmonic content to the 95 % quantile of a power-quality measurement (additional rows of the
-    table ``assessment_quantities``): I_H,scaled = I_H·U_95/U_meas, I_RMS = √(I_G² + I_H,scaled²)."""
+    """Scale the harmonic content to the 95 % quantile of a power-quality measurement (rows of the table
+    ``assessment_quantities`` and the table ``harmonic_scaling`` per order): every order of the positive or negative
+    sequence with its own voltage (``pq_u95``: k_m = k_s·U_95,m/U_m), without its own value with the THD
+    (U_95/U_meas); the zero sequence, the even orders and the content not assigned to an order as measured.
+    I_RMS = √(I_G² + I_H,scaled²)."""
     e = res.settings
-    if "IRES" not in res.values or (e.u_thd95_percent is None and e.u_thd95_volt is None):
+    have_thd = e.u_thd95_percent is not None or e.u_thd95_volt is not None
+    if "IRES" not in res.values or not (have_thd or e.pq_u95):
         return
-    tag = res.tables.get("voltage_metrics")
-    if tag is None or tag.empty:
-        res.hints.append(tr("evaluation.scaling_no_voltage"))
-        return
-    columns = (["UTHD12_pct", "UTHD23_pct", "UTHD31_pct"] if e.u_thd95_percent is not None
-               else ["UH12_V", "UH23_V", "UH31_V"])
+    mI, mU = e.uncertainty_I, e.uncertainty_U
+    sf = float(e.pq_safety_factor)
     choice = {"pre_fault": ["pre_fault"], "post_fault": ["post_fault"],
-            "mean": ["pre_fault", "post_fault"]}[e.thd_reference]
-    rows = tag[tag["interval"].isin(choice)]
-    if rows.empty:
-        res.hints.append(tr("evaluation.scaling_no_reference", reference=e.thd_reference))
-        return
-    u_meas = float(np.nanmean(rows[columns].max(axis=1)))    # maximum of the three loops, averaged
-    u95 = (e.u_thd95_percent if e.u_thd95_percent is not None else e.u_thd95_volt) * e.pq_safety_factor
-    ih_s = fml.scaled_harmonic_current(res.values["IH_total"], u95, u_meas)
-    irms = fml.rms_current_forecast(res.values["IG"], ih_s)
-    res.values.update(UTHD_meas=u_meas, UTHD95=u95, IH_scaled=ih_s, IRES_scaled=irms,
-                     factor_scaling=u95 / u_meas if u_meas > 0 else np.nan)
-    df = res.tables["assessment_quantities"]
+              "mean": ["pre_fault", "post_fault"]}[e.thd_reference]
+    # ---- flat factor of the THD: U_95/U_meas (maximum of the three loops, averaged over the reference intervals)
+    u_meas = u95_thd = float("nan")
+    f_thd = None
     unit = "%" if e.u_thd95_percent is not None else "V"
-    new = pd.DataFrame([
-        dict(quantity="UTHD_meas", description=tr("evaluation.desc_uthd_meas", reference=e.thd_reference),
-             measured_value=u_meas, assessment=fml.voltage_with_uncertainty(u_meas, e.uncertainty_U), unit=unit,
-             equation=_EQUATIONS["UTHD_meas"], angle_deg=np.nan),
-        dict(quantity="UTHD_95", description=tr("evaluation.desc_uthd_95", factor=e.pq_safety_factor),
-             measured_value=u95, assessment=u95, unit=unit, equation=_EQUATIONS["UTHD_95"], angle_deg=np.nan),
+    if have_thd:
+        tag = res.tables.get("voltage_metrics")
+        rows = None
+        if tag is None or tag.empty:
+            res.hints.append(tr("evaluation.scaling_no_voltage"))
+        else:
+            rows = tag[tag["interval"].isin(choice)]
+            if rows.empty:
+                res.hints.append(tr("evaluation.scaling_no_reference", reference=e.thd_reference))
+                rows = None
+        if rows is None and not e.pq_u95:
+            return
+        if rows is not None:
+            columns = (["UTHD12_pct", "UTHD23_pct", "UTHD31_pct"] if e.u_thd95_percent is not None
+                       else ["UH12_V", "UH23_V", "UH31_V"])
+            u_meas = float(np.nanmean(rows[columns].max(axis=1)))
+            u95_thd = (e.u_thd95_percent if e.u_thd95_percent is not None else e.u_thd95_volt) * sf
+            if np.isfinite(u_meas) and u_meas > 0:
+                f_thd = u95_thd / u_meas
+    # ---- level of the natural sequence of every order before/after the fault (the source of its current)
+    v = res.values.get("voltage") or {}
+    v_orders = [int(o) for o in v.get("orders", [])]
+
+    def level(m: int) -> float:
+        if m not in v_orders:
+            return float("nan")
+        key = "U_" + {1: "pos", 2: "neg", 0: "zero"}[m % 3]
+        vals = [float(v[b][key][v_orders.index(m)]) for b in choice if isinstance(v.get(b), dict) and key in v[b]]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    u95 = {}
+    for key_, val in (e.pq_u95 or {}).items():
+        try:
+            u95[int(key_)] = float(val) if val is not None else float("nan")
+        except (TypeError, ValueError):
+            continue
+    ll = e.pq_u95_reference == "LL"
+    ph = res.values.get("I_phasors") or {}
+    ih, ig = float(res.values["IH_total"]), float(res.values["IG"])
+    f1 = float(res.steady_state.f1["f1_used"]) if res.steady_state is not None else float(e.f_nominal)
+    table, s_known, s2, s2a, without = [], 0.0, 0.0, 0.0, []
+    for m in sorted(int(x) for x in ph):
+        if m < 2:
+            continue
+        i_m = float(abs(ph[m]))
+        lv = level(m)
+        u = u95.get(m)
+        k, rule = fml.order_scaling(m, u, lv, f_thd=f_thd, safety_factor=sf, from_ll=ll,
+                                    min_level=float(e.pq_min_level_V))
+        # assessment values: the currents + m_I, the voltages of the test − m_U (the factor grows by 1/(1 − m_U))
+        ka = k / (1.0 - mU) if rule in ("own voltage", "THD") else 1.0
+        if e.pq_u95 and rule in ("THD", "no information"):
+            without.append(m)
+        table.append(dict(order=m, f_Hz=m * f1, category=fml.harmonic_category(m), I_A=i_m, U_level_V=lv,
+                          U95_V=u if u is not None else float("nan"), factor=k, rule=rule, I_scaled_A=k * i_m))
+        s_known += i_m ** 2
+        s2 += (k * i_m) ** 2
+        s2a += (ka * i_m) ** 2
+    tab = pd.DataFrame(table, columns=["order", "f_Hz", "category", "I_A", "U_level_V", "U95_V", "factor", "rule",
+                                       "I_scaled_A"])
+    i_other = math.sqrt(max(ih ** 2 - s_known, 0.0))         # content without a phasor of an order (as measured)
+    ih_s = math.sqrt(s2 + i_other ** 2)
+    ih_s_assessed = (1.0 + mI) * math.sqrt(s2a + i_other ** 2)
+    irms = fml.rms_current_forecast(ig, ih_s)
+    quad = lambda cat: float(math.sqrt(float((tab.loc[tab["category"] == cat, "I_A"] ** 2).sum())))
+    i_zero, i_even = quad("zero"), quad("even")
+    res.values.update(UTHD_meas=u_meas, UTHD95=u95_thd, IH_scaled=ih_s, IRES_scaled=irms,
+                      factor_scaling=f_thd if f_thd is not None else np.nan, IH_zero=i_zero, IH_even=i_even,
+                      IH_other=i_other)
+    res.tables["harmonic_scaling"] = tab
+    if without:
+        res.hints.append(tr("evaluation.scaling_without_own", orders=without, min_level=float(e.pq_min_level_V),
+                            fallback=(tr("evaluation.scaling_thd_used", factor=f_thd) if f_thd is not None
+                                      else tr("evaluation.scaling_as_measured"))))
+    even = tab[tab["category"] == "even"]
+    if len(even) and ih > 0 and i_even >= 0.05 * ih:
+        top = even.loc[even["I_A"].idxmax()]
+        res.hints.append(tr("evaluation.even_orders", current=i_even, share=100 * i_even / ih, order=int(top["order"]),
+                            largest=float(top["I_A"])))
+    df = res.tables["assessment_quantities"]
+    rows_new = []
+    if np.isfinite(u_meas):
+        rows_new += [
+            dict(quantity="UTHD_meas", description=tr("evaluation.desc_uthd_meas", reference=e.thd_reference),
+                 measured_value=u_meas, assessment=fml.voltage_with_uncertainty(u_meas, mU), unit=unit,
+                 equation=_EQUATIONS["UTHD_meas"], angle_deg=np.nan),
+            dict(quantity="UTHD_95", description=tr("evaluation.desc_uthd_95", factor=sf),
+                 measured_value=u95_thd, assessment=u95_thd, unit=unit, equation=_EQUATIONS["UTHD_95"],
+                 angle_deg=np.nan)]
+    for key_, value in (("IH_zero", i_zero), ("IH_even", i_even), ("IH_other", i_other)):
+        rows_new.append(dict(quantity=key_, description=tr("evaluation.desc_" + key_.lower()), measured_value=value,
+                             assessment=fml.current_with_uncertainty(value, mI), unit="A", equation=_EQUATIONS[key_],
+                             angle_deg=np.nan))
+    rows_new += [
         dict(quantity="IH_scaled", description=tr("evaluation.desc_ih_scaled"), measured_value=ih_s,
-             assessment=fml.scaled_harmonic_current(fml.current_with_uncertainty(res.values["IH_total"], e.uncertainty_I), u95,
-                                      fml.voltage_with_uncertainty(u_meas, e.uncertainty_U)),
-             unit="A", equation=_EQUATIONS["IH_scaled"], angle_deg=np.nan),
+             assessment=ih_s_assessed, unit="A", equation=_EQUATIONS["IH_scaled"], angle_deg=np.nan),
         dict(quantity="IRMS_forecast", description=tr("evaluation.desc_irms_forecast"), measured_value=irms,
-             assessment=fml.rms_current_forecast(fml.current_with_uncertainty(res.values["IG"], e.uncertainty_I),
-                                        fml.scaled_harmonic_current(fml.current_with_uncertainty(res.values["IH_total"], e.uncertainty_I),
-                                                       u95, fml.voltage_with_uncertainty(u_meas, e.uncertainty_U))),
-             unit="A", equation=_EQUATIONS["IRMS_forecast"], angle_deg=np.nan)])
-    res.tables["assessment_quantities"] = pd.concat([df, new], ignore_index=True)
+             assessment=fml.rms_current_forecast(fml.current_with_uncertainty(ig, mI), ih_s_assessed),
+             unit="A", equation=_EQUATIONS["IRMS_forecast"], angle_deg=np.nan)]
+    res.tables["assessment_quantities"] = pd.concat([df, pd.DataFrame(rows_new)], ignore_index=True)
 
 
 def _station(res: Result) -> None:

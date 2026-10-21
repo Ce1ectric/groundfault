@@ -56,7 +56,7 @@ from .symmetrical import A, A2
 
 __all__ = ["DemoHarmonic", "DEFAULT_HARMONICS", "make_substation_recording", "make_substation_series",
            "make_station_recording", "make_transformer_recording", "make_undisturbed_transformer_recording",
-           "rms_file_from_instantaneous", "make_groundmeas_db",
+           "rms_file_from_instantaneous", "make_groundmeas_db", "make_pq_export", "PQ_WEEKDAY_FACTORS",
            "make_campaign", "GROUNDMEAS_SCHEMA", "polar", "U_PH"]
 
 U_PH = 20000.0 / math.sqrt(3.0)
@@ -1007,6 +1007,129 @@ def make_undisturbed_transformer_recording(path: str, *, fs: float = 10000.0, du
 
 
 # =========================================================================== RMS file (10 Hz)
+# =========================================================================== power-quality measurement
+#: weekly profile of the harmonic voltages of the demo busbar: factor per weekday (Monday … Sunday)
+PQ_WEEKDAY_FACTORS = (1.10, 1.10, 1.10, 1.10, 1.00, 0.60, 0.50)
+
+
+def make_pq_export(path: str, *, days: float = 35.0, interval_s: float = 600.0,
+                   start: _dt.datetime = _dt.datetime(2025, 12, 15, 0, 0, 0),
+                   harmonics: Sequence[DemoHarmonic] = DEFAULT_HARMONICS, ripple: float = 0.04,
+                   phase_factors: Sequence[float] = (1.0, 0.94, 1.06), seed: int = 0,
+                   header: bool = True) -> dict:
+    """Export of a power-quality measurement of the demo busbar in the CSV format of *WinPQ mobil* (known
+    solution).
+
+    The harmonic voltage of order m is, per interval b, a_m,b = |U_pre,m|·g_b·c_ph with a weekly profile g_b (factor
+    per weekday ``PQ_WEEKDAY_FACTORS``, a daily variation of ±12 % and a slow random variation) and a factor per
+    phase ``phase_factors``. Within each 10-min interval the shorter values alternate between a·(1 + ripple) and
+    a·(1 − ripple): the 10-min value is exactly a·√(1 + ripple²) (square root of the mean of the squares) and a (mean).
+    The quantiles of these 10-min values are saved as the truth. Further orders (2, 4, 9, 15, 17, 19) have small
+    constant voltages; THD, RMS values and the neutral-earth voltage follow from them.
+
+    Parameters
+    ----------
+    path : str
+        CSV file to write (folder created if necessary).
+    days : float, optional
+        Duration of the measurement in days.
+    interval_s : float, optional
+        Interval of the export in s (must divide 600; e.g. 30 s, or 600 s for 10-min values).
+    start : datetime, optional
+        Beginning of the measurement (local time of the instrument clock).
+    harmonics : sequence of DemoHarmonic, optional
+        Harmonic sources of the demo network: |U_pre| per order is the level of the profile.
+    ripple : float, optional
+        Relative variation of the shorter values within a 10-min interval.
+    phase_factors : sequence of float, optional
+        Factor of each phase (L1, L2, L3) on the harmonic voltages.
+    seed : int, optional
+        Seed of the random variation.
+    header : bool, optional
+        Write the metadata lines of the export (instrument, measurement, interval …).
+
+    Returns
+    -------
+    dict
+        ``path``, ``interval_s``, ``days``, ``start``, ``end``, ``orders`` and ``quantiles`` ``{q: {order: U}}`` of
+        the 10-min values of the largest phase for q = 0.5, 0.9, 0.95, 0.99 (also saved as ``<stem>_truth.json``).
+    """
+    if abs(600.0 / interval_s - round(600.0 / interval_s)) > 1e-9:
+        raise ValueError("interval_s must divide 600 s")
+    per = int(round(600.0 / interval_s))
+    rng = np.random.default_rng(seed)
+    n_blocks = int(round(days * 144))
+    starts = [start + _dt.timedelta(minutes=10 * b) for b in range(n_blocks)]
+    hours = np.array([s.hour + s.minute / 60.0 + 5.0 / 60.0 for s in starts])
+    weekday = np.array([s.weekday() for s in starts])
+    slow = np.convolve(rng.normal(0.0, 1.0, n_blocks + 36), np.ones(36) / 6.0, mode="valid")[:n_blocks]
+    g = (np.array(PQ_WEEKDAY_FACTORS)[weekday] * (1.0 + 0.12 * np.cos(2 * np.pi * (hours - 3.0) / 24.0))
+         * (1.0 + 0.06 * slow))
+    g = np.maximum(g, 0.05)
+    levels = {h.order: abs(h.U_pre) for h in harmonics}
+    small = {2: 1.5, 4: 1.2, 9: 2.5, 15: 1.5, 17: 6.0, 19: 5.0}
+    orders = sorted(set(levels) | set(small) | {1})
+    amp = {}                                                        # (order, phase) → 10-min amplitude a_b
+    for m in orders:
+        for k, c in enumerate(phase_factors):
+            if m == 1:
+                amp[(m, k)] = U_PH * (1.0 + 0.004 * (k - 1)) * (1.0 + 0.003 * slow)
+            elif m in levels:
+                amp[(m, k)] = levels[m] * g * c
+            else:
+                amp[(m, k)] = np.full(n_blocks, small[m] * c)
+    pattern = np.where(np.arange(per) % 2 == 0, 1.0 + ripple, 1.0 - ripple) if per > 1 else np.ones(1)
+    expand = lambda a: (a[:, None] * pattern[None, :]).ravel()
+    t_end = [start + _dt.timedelta(seconds=interval_s * (i + 1)) for i in range(n_blocks * per)]
+    cols: Dict[str, np.ndarray] = {}
+    harm = {key: expand(a) for key, a in amp.items()}
+    h_ll = lambda m: np.sqrt(np.mean([harm[(m, k)] ** 2 for k in range(3)], axis=0)) * (m % 3 != 0) * math.sqrt(3)
+    u_ll1 = math.sqrt(3) * np.mean([harm[(1, k)] for k in range(3)], axis=0)
+    thd_ll = 100.0 * np.sqrt(sum(h_ll(m) ** 2 for m in orders if m >= 2)) / u_ll1
+    u0 = 0.009 * U_PH * (1.0 + 0.05 * np.sin(2 * np.pi * np.arange(n_blocks * per) / (144 * per)))
+    cols["UNE_[V]"] = u0
+    for loop in ("12", "23", "31"):
+        cols["U%s_[V]" % loop] = u_ll1 * np.sqrt(1.0 + (thd_ll / 100.0) ** 2)
+    cols["THDNE_[%]"] = np.full(u0.size, 6.0)
+    for loop in ("12", "23", "31"):
+        cols["THD%s_[%%]" % loop] = thd_ll
+    odd = [m for m in orders if m % 2 == 1]
+    even = [m for m in orders if m % 2 == 0]
+    for m in odd + even:
+        for k in range(3):
+            cols["H%d_UL%d_[V]" % (m, k + 1)] = harm[(m, k)]
+    for m in sorted(x for x in orders if x >= 2):
+        for k in range(3):
+            cols["H%d_UL%d_max_[V]" % (m, k + 1)] = harm[(m, k)] * (1.0 + 2 * ripple)
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    first, last = t_end[0], t_end[-1]
+    with open(path, "w", encoding="utf-8", newline="\r\n") as f:
+        if header:
+            f.write("Messdaten Export PQ-Box 50,,Seriennummer: DEMO-0001\n\n")
+            f.write("Messung: %s_000, Demo busbar, , , ,\n\n" % start.strftime("%Y%m%d_%H%M"))
+            f.write("Intervall: %s\n" % ("%g sec" % interval_s if interval_s < 60 else "%g min" % (interval_s / 60)))
+            f.write("Spannung: 57.735 V\n\n\n")
+            f.write("Datum/Zeit: %s - %s\n\n" % (first.strftime("%d.%m.%Y,%H:%M:%S.000"),
+                                                 last.strftime("%d.%m.%Y,%H:%M:%S.000")))
+        names = list(cols)
+        f.write("Datum,Zeit," + ",".join(names) + "\n")
+        values = np.column_stack([cols[c] for c in names])
+        for i, t in enumerate(t_end):
+            f.write(t.strftime("%d.%m.%Y,%H:%M:%S.000,") + ",".join("%.3f" % v for v in values[i]) + "\n")
+    # truth: 10-min values of the largest phase per order (square root of the mean of the squares)
+    rms_factor = math.sqrt(1.0 + ripple ** 2) if per > 1 else 1.0
+    quantiles = {}
+    for q in (0.5, 0.9, 0.95, 0.99):
+        quantiles[q] = {m: float(np.quantile(np.max([amp[(m, k)] for k in range(3)], axis=0) * rms_factor, q))
+                        for m in orders if m >= 2}
+    truth = dict(path=path, interval_s=float(interval_s), days=float(days), start=start.isoformat(),
+                 end=last.isoformat(), orders=orders, ripple=ripple, quantiles={str(q): v for q, v in quantiles.items()},
+                 weekday_factors=list(PQ_WEEKDAY_FACTORS))
+    _save_truth(path, truth)
+    truth["quantiles"] = quantiles
+    return truth
+
+
 def rms_file_from_instantaneous(cfg_inst: str, cfg_rms: str, window_s: float = 0.1) -> str:
     """Write an RMS recording computed from an instantaneous-value recording (like the ``… RMS`` exports of DANEO
     recorders, 10 Hz).
@@ -1130,7 +1253,7 @@ def make_groundmeas_db(path: str, location: str = "Station Elm Road", *, R_E: fl
 
 # =========================================================================== campaign
 def make_campaign(base: str, name: str = "2026-01-15_Demo", layout: str = "en", *, station: str = "Station_Elm_Road",
-                  location: str = "Station Elm Road", groundmeas: bool = True) -> dict:
+                  location: str = "Station Elm Road", groundmeas: bool = True, pq: bool = True) -> dict:
     """Write a complete demo campaign: a substation series, a station recording with its RMS file, the notes
     folder and the read-me – and a groundmeas database with the earthing measurement of the station.
 
@@ -1156,11 +1279,15 @@ def make_campaign(base: str, name: str = "2026-01-15_Demo", layout: str = "en", 
         Name of the station in the groundmeas database.
     groundmeas : bool, optional
         Use the groundmeas database (created if it does not exist) and pre-fill the sites file from it.
+    pq : bool, optional
+        Also write the export of a power-quality measurement of the busbar over 35 days around the tests
+        (10-min values, [`make_pq_export`][groundfault.demo.make_pq_export]) to ``<raw>/PQ/``.
 
     Returns
     -------
     dict
-        ``base``, ``campaign`` (folder), ``db`` (database path or None), ``substation`` (list of the truths of
+        ``base``, ``campaign`` (folder), ``db`` (database path or None), ``pq`` (truth of the PQ export, with
+        ``file`` = path relative to the campaign folder; None without), ``substation`` (list of the truths of
         [`make_substation_series`][groundfault.demo.make_substation_series], with ``cfg`` = path relative to the
         campaign folder), ``station`` (truth of [`make_station_recording`][groundfault.demo.make_station_recording],
         with ``cfg`` and ``rms_cfg``) and ``register`` (path of the register written for the demo; None if the register
@@ -1192,6 +1319,12 @@ def make_campaign(base: str, name: str = "2026-01-15_Demo", layout: str = "en", 
     rms_cfg = rms_file_from_instantaneous(st_cfg, os.path.join(st_folder, station + "_10_000Hz.cfg"))
     st["cfg"] = "/".join((lay.raw, station, os.path.basename(st_cfg)))
     st["rms_cfg"] = "/".join((lay.raw, station, os.path.basename(rms_cfg)))
+    pq_truth = None
+    if pq:                                              # PQ measurement of the busbar, 35 days around the tests
+        pq_name = "%s_PQ_%s.csv" % (sub, "export" if lay.language == "en" else "Export")
+        pq_truth = make_pq_export(os.path.join(campaign, lay.raw, "PQ", pq_name), days=35.0, interval_s=600.0,
+                                  start=_dt.datetime(2025, 12, 15, 0, 0, 0))
+        pq_truth["file"] = "/".join((lay.raw, "PQ", pq_name))
     db = None
     if groundmeas:
         db = os.path.join(base, "demo_groundmeas.db")
@@ -1220,7 +1353,7 @@ def make_campaign(base: str, name: str = "2026-01-15_Demo", layout: str = "en", 
     reg = register.write_register(base, df=rows, layout=lay) if own_register else None
     with open(os.path.join(campaign, lay.readme_file), "w", encoding="utf-8") as f:
         f.write(register.campaign_readme(campaign, rows, lay))
-    return dict(base=base, campaign=campaign, db=db, substation=series, station=st, register=reg)
+    return dict(base=base, campaign=campaign, db=db, pq=pq_truth, substation=series, station=st, register=reg)
 
 
 # =========================================================================== helpers

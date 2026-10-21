@@ -72,7 +72,7 @@ def test_options_interpreted_by_the_notebooks_are_checked(generator, lang):
 
 #: the parameters each user defines and their values in the published notebooks: not set
 USER_PARAMETERS = {"LIMITS": (), "U_TP": None, "F_FACTOR": None, "REFERENCE_CURRENT": None, "R_TYPICAL": None,
-                   "UNCERTAINTY_I": 0.0, "PQ_SAFETY_FACTOR": 1.0}
+                   "UNCERTAINTY_I": 0.0, "PQ_SAFETY_FACTOR": 1.0, "PQ_FACTORS": None}
 
 
 @pytest.mark.parametrize("lang", ["en", "de"])
@@ -204,7 +204,7 @@ def test_transformer_cell_runs(generator, lang, tmp_path):
 
 
 #: the parameters of the forecast notebook each user defines and their values in the published notebooks: not set
-FORECAST_PARAMETERS = {"MARGIN_A": 0.0, "FUNDAMENTAL_A": None, "LIMITS": ()}
+FORECAST_PARAMETERS = {"MARGIN_A": 0.0, "FUNDAMENTAL_A": None, "LIMITS": (), "PQ_SAFETY_FACTOR": 1.0, "PQ_FACTORS": None}
 
 
 @pytest.mark.parametrize("lang", ["en", "de"])
@@ -319,12 +319,45 @@ def test_forecast_notebook_runs(generator, lang, tmp_path, monkeypatch):
             t = namespace["FORECAST_TABLE"]
             table = t[t["location"] == t["location"].iloc[0]].set_index("order")
             assert table.loc["I_RES", "I_forecast_A"] == pytest.approx(float(f.IRES.quantile(0.95)))
+            # the PQ export of the demo campaign: the quantile per order × factor, or every 10-min value
+            lay = namespace["LAYOUT"]
+            export = (namespace["WORK_FOLDER"] / lay.campaigns / namespace["TESTS"][0]["campaign"] / lay.raw / "PQ"
+                      / ("SUB_PQ_export.csv" if lang == "en" else "UW_PQ_Export.csv"))
+            section6 = [c for c in cells if c.startswith("FORECAST = FORECAST_TABLE = None")]
+            namespace.update(PQ_FILES=str(export), PQ_SAFETY_FACTOR=1.25, VOLTAGES=None)
+            _run_cells(section6, namespace)
+            pq_ = namespace["PQ"]
+            from groundfault.formulas import harmonic_category
+            assert pq_.factor == 1.25 and pq_.valid and len(namespace["FORECAST"].currents) == 1
+            v = namespace["VOLTAGES"]
+            # positive/negative sequence: the quantile × factor; zero sequence (3rd harmonic of the demo) and even
+            # orders: the pre-fault voltage of the tests (not scaled)
+            assert {m: u for m, u in v.items() if harmonic_category(m) == "pos_neg"} == {
+                m: u for m, u in pq_.voltages().items() if harmonic_category(m) == "pos_neg"}
+            kept = namespace["KEPT"]
+            assert 3 in kept and v[3] == kept[3] == namespace["MODEL"].test_voltages()[3] != pq_.voltages()[3]
+            assert all(harmonic_category(m) in ("zero", "even") for m in kept)
+            one = namespace["FORECAST_TABLE"]
+            namespace.update(PQ_SERIES=True, VOLTAGES=None)
+            _run_cells(section6, namespace)
+            f = namespace["FORECAST"]
+            assert len(f.currents) == len(namespace["PQ"].data.harmonics)
+            assert all((df[3] == kept[3]).all() for df in namespace["VOLTAGES"].values())
+            many = namespace["FORECAST_TABLE"]
+            i_one = one[one["location"] == one["location"].iloc[0]].set_index("order").loc["I_RES", "I_forecast_A"]
+            i_many = many[many["location"] == many["location"].iloc[0]].set_index("order").loc["I_RES", "I_forecast_A"]
+            assert i_many <= i_one * (1 + 1e-6)     # quantile of I_RES(t) ≤ I_RES of the quantiles (interpolation aside)
+            # a PQ measurement shorter than every duration of PQ_FACTORS is not valid: no voltages from it
+            namespace.update(PQ_SERIES=False, VOLTAGES=None, PQ_FACTORS={1000.0: 1.0})
+            _run_cells(section6, namespace)
+            assert not namespace["PQ"].valid and namespace["VOLTAGES"] is None and namespace["FORECAST"] is None
     finally:
         i18n.set_language("de")                                                # the language of the test suite
 
 
 #: the limits of the notebook without an earth fault and their values in the published notebooks: not set
-WITHOUT_FAULT_LIMITS = {"MIN_HV_SHARE": None, "V0_RATIO": None, "FUNDAMENTAL_A": None, "LIMITS": ()}
+WITHOUT_FAULT_LIMITS = {"MIN_HV_SHARE": None, "V0_RATIO": None, "FUNDAMENTAL_A": None, "LIMITS": (),
+                        "PQ_SAFETY_FACTOR": 1.0, "PQ_FACTORS": None}
 #: network data and assumptions of that notebook: not set in the templates, demo values in the example notebooks
 WITHOUT_FAULT_DATA = ("U_N", "U_LE", "I_C", "I_L", "D", "U_K", "S_RT", "S_K", "C_1", "R_X_UP", "R_X_HV", "VOLTAGES",
                       "G_MAX", "G", "G_RANGE")
@@ -396,6 +429,14 @@ def test_without_fault_notebook_runs(generator, lang, tmp_path, monkeypatch):
             z = {m: complex(1 / complex(g, m * 2 * 3.141592653589793 * 50.0 * 65e-6)) for m, g in ((5, 0.07), (7, 0.09))}
             for m, zm in z.items():
                 assert abs(namespace["Z_MV"][m] / zm - 1) < 0.06               # the truth of the demo
+            # the voltages from a PQ export: the quantile per order × factor
+            from groundfault import demo
+            w = demo.make_pq_export(str(tmp_path / "pq_export.csv"), days=8.0)
+            namespace.update(PQ_FILES=w["path"], PQ_SAFETY_FACTOR=1.25)
+            _run_cells([c for c in cells if "estimates_without_fault" in c], namespace)
+            assert namespace["VOLTAGES"] == namespace["PQ"].voltages()
+            assert namespace["VOLTAGES"][5] == pytest.approx(1.25 * w["quantiles"][0.95][5], rel=1e-4)
+            assert namespace["COMPARISON"] is not None
     finally:
         i18n.set_language("de")                                                # the language of the test suite
 
@@ -419,5 +460,55 @@ def test_without_fault_template_runs_without_data(generator, lang, tmp_path, mon
         assert not (tmp_path / ("forecast" if lang == "en" else "05_Prognose")).exists()
         out = capsys.readouterr().out
         assert ("Nothing to export" if lang == "en" else "Nichts zu exportieren") in out
+    finally:
+        i18n.set_language("de")                                                # the language of the test suite
+
+
+def test_campaign_notebook_with_the_pq_measurement(generator, tmp_path, monkeypatch):
+    """The example campaign notebook reads the PQ export of the demo campaign: the quantiles replace U95 and
+    THD95_PERCENT, the tests are placed in the distribution of the PQ measurement, the residual current at Z_E is shown
+    per order, as a time series and with the THD factor, and the tables and figures of the PQ measurement are
+    exported."""
+    pytest.importorskip("IPython")
+    import matplotlib
+    from groundfault import i18n
+    cells = _code(generator.campaign_notebook("en", True))
+    monkeypatch.chdir(tmp_path)
+    namespace = {"__name__": "notebook"}
+    try:
+        with matplotlib.rc_context():
+            _run_cells(cells[:1], namespace)
+            namespace.update(display=lambda *a, **k: None)
+            _run_cells(cells[1:], namespace)
+        pq_ = namespace["PQ"]
+        assert pq_ is not None and pq_.factor == 1.0 and pq_.valid
+        assert namespace["U95"] == pq_.u95() and namespace["U95_REFERENCE"] == "seq"
+        assert namespace["THD95_PERCENT"] == pq_.thd95()
+        scaling = namespace["SCALING"]
+        assert set(scaling) == {"safety_factor", "u95", "u95_reference", "thd95_percent", "thd_measured_percent"}
+        tests = namespace["PQ_COMPARISON"]
+        assert set(tests["test"]) == {m["name"] for m in namespace["MEASUREMENTS"] if m["Z"] is not None}
+        assert tests["order"].map(lambda m: m % 3 != 0).all() and tests["window"].str.contains("±").all()
+        table = namespace["PQ_SCALING"].set_index("method")["IRES_A"]
+        assert len(table) == 4
+        none, per_order, series = table.iloc[0], table.iloc[1], table.iloc[2]
+        assert per_order > none and series <= per_order * (1 + 1e-6)     # equal for orders that rise together
+        main = namespace["MAIN"]
+        r = namespace["equivalent_source"].ires_at_impedance(main, namespace["Z_E"], IG=namespace["IG_CHOICE"], **scaling)
+        assert r["IRES_scaled"] == pytest.approx(per_order)
+        per = r["table"].set_index("order")                    # the result per order shown in section 4
+        assert per.loc[3, "rule"] == "as measured" and per.loc[5, "rule"] == "own voltage"
+        assert set(per["part"]) == {"model", "remainder"} and (per.loc[per["category"] == "even", "factor"] == 1.0).all()
+        assert {"pq_quantiles", "pq_summary", "pq_tests", "pq_scaling"} <= set(namespace["TABLES"])
+        fig = namespace["FIG"]
+        assert all((fig / ("%s.png" % n)).exists() for n in ("pq_series", "pq_duration", "pq_profile"))
+        # a PQ measurement shorter than every duration of PQ_FACTORS is not valid: nothing is scaled with it
+        section4 = [c for c in cells if c.startswith(("PQ = PQ_COMPARISON = PQ_LEVELS = None", "SCALING = None",
+                                                      "PQ_SCALING = None"))]
+        namespace.update(PQ_FACTORS={1000.0: 1.0}, U95=None, THD95_PERCENT=None, PQ_SAFETY_FACTOR=1.0)
+        with matplotlib.rc_context():
+            _run_cells(section4, namespace)
+        assert not namespace["PQ"].valid and namespace["U95"] is None and namespace["SCALING"] is None
+        assert namespace["PQ_SCALING"] is None
     finally:
         i18n.set_language("de")                                                # the language of the test suite

@@ -61,7 +61,8 @@ __all__ = [
     "residual_current", "residual_current_estimate", "sqrt2_active_current", "sqrt2_target_voltage",
     "detuning_current", "fundamental_current", "damping", "detuning", "sqrt2_method",
     "fundamental_from_v_curve", "angle_method", "current_with_uncertainty", "voltage_with_uncertainty",
-    "window_samples", "harmonic_current", "scaled_harmonic_current", "rms_current_forecast", "thd_percent_to_volt",
+    "window_samples", "harmonic_current", "harmonic_category", "HARMONIC_CATEGORIES", "order_scaling",
+    "SCALING_RULES", "scaled_harmonic_current", "rms_current_forecast", "thd_percent_to_volt",
     "sequence_voltage_from_ll", "limit_resistance", "resistive_assessment", "max_residual_current",
     "earth_return_depth", "z0_overhead_line", "r0_overhead_line", "limit_distance", "source_from_two_measurements",
     "residual_current_from_sources", "fundamental_from_network_data", "MU0",
@@ -492,34 +493,162 @@ def harmonic_current(I_rms: Number, I_G: Number) -> Number:
     return np.sqrt(np.maximum(d, 0.0)) if np.ndim(d) else math.sqrt(max(float(d), 0.0))
 
 
-def scaled_harmonic_current(I_H: Number, U_95: Number, U_measured: Number) -> Number:
-    """Harmonic content scaled to the 95 % quantile of the harmonic voltage: I_H,scaled = I_H·U_THD,95%/U_THD,meas.
+HARMONIC_CATEGORIES = ("fundamental", "pos_neg", "zero", "even")
+"""Categories of the harmonic orders for the scaling to a power-quality quantile
+([`harmonic_category`][groundfault.formulas.harmonic_category])."""
 
-    Both voltages must have the same reference (% with %, V with V!).
+
+def harmonic_category(m: int) -> str:
+    """Category of a harmonic order for the scaling to a power-quality quantile.
+
+    * ``"pos_neg"`` – odd orders that are not a multiple of 3 (5, 7, 11, 13, 17, 19 …): positive or negative sequence;
+      the current of such an order follows its own voltage and is scaled with it (the 250-Hz current with the 250-Hz
+      voltage), without a value of its own with the THD.
+    * ``"zero"`` – odd multiples of 3 (3, 9, 15 …): zero sequence; not scaled – the zero sequence arises in the earth
+      fault and does not follow the voltage of undisturbed operation.
+    * ``"even"`` – even orders (2, 4, 6, 8 …, the even multiples of 3 included): not scaled and listed separately –
+      atypical for the voltage of a network, they may point to another cause (e.g. a DC component or saturation at
+      the fault inception, current clamps).
+    * ``"fundamental"`` – order 1.
+
+    Parameters
+    ----------
+    m : int
+        Harmonic order (≥ 1).
+
+    Returns
+    -------
+    str
+        One of [`HARMONIC_CATEGORIES`][groundfault.formulas.HARMONIC_CATEGORIES].
+
+    Examples
+    --------
+    >>> [harmonic_category(m) for m in (1, 2, 3, 5, 6, 7, 9)]
+    ['fundamental', 'even', 'zero', 'pos_neg', 'even', 'pos_neg', 'zero']
+    """
+    m = int(m)
+    if m == 1:
+        return "fundamental"
+    if m % 2 == 0:
+        return "even"
+    return "zero" if m % 3 == 0 else "pos_neg"
+
+
+SCALING_RULES = ("own voltage", "THD", "as measured", "no information")
+"""Rules of the scaling of one order ([`order_scaling`][groundfault.formulas.order_scaling]): with its own voltage,
+with the THD, as measured (zero sequence, even orders), as measured for lack of a value (positive or negative sequence
+without its own value and without a THD)."""
+
+i18n.register_labels(columns={"category": "Kategorie", "rule": "Regel", "part": "Teil", "U_level_V": "U_Pegel_V",
+                              "U95_V": "U95_V", "I_A": "I_A", "I_scaled_A": "I_skaliert_A"},
+                     values={"category": {"fundamental": "Grundschwingung", "pos_neg": "Mit-/Gegensystem",
+                                          "zero": "Nullsystem", "even": "gerade"},
+                             "rule": {"own voltage": "eigene Spannung", "THD": "THD", "as measured": "wie gemessen",
+                                      "no information": "keine Angabe"},
+                             "part": {"model": "Modell", "remainder": "Rest"}})
+
+
+def order_scaling(m: int, U_95: Optional[float], U_level: float, f_thd: Optional[float] = None,
+                  safety_factor: float = 1.0, from_ll: bool = False, min_level: float = 0.0) -> Tuple[float, str]:
+    """Scaling factor of the current of one harmonic order to a power-quality quantile, and its rule.
+
+    * Positive or negative sequence ([`harmonic_category`][groundfault.formulas.harmonic_category] ``"pos_neg"``):
+      with its own voltage, k_m = k_s·U_95,m/U_level,m (a line-to-line quantile divided by √3) – if ``U_95`` is a
+      number and ``U_level`` at least ``min_level``; otherwise with the THD factor ``f_thd``; without one 1 (``"no
+      information"``).
+    * Zero sequence and even orders: 1 (``"as measured"``).
+
+    Parameters
+    ----------
+    m : int
+        Harmonic order (≥ 2).
+    U_95 : float or None
+        Quantile of the voltage of order m in V (None or NaN: no value).
+    U_level : float
+        Level of the voltage of order m during the test in V (the natural sequence of m).
+    f_thd : float, optional
+        Flat THD factor k_s·THD_95/THD_test (None: none).
+    safety_factor : float, optional
+        Factor k_s on the quantile.
+    from_ll : bool, optional
+        ``U_95`` is a line-to-line value (divided by √3).
+    min_level : float, optional
+        Smallest usable level in V.
+
+    Returns
+    -------
+    (float, str)
+        Factor and rule (one of [`SCALING_RULES`][groundfault.formulas.SCALING_RULES]).
+
+    Examples
+    --------
+    >>> order_scaling(5, 300.0, 100.0, safety_factor=1.2)
+    (3.6, 'own voltage')
+    >>> order_scaling(3, 30.0, 10.0)
+    (1.0, 'as measured')
+    >>> order_scaling(17, None, 2.0, f_thd=4.0)
+    (4.0, 'THD')
+    """
+    if harmonic_category(m) != "pos_neg":
+        return 1.0, "as measured"
+    u = None if U_95 is None or not np.isfinite(float(U_95)) else float(U_95)
+    level = float(U_level) if U_level is not None else float("nan")
+    if u is not None and np.isfinite(level) and level > 0 and level >= float(min_level):
+        return float(safety_factor) * (u / math.sqrt(3) if from_ll else u) / level, "own voltage"
+    if f_thd is not None and np.isfinite(float(f_thd)):
+        return float(f_thd), "THD"
+    return 1.0, "no information"
+
+
+def scaled_harmonic_current(I_H: Number, U_95: Number, U_measured: Number, I_unscaled: Optional[Number] = None) -> Number:
+    """Harmonic content scaled to the 95 % quantile of the harmonic voltage with one flat factor:
+    I_H,scaled = I_H·U_THD,95%/U_THD,meas.
+
+    Both voltages must have the same reference (% with %, V with V!). With ``I_unscaled`` the part of the harmonic
+    content that is not scaled – the zero sequence, the even orders and the content not assigned to an order (see
+    [`harmonic_category`][groundfault.formulas.harmonic_category]) – keeps its measured value:
+
+        I_H,scaled = √((I_H² − I_u²)·(U_95/U_meas)² + I_u²)
 
     Parameters
     ----------
     I_H : float or array_like
-        Harmonic content measured during the fault test in A.
+        Harmonic content during the fault test in A.
     U_95 : float or array_like
         95 % quantile of the harmonic voltage (THD) of the network.
     U_measured : float or array_like
         Harmonic voltage (THD) during the fault test, same reference as ``U_95``.
+    I_unscaled : float or array_like, optional
+        Part I_u of the harmonic content in A that keeps its measured value (at most ``I_H``); None (default): every
+        order is scaled.
 
     Returns
     -------
     float or numpy.ndarray
-        Scaled harmonic content in A (a float for scalar input).
+        Scaled harmonic content in A.
 
     Raises
     ------
     ValueError
         If ``U_measured`` is not > 0.
+
+    Examples
+    --------
+    >>> scaled_harmonic_current(10.0, 3.0, 1.5)
+    20.0
+    >>> round(scaled_harmonic_current(10.0, 3.0, 1.5, I_unscaled=6.0), 3)      # √(64·4 + 36)
+    17.088
     """
     U_measured = np.asarray(U_measured, float)
     if np.any(U_measured <= 0):
         raise ValueError(tr("formulas.thd_measured_not_positive"))
-    r = np.asarray(I_H, float) * np.asarray(U_95, float) / U_measured
+    f = np.asarray(U_95, float) / U_measured
+    ih = np.asarray(I_H, float)
+    if I_unscaled is None:
+        r = ih * f
+    else:
+        iu = np.minimum(np.asarray(I_unscaled, float), ih)
+        r = np.sqrt((ih ** 2 - iu ** 2) * f ** 2 + iu ** 2)
     return float(r) if np.ndim(r) == 0 else r
 
 

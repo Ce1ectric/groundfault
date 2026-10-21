@@ -479,6 +479,35 @@ class NetworkModel:
         """Names of the earth faults in the model."""
         return [c.name for c in self.calibrations]
 
+    def test_voltages(self, orders: Optional[Iterable[int]] = None) -> Dict[int, float]:
+        """Pre-fault voltage of the faulted phase per order in V – the median of |U_q,m| over the calibration tests
+        (line-to-earth).
+
+        With harmonic voltages of a power-quality measurement as the source of a forecast, the orders that are not
+        scaled to it – the zero sequence (its source arises in the fault) and the even orders – keep this voltage of
+        the tests: ``{**PQ.voltages(), **MODEL.test_voltages([3, 9, 15])}``.
+
+        Parameters
+        ----------
+        orders : iterable of int, optional
+            Orders (default: all orders of the tests).
+
+        Returns
+        -------
+        dict of int to float
+            ``{order: U}``; an order without a finite voltage in any test is left out.
+        """
+        wanted = None if orders is None else {int(m) for m in orders}
+        out: Dict[int, float] = {}
+        for m in sorted({m for c in self.tests for m in c.orders}):
+            if wanted is not None and m not in wanted:
+                continue
+            vals = [abs(complex(c.orders[m].U_q)) for c in self.tests if m in c.orders]
+            vals = [v for v in vals if np.isfinite(v)]
+            if vals:
+                out[int(m)] = float(np.median(vals))
+        return out
+
     def calibration(self, name: str) -> Calibration:
         """The earth fault named ``name``."""
         for c in self.calibrations:

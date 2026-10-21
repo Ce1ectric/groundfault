@@ -4,6 +4,86 @@ All notable changes to groundfault are documented in this file. The format is ba
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and groundfault adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-10-21
+
+A minor version with a new module for power-quality measurements and corrected rules for the scaling to a
+power-quality quantile: the zero sequence and the even orders are no longer scaled, every order of the positive or
+negative sequence is scaled with its own voltage – also in the remainder outside the orders of the model (see
+*Changed*). Without a scaling the results of 3.1 are unchanged. Result files of an evaluation with a scaling gain the
+rows `IH_zero`, `IH_even`, `IH_other` and the table `harmonic_scaling`.
+
+### Added
+
+- **Power-quality measurements** (`groundfault.pq`): the voltage of the busbar in undisturbed operation as recorded
+  by a PQ instrument, and its use in the assessment.
+  - Reading: `read_winpq` (CSV export of WinPQ mobil for the PQ-Box instruments: header with instrument, serial
+    number, measurement, interval and nominal voltage; comma or semicolon, decimal point or comma), `from_frame` (any
+    instrument, after reading its export with pandas; harmonic voltages in V or % of the fundamental) and `read`
+    (several files; identical files and the same period are used once, overlapping time stamps keep the values of
+    the first file, exports with different intervals are refused). Time stamps mark the end of an interval;
+    `timezone` localises the instrument clock.
+  - `ten_minute_values`: clock-aligned 10-min intervals as the square root of the mean of the squares of the shorter
+    values (IEC 61000-4-30) or as the mean; incomplete intervals are left out and counted. Time stamps are localised
+    in the order of the file (the repeated hour at the end of daylight saving time), the interval of the header is
+    checked against the step of the time stamps, columns without values are left out.
+  - `assess` → `PQAssessment`: per 10-min interval the largest of the three phases (line-to-earth, per order) and the
+    largest loop (line-to-line THD), the quantile over the measurement (default 0.95), a factor of the user – directly
+    (`factor`) or by the duration of the measurement from a rule `{minimum days: factor}` (`factors`,
+    `duration_factor`); groundfault contains no such factor. The duration is the longest stretch of gapless values
+    (`PQData.coverage()["gapless_days"]`, `max_gap_minutes` tolerates short gaps); a measurement shorter than every
+    duration of the rule is not valid (`valid`, factor NaN): `scaling`, `settings`, `voltages` and `series` then raise a
+    ValueError. Intervals with an earth fault or a dip of one phase are left out (`fault_threshold`). Tables `table()`
+    (per order and phase) and `summary_table()`, the 10-min values per phase (`series`) and of the largest phase
+    (`largest`), the weekly profile (`profile`).
+  - The values for the evaluation: `PQAssessment.settings()` (`Settings`: quantiles per order and of the THD),
+    `scaling()` (keyword arguments of `equivalent_source.ires_at_impedance`), `voltages()` and `series()` (the
+    forecast).
+  - `pre_fault_levels(result, kind=…)` and `PQAssessment.comparability(levels, times)`: where the pre-fault voltage
+    of a test lies in the distribution of the PQ measurement, over the whole measurement and in the time window of
+    the test (the same time of the week ± `window_h` hours, recorder time in UTC). Line-to-line data keep their
+    reference in all values.
+- `formulas.harmonic_category` (`"pos_neg"`, `"zero"`, `"even"`, `"fundamental"`) and `formulas.order_scaling`: the
+  factor and rule of one order (`"own voltage"`, `"THD"`, `"as measured"`, `"no information"`).
+- Equivalent-source method: the result of `ires_at_impedance` gains the result per order `table` (orders of the model
+  at Z_E and orders of the remainder with test, level, quantile, factor and rule), `rules`, `IH_rest_scaled`,
+  `IH_zero`, `IH_even`, `IH_other` and `rest_test`; a hint names the even orders from 5 % of the harmonic content.
+  `ires_over_time(series, Z_E, voltages)`: I_RES at Z_E for every time step of a time series of harmonic voltages
+  (e.g. the 10-min values of a PQ measurement) – its quantile instead of the quantiles per order.
+  `ires_over_line(…, rest_A=)`: a scaled remainder. The settings of a series store `min_level_V`.
+- Evaluation: `Settings.pq_u95` (quantiles per order), `pq_u95_reference` and `pq_min_level_V`; the table
+  `harmonic_scaling` per order and the rows `IH_zero`, `IH_even` and `IH_other`.
+- Forecast: `NetworkModel.test_voltages()` – the pre-fault voltage per order of the calibration tests (the orders
+  that are not scaled to a PQ measurement).
+- Figures `report.pq_series` (10-min values with the quantile and the quantile times the factor), `report.pq_duration`
+  (duration curve with the levels of the tests) and `report.pq_profile` (weekly profile).
+- `demo.make_pq_export`: a synthetic export in the WinPQ format with a weekly and a daily pattern and known quantiles;
+  the demo campaign contains one (`raw/PQ/SUB_PQ_export.csv`, German `1_Rohdaten/PQ/UW_PQ_Export.csv`).
+- Notebooks: `PQ_FILES`, `PQ_TIMEZONE`, `PQ_QUANTILE` and `PQ_FACTORS` in all four notebooks; a measurement that is
+  not valid is reported and not used. The measurement notebook takes the quantiles per order and of the THD and the
+  factor into `SETTINGS` and shows the table per order; the campaign notebook replaces `U95`, `U95_REFERENCE`,
+  `THD95_PERCENT` and `PQ_SAFETY_FACTOR` with the values of the measurement, shows the tests in its distribution and
+  three figures, the result per order at Z_E, and compares I_RES at Z_E per order, as the quantile of the time series
+  and with the THD factor; the forecast notebooks take `VOLTAGES` from it (network model also as a time series,
+  `PQ_SERIES`; the zero sequence and the even orders keep the voltage of the tests). Export of the tables
+  `pq_quantiles`, `pq_summary`, `pq_tests`, `pq_scaling` and the figures.
+- Documentation: the page *Power-quality measurements* of the user guide, the method in *Assessment quantities*, the
+  rules per order, the remainder and the time series in *Equivalent-source method*.
+
+### Changed
+
+- **Scaling to a power-quality quantile** – single recording (`Settings.u_thd95_percent`/`u_thd95_volt`) and
+  equivalent-source method (`ires_at_impedance(u95=…, thd95_percent=…)`), rules per order:
+  - an order of the positive or negative sequence (5, 7, 11, 13 …) with its own voltage U_95,m/U_m, without its own
+    value (no quantile, level below 1 V) with the THD factor – as before for the orders of the model;
+  - the orders of the zero sequence (3, 9, 15 …) are **not scaled** (before: with their own value or the THD factor) –
+    the zero sequence arises in the earth fault;
+  - the even orders are **not scaled** (before: with the THD factor or the largest factor) and are listed separately;
+  - the remainder outside the orders of the model is scaled order by order with the levels of its test (before: with
+    the largest factor of the orders); its content without an order stays as measured;
+  - the flat THD scaling of a single recording scales only the orders of the positive or negative sequence,
+    I_H,scaled = √((I_H² − I_u²)·(U_95/U_meas)² + I_u²) with I_u the part not scaled (before: I_H·U_95/U_meas);
+    `formulas.scaled_harmonic_current(…, I_unscaled=)`.
+
 ## [3.1.0] - 2026-10-18
 
 A minor version with an optional new part; the results of 3.0 are unchanged except the summary value X_up/m of the
@@ -356,6 +436,7 @@ available.
   returns I_operating − I_resonance, so `formulas.detuning` and `formulas.sqrt2_method` give the sign of the angle
   method; the resonance-curve formulas of the predecessor used the opposite sign.
 
+[3.2.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.2.0
 [3.1.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.1.0
 [3.0.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.0.0
 [2.0.1]: https://github.com/Ce1ectric/groundfault/releases/tag/v2.0.1

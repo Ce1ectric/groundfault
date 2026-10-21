@@ -194,46 +194,109 @@ earthing impedance (`IRES_assessed`, argument `uncertainty_I`).
 The harmonic voltages of the network during the tests are a snapshot; the harmonic content of the residual current
 grows in proportion to them. To assess the residual current at the harmonic level that is not exceeded 95 % of the
 time, the harmonic content is scaled with the 95 % quantile of a power-quality measurement (an instrument according
-to IEC 61000-4-30) – of the THD in % (`Settings.u_thd95_percent`) or of the harmonic voltage in V
-(`Settings.u_thd95_volt`), both line-to-line:
+to IEC 61000-4-30) of the same network and switching state. Each order is treated by its sequence
+([`harmonic_category`](../reference/formulas.md#groundfault.formulas.harmonic_category),
+[`order_scaling`](../reference/formulas.md#groundfault.formulas.order_scaling)):
+
+* **Positive or negative sequence** (odd orders that are not a multiple of 3: 5, 7, 11, 13, 17, 19 …): the current of
+  the order is driven by the voltage of the same order and is scaled with it – the 250-Hz current with the 250-Hz
+  voltage:
+
+  \[
+  I_{m,\text{scaled}} = k_m\,I_m,
+  \qquad
+  k_m = k_\text{s}\,\frac{U_{95,m}}{U_m}
+  \]
+
+  with the quantile U_95,m of the order (`Settings.pq_u95`, line-to-earth of the largest phase; a line-to-line value
+  divided by √3) and its level U_m in the test – the natural sequence of the order (positive for m = 7, 13, 19 …,
+  negative for m = 5, 11, 17 …) before and after the fault (`Settings.thd_reference`: `"mean"`, `"pre_fault"` or
+  `"post_fault"`). An order without its own value – no quantile, or a level below `Settings.pq_min_level_V` (1 V) –
+  gets the flat factor of the THD (in % `Settings.u_thd95_percent` or in V `Settings.u_thd95_volt`, both line-to-line):
+
+  \[
+  k_\text{THD} = k_\text{s}\,\frac{U_{\text{PQ},95\%}}{U_\text{meas}}
+  \]
+
+  where U_meas is the THD (or harmonic voltage) of the largest of the three line-to-line loops, averaged over the
+  pre-fault and post-fault intervals. Without a THD such an order stays as measured (with a hint).
+* **Zero sequence** (odd multiples of 3: 3, 9, 15 …): not scaled. The zero sequence arises in the earth fault – the
+  displaced neutral and the non-linear loads on the healthy phases drive it –, not the harmonic voltage of undisturbed
+  operation that the PQ measurement records.
+* **Even orders** (2, 4, 6, 8 …, the even multiples of 3 included): not scaled, and listed separately. They are
+  unusual for the voltage of a network and may point to another cause (a DC component or saturation at the fault
+  inception, current clamps); a hint names them when they carry 5 % of the harmonic content or more.
+* **Content without an order** (\( I_\text{other} = \sqrt{I_\text{H}^2 - \sum_{m\geq2} I_m^2} \): interharmonics, DC and
+  low-frequency parts, orders without a phasor): not scaled.
 
 \[
-I_\text{H,scaled} = I_\text{H}\,\frac{U_{95}}{U_\text{meas}},
-\qquad
-U_{95} = k_\text{s}\,U_{\text{PQ},95\%},
+I_\text{H,scaled} = \sqrt{\sum_{m\ \text{pos/neg}} \left(k_m I_m\right)^2 + I_0^2 + I_\text{even}^2 + I_\text{other}^2},
 \qquad
 I_\text{RMS} = \sqrt{I_\text{G}^2 + I_\text{H,scaled}^2}
 \]
 
-([`scaled_harmonic_current`](../reference/formulas.md#groundfault.formulas.scaled_harmonic_current),
-[`rms_current_forecast`](../reference/formulas.md#groundfault.formulas.rms_current_forecast)). U_meas is the THD (or
-harmonic voltage) of the largest of the three line-to-line loops, averaged over the pre-fault and post-fault
-intervals (`Settings.thd_reference`: `"mean"`, `"pre_fault"` or `"post_fault"`) – it needs the line-to-earth voltages.
-Both voltages must have the same reference (% with %, V with V). The factor k_s (`Settings.pq_safety_factor`) is an
-additional factor of the user on the 95 % quantile (default 1: none). The assessment values combine both margins: \( I_\text{H}(1 + m_I)\,U_{95}/(U_\text{meas}(1 - m_U)) \), and I_RMS from I_G(1 + m_I). The table gets the
-rows `UTHD_meas`, `UTHD_95`, `IH_scaled` and `IRMS_forecast`. The equivalent-source method scales per harmonic order
-instead ([Scaling to U95](equivalent-source.md#scaling-to-the-95-quantile)).
+With the THD alone every order of the positive or negative sequence gets k_THD:
+\( I_\text{H,scaled} = \sqrt{(I_\text{H}^2 - I_\text{u}^2)\,k_\text{THD}^2 + I_\text{u}^2} \) with I_u the part not
+scaled ([`scaled_harmonic_current`](../reference/formulas.md#groundfault.formulas.scaled_harmonic_current),
+[`rms_current_forecast`](../reference/formulas.md#groundfault.formulas.rms_current_forecast)). The factor k_s
+(`Settings.pq_safety_factor`) is the factor of the user on the 95 % quantile (default 1: none). The assessment values
+combine both margins: the currents are increased by m_I, the voltages of the test decreased by m_U (the factors grow by
+1/(1 − m_U)), and I_RMS takes I_G(1 + m_I). The table `assessment_quantities` gets the rows `UTHD_meas`, `UTHD_95`
+(with a THD), `IH_zero`, `IH_even`, `IH_other`, `IH_scaled` and `IRMS_forecast`; the table `harmonic_scaling` shows
+every order with its level, quantile, factor and rule. The equivalent-source method applies the same rules to the
+orders of its model and to its remainder ([Scaling to U95](equivalent-source.md#scaling-to-the-95-quantile)).
 
 ```python
 from groundfault import formulas as fml
 
 I_RES, I_G = 41.0, 27.0                                      # invented measured values in A
 I_H = fml.harmonic_current(I_RES, I_G)                       # √(I_RES² − I_G²)
-k_s, m_I, m_U = 1.2, 0.03, 0.02                              # illustrative values – define your own
-U_95 = 3.2 * k_s                                             # 95 % quantile of the THD in % × factor k_s
-U_meas = 2.4                                                 # THD during the tests in %
-I_H_s = fml.scaled_harmonic_current(I_H, U_95, U_meas)
+I_5, I_7, I_3 = 24.0, 12.0, 9.0                              # invented currents of the orders in A
+k_s = 1.2                                                    # illustrative factor – define your own
+k_5, rule_5 = fml.order_scaling(5, 320.0, 240.0, safety_factor=k_s)    # U_95,5 = 320 V, level 240 V
+k_7, rule_7 = fml.order_scaling(7, 150.0, 100.0, safety_factor=k_s)
+k_3, rule_3 = fml.order_scaling(3, 40.0, 20.0, safety_factor=k_s)      # zero sequence: as measured
+I_other = (I_H ** 2 - I_5 ** 2 - I_7 ** 2 - I_3 ** 2) ** 0.5
+I_H_s = ((k_5 * I_5) ** 2 + (k_7 * I_7) ** 2 + (k_3 * I_3) ** 2 + I_other ** 2) ** 0.5
+print("k_5 = %.2f (%s), k_7 = %.2f (%s), k_3 = %.2f (%s)" % (k_5, rule_5, k_7, rule_7, k_3, rule_3))
 print("I_H = %.2f A → I_H,scaled = %.2f A → I_RMS = %.2f A" % (I_H, I_H_s, fml.rms_current_forecast(I_G, I_H_s)))
-I_H_s_a = fml.scaled_harmonic_current(fml.current_with_uncertainty(I_H, m_I), U_95,
-                                      fml.voltage_with_uncertainty(U_meas, m_U))
-print("assessed: I_H,scaled = %.2f A → I_RMS = %.2f A"
-      % (I_H_s_a, fml.rms_current_forecast(fml.current_with_uncertainty(I_G, m_I), I_H_s_a)))
+# the THD alone (95 % quantile 3.2 %, during the tests 2.4 %): k_THD for the positive/negative sequence
+I_u = (I_3 ** 2 + I_other ** 2) ** 0.5                       # zero sequence and content without an order
+print("THD alone: I_H,scaled = %.2f A" % fml.scaled_harmonic_current(I_H, 3.2 * k_s, 2.4, I_unscaled=I_u))
 ```
 
 ```text
-I_H = 30.85 A → I_H,scaled = 49.37 A → I_RMS = 56.27 A
-assessed: I_H,scaled = 51.89 A → I_RMS = 58.87 A
+k_5 = 1.60 (own voltage), k_7 = 1.80 (own voltage), k_3 = 1.00 (as measured)
+I_H = 30.85 A → I_H,scaled = 46.62 A → I_RMS = 53.87 A
+THD alone: I_H,scaled = 45.55 A
 ```
+
+## Power-quality measurement
+
+The quantiles above come from a power-quality measurement of the busbar in undisturbed operation
+([`groundfault.pq`](../reference/pq.md), [Power-quality measurements](../user-guide/pq.md)):
+
+1. **10-min values.** The shorter values of the export (e.g. 30 s) are combined into clock-aligned 10-min intervals,
+   each labelled with its end, as the square root of the mean of their squares (aggregation of IEC 61000-4-30):
+   \( U_{10} = \sqrt{\tfrac{1}{n}\sum_{i=1}^{n} U_i^2} \). An interval with missing values is left out.
+2. **Largest phase per interval.** Per interval and order the largest of the three line-to-earth voltages, for the THD
+   the largest of the three line-to-line loops: \( U_{\max}(t) = \max_{x} U_{x,10}(t) \). The fault can occur in any
+   phase, so the phase with the highest voltage at that time counts. Intervals with an earth fault or a dip of one
+   phase (smallest line-to-earth fundamental below 0.8 times the largest) are not undisturbed operation and are left
+   out. Without a line-to-line THD in the export, the THD of the line-to-earth orders without the zero sequence
+   takes its place – a line-to-line voltage contains no zero sequence.
+3. **Quantile.** The quantile p (default 0.95) of these values over the measuring period, by linear interpolation
+   between the sorted values (with N values, the value at the position (N − 1)·p counted from 0).
+4. **Factor.** A factor k_s of the user on the quantile, \( U_{95} = k_\text{s}\,U_{\text{PQ},95\%} \) – set directly
+   or chosen by the duration of the measurement from a rule {minimum duration: factor}: the factor of the longest
+   minimum duration the measurement reaches. The duration is the longest stretch of gapless values (an interval
+   without a value interrupts it). A measurement shorter than every duration of the rule is not valid for the
+   assessment – nothing is scaled with it. A measurement that covers less than the variation over the year (seasons,
+   holidays) may need a factor above 1; groundfault contains no such value.
+
+The quantile of the largest phase per interval is at least the largest of the quantiles of the single phases. The
+harmonic voltage of the loops \( U_\text{H} = \sqrt{\sum_{m\geq 2} U_m^2} \) of the largest loop per interval (from
+the THD and the RMS value) gives the harmonic voltage of the [resistive approach](#resistive-approach).
 
 ## Limit from the permissible touch voltage
 

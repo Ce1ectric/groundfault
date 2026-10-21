@@ -28,6 +28,11 @@ and the two compared quantities r·Z_E and Z_E (bottom)](docs/assets/station_red
   detected and left out of the reference.
 - **Equivalent-source method** – over a series of tests with different fault impedances, an active two-terminal
   equivalent per harmonic order and from it the residual current at any earthing impedance Z_E.
+- **Power-quality measurements** – the export of a PQ instrument at the busbar (WinPQ mobil CSV, or any table):
+  10-min values as in IEC 61000-4-30, the quantile of the largest phase per interval, a factor of your own by the
+  duration of the gapless values, the position of the tests in the distribution, and the scaling of the harmonic
+  residual current to that level in the evaluation, the campaign and the forecast – each order of the positive or
+  negative sequence with its own voltage (otherwise with the THD), the zero sequence and the even orders as measured.
 - **Transformer node** – with the line currents of the HV/MV transformer: power and apparent impedance per harmonic
   order and sequence before, during and after the fault, and the upstream impedance of transformer and HV network per
   order from the fault-related change (split into both with HV voltages); the polarity of the current transformers
@@ -192,7 +197,7 @@ GitHub offers them as APA and BibTeX under *Cite this repository*:
 @software{Ehlert_groundfault_2026,
   author  = {Ehlert, Christian},
   title   = {{groundfault}},
-  version = {3.1.0},
+  version = {3.2.0},
   month   = oct,
   year    = {2026},
   url     = {https://github.com/Ce1ectric/groundfault},

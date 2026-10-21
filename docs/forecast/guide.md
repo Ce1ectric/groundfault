@@ -56,6 +56,7 @@ coil currents as a recorded earth fault, and the result files of all of them. Th
 | `CHECKS` | further measurements: `dict(campaign=…, measurement=<busbar recording>, Z=…, current=<recording with the fault current>, line=…)` |
 | `ORDERS`, `MIN_CURRENT_A`, `HOW`, `TWO_SOURCE` | orders of the calibration, aggregation of Z_q, orders with a source that arises with the fault |
 | `VOLTAGES`, `VOLTAGE_REFERENCE`, `CSV_OPTIONS`, `QUANTILE` | harmonic voltages of the forecast (values per order or a CSV time series), line-to-earth or line-to-line, the quantile |
+| `PQ_FILES`, `PQ_TIMEZONE`, `PQ_SERIES`, `PQ_FACTORS`, `PQ_SAFETY_FACTOR` | export(s) of a power-quality measurement of the busbar instead of `VOLTAGES`: the quantile `QUANTILE` per order (line-to-earth, largest phase) × your factor – or with `PQ_SERIES = True` every 10-min value per phase – for the orders of the positive or negative sequence; the zero sequence and the even orders keep the pre-fault voltage of the tests (`MODEL.test_voltages()`, not scaled). A measurement shorter than every duration of `PQ_FACTORS` (gapless values) is not valid and gives no voltages ([Power-quality measurements](../user-guide/pq.md)) |
 | `Z_F`, `LINE` | fault impedance and fault location of the forecast (`LINE = None`: at the busbar) |
 | `MARGIN_A`, `FUNDAMENTAL_A`, `LIMITS` | margin per order, fundamental residual current, limits – defined by you; groundfault contains none |
 
@@ -220,6 +221,7 @@ f.IH, f.IRES              # totals
 | per phase | `{"L1": …, "L2": …, "L3": …}` – per order and time step the largest current of the phases |
 | line-to-line | `reference="LL"`: divided by √3; the orders of the zero sequence keep only the source that arises with the fault |
 | percent | `percent_of=U_LE`: the voltages are given in % of `U_LE` |
+| PQ measurement | `pq.assess(pq.read(files), factor=k).voltages()` (quantile × factor per order) or `.series()` (10-min values per phase), with `reference="LE"`; the zero sequence and the even orders with `model.test_voltages(…)` instead ([Power-quality measurements](../user-guide/pq.md#the-forecast)) |
 
 A time series is forecast per time step; `f.quantile(0.95)` gives the quantile of the time series of I_H and I_RES
 and per order, `f.table(0.95)` the table at that quantile. The hints (`f.hints`) say where the forecast relies on a

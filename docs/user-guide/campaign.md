@@ -378,15 +378,18 @@ The harmonic level during the tests is a snapshot. To assess the residual curren
 
 * **per order** – `u95={5: …, 7: …}`: 95 % quantiles of the harmonic voltages in V, either as sequence voltages
   line-to-earth (`u95_reference="seq"`, the default in Python) or line-to-line as a power-quality instrument
-  reports them (`"LL"`, divided by √3; the default `U95_REFERENCE` of the notebook). k_m = safety factor × U95,m /
+  reports them (`"LL"`, divided by √3; the default `U95_REFERENCE` of the notebook). Every order of the positive or
+  negative sequence (5, 7, 11, 13, 17 …) – of the model and of the remainder – gets k_m = safety factor × U95,m /
   level of the order during the tests;
 * **flat** – `thd95_percent`: 95 % quantile of the line-to-line THD in %, referred to the THD of the test series
-  (`thd_measured_percent`); one factor safety factor × THD95/THD_measured for all orders;
+  (`thd_measured_percent`); one factor safety factor × THD95/THD_measured for these orders without their own value
+  (alone: for all of them);
 * `safety_factor` (`PQ_SAFETY_FACTOR`) – an additional factor of the user on all scaling factors (default 1: none).
 
-Orders that cannot be scaled per order – no `u95` value, no level (zero sequence without normalisation) or a
-zero-sequence order with line-to-line values – get the flat THD factor if `thd95_percent` is given as well, otherwise
-they stay unscaled (with a hint). The remainder I_rest is scaled with the largest factor.
+The orders of the zero sequence (3, 9, 15 …) – the zero sequence arises in the earth fault – and the even orders stay
+as measured; an order of the positive or negative sequence without its own value (no `u95` value, level below 1 V)
+gets the THD factor if `thd95_percent` is given, otherwise it stays as measured (with a hint). `r["table"]` gives the
+result per order ([Scaling to the 95 % quantile](../methods/equivalent-source.md#scaling-to-the-95-quantile)).
 
 ```python
 k_s = 1.2                                                                 # illustrative value – define your own
@@ -404,22 +407,64 @@ metrics = pd.concat([results[n].table("voltage_metrics") for n in substation])
 thd_series = metrics[metrics["interval"] != "fault"][["UTHD12_pct", "UTHD23_pct", "UTHD31_pct"]].max(axis=1).mean()
 r = equivalent_source.ires_at_impedance(series, 2.5, u95=u95, u95_reference="LL", thd95_percent=3.0,
                                         thd_measured_percent=thd_series, safety_factor=k_s)
-print("THD of the series %.2f %% → factor of the 3rd harmonic %.3f, I_RES scaled %.2f A"
-      % (thd_series, r["factors"][3], r["IRES_scaled"]))
+print("THD of the series %.2f %% → the 3rd harmonic (zero sequence) %s, I_RES scaled %.2f A"
+      % (thd_series, r["rules"][3], r["IRES_scaled"]))
+print(r["table"].query("order <= 13")[["order", "category", "part", "I_A", "factor", "rule", "I_scaled_A"]]
+      .round(3).to_string(index=False))
 ```
 
 ```text
 {5: 476, 7: 200, 11: 85, 13: 69}
 {3: 1.0, 5: 1.499, 7: 1.26, 11: 1.681, 13: 1.911}
 I_H scaled 48.13 A → I_RES scaled 57.80 A
-['Scaling per order not possible for [3] (no U95 value, no level – e.g. zero sequence without normalization – or zero sequence with line-to-line values): unscaled (factor 1) – specify thd95_percent as well if needed']
-THD of the series 2.20 % → factor of the 3rd harmonic 1.637, I_RES scaled 57.92 A
+['Orders [17, 19, 23, 25] without their own value (no U95 value or no level of at least 1 V in the tests): as measured (factor 1) – give thd95_percent as well if needed', 'Orders of the zero sequence [3, 9, 15, 21] as measured (not scaled) – the zero sequence arises in the earth fault and does not follow the voltage of undisturbed operation.']
+THD of the series 2.20 % → the 3rd harmonic (zero sequence) as measured, I_RES scaled 57.80 A
+ order category      part    I_A  factor        rule  I_scaled_A
+     2     even remainder  0.002   1.000 as measured       0.002
+     3     zero     model  2.877   1.000 as measured       2.877
+     4     even remainder  0.002   1.000 as measured       0.002
+     5  pos_neg     model 29.597   1.499 own voltage      44.370
+     6     even remainder  0.001   1.000 as measured       0.001
+     7  pos_neg     model 10.864   1.260 own voltage      13.687
+     8     even remainder  0.002   1.000 as measured       0.002
+     9     zero remainder  0.002   1.000 as measured       0.002
+    10     even remainder  0.000   1.000 as measured       0.000
+    11  pos_neg     model  6.410   1.681 own voltage      10.779
+    12     even remainder  0.001   1.000 as measured       0.001
+    13  pos_neg     model  3.123   1.911 own voltage       5.969
 ```
 
 The notebook does the same with `U95`, `U95_REFERENCE`, `THD95_PERCENT` and `PQ_SAFETY_FACTOR`: `U95` alone scales
-per order, `THD95_PERCENT` alone all orders with one factor, and both together combine as in the second example. The
-THD of the series is the mean over the pre- and post-fault intervals of the largest line-to-line THD of the
-substation tests ([Notebooks](notebooks.md#the-campaign-notebook)).
+per order, `THD95_PERCENT` alone the orders of the positive or negative sequence with one factor, and both together
+combine as in the second example; the table per order is shown below the result. The THD of the series is the mean
+over the pre- and post-fault intervals of the largest line-to-line THD of the substation tests
+([Notebooks](notebooks.md#the-campaign-notebook)).
+
+With the export of a PQ instrument, [`groundfault.pq`](pq.md) provides all of these values: the quantiles per order
+(line-to-earth, the largest phase per 10-min interval, `u95_reference="seq"`), the THD quantile and your factor. The
+demo campaign contains such an export:
+
+```python
+from groundfault import pq
+
+a = pq.assess(pq.read(os.path.join(folder, d["pq"]["file"])), factor=k_s)
+scaling = a.scaling(thd_measured_percent=thd_series)
+r = equivalent_source.ires_at_impedance(measured, 2.5, **scaling)
+print({k: round(v, 3) if isinstance(v, float) else v for k, v in scaling.items() if k != "u95"})
+print({m: round(k, 3) for m, k in r["factors"].items()})
+print("I_H scaled %.2f A → I_RES scaled %.2f A (rest %.3f A from %s)"
+      % (r["IH_scaled"], r["IRES_scaled"], r["IH_rest_scaled"], r["rest_test"]))
+```
+
+```text
+{'u95_reference': 'seq', 'safety_factor': 1.2, 'thd95_percent': 2.691, 'thd_measured_percent': 2.199}
+{3: 1.0, 5: 1.584, 7: 1.584, 11: 1.583, 13: 1.583}
+I_H scaled 51.28 A → I_RES scaled 60.46 A (rest 0.013 A from M1 (SUB 2.5 Ω))
+```
+
+With `PQ_FILES` the campaign notebook replaces `U95`, `U95_REFERENCE`, `THD95_PERCENT` and `PQ_SAFETY_FACTOR` this
+way, shows the tests in the distribution of the PQ measurement and compares the result per order with the quantile of
+the time series I_RES(t) and the THD factor ([Power-quality measurements](pq.md)).
 
 ### Fault behind a line
 

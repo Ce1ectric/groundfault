@@ -27,9 +27,10 @@ The evaluation proceeds in six steps:
 5. **Checks** – pairwise solution of every two measurements, residuals, jackknife, Monte Carlo uncertainty,
    condition number, interpolation or extrapolation.
 6. **Residual current** – I_RES(Z_E) = √(I_G² + Σ|U_q,n·k_n/(Z_q,n + Z_E)|² + I_rest²) with the scaling k_n to
-   the 95 % quantile of the harmonic voltage. I_rest = harmonic content not covered by the two-terminal
-   equivalents (measured I_H minus the fitted orders, largest value of the series – conservative). Extension:
-   fault behind a line (Z_1L, Z_0L).
+   the 95 % quantile of the harmonic voltage: an order of the positive or negative sequence with its own voltage
+   (otherwise with the THD), the zero sequence and the even orders as measured. I_rest = harmonic content not covered
+   by the two-terminal equivalents (measured I_H minus the fitted orders, largest value of the series –
+   conservative), scaled with the same rules per order. Extension: fault behind a line (Z_1L, Z_0L).
 
 **Measured source** ([`measured_source`][groundfault.equivalent_source.measured_source]): instead of estimating U_q
 from the currents, U_q is taken as measured – the pre-fault voltage of the faulted phase – and Z_q = U_q/I_k − Z_k
@@ -50,6 +51,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, 
 import numpy as np
 import pandas as pd
 
+from . import formulas as fml
 from . import i18n
 from .i18n import tr
 from .legacy import RESULT_FORMAT, LEGACY_RESULT_FORMAT, check_option, is_legacy_result, translate_result
@@ -62,8 +64,8 @@ except Exception:  # pragma: no cover
 
 __all__ = ["SourceMeasurement", "SourceFit", "SourceSeries", "load_measurement", "load_series",
            "natural_sequence", "phase_factor", "fit_equation_error", "fit_output_error", "fit_rq0",
-           "fit_equivalent_source", "measured_source", "compare_sources", "ires_at_impedance", "ires_over_line",
-           "monte_carlo", "SEQUENCES", "SEQUENCE_LEGACY", "THEVENIN_TOLERANCE"]
+           "fit_equivalent_source", "measured_source", "compare_sources", "ires_at_impedance", "ires_over_time",
+           "ires_over_line", "monte_carlo", "SEQUENCES", "SEQUENCE_LEGACY", "THEVENIN_TOLERANCE"]
 
 SEQUENCES = ("pos", "neg", "zero")
 """Sequence codes: positive, negative and zero sequence."""
@@ -256,16 +258,46 @@ i18n.register({
         "en": "The THD scaling needs the THD of the measurement series (thd_measured_percent).",
         "de": "Für die THD-Skalierung wird der THD der Messreihe benötigt (thd_measured_percent)."},
     "equivalent_source.scaling_not_possible": {
-        "en": "Scaling per order not possible for {orders} (no U95 value, no level – e.g. zero sequence without "
-              "normalization – or zero sequence with line-to-line values): {fallback}",
-        "de": "Skalierung je Ordnung nicht möglich für {orders} (kein U95-Wert, kein Pegel – z. B. Nullsystem "
-              "ohne Normierung – oder Nullsystem bei Leiter-Leiter-Werten): {fallback}"},
+        "en": "Orders {orders} without their own value (no U95 value or no level of at least {min_level:g} V in the "
+              "tests): {fallback}",
+        "de": "Ordnungen {orders} ohne eigenen Wert (kein U95-Wert oder kein Pegel von mindestens {min_level:g} V in "
+              "den Versuchen): {fallback}"},
     "equivalent_source.scaling_thd_factor": {
         "en": "flat THD factor {factor:.3g} used",
         "de": "pauschaler THD-Faktor {factor:.3g} verwendet"},
+    "equivalent_source.scaling_thd_per_step": {
+        "en": "the THD factor of every time step (THD(t)/THD of the tests × safety factor) used",
+        "de": "der THD-Faktor jedes Zeitschritts (THD(t)/THD der Versuche × Sicherheitsfaktor) verwendet"},
     "equivalent_source.scaling_unscaled": {
-        "en": "unscaled (factor 1) – specify thd95_percent as well if needed",
-        "de": "unskaliert (Faktor 1) – ggf. thd95_percent zusätzlich angeben"},
+        "en": "as measured (factor 1) – give thd95_percent as well if needed",
+        "de": "wie gemessen (Faktor 1) – ggf. thd95_percent zusätzlich angeben"},
+    "equivalent_source.scaling_zero_measured": {
+        "en": "Orders of the zero sequence {orders} as measured (not scaled) – the zero sequence arises in the earth "
+              "fault and does not follow the voltage of undisturbed operation.",
+        "de": "Ordnungen des Nullsystems {orders} wie gemessen (nicht skaliert) – das Nullsystem entsteht im "
+              "Erdschluss und folgt nicht der Spannung des ungestörten Betriebs."},
+    "equivalent_source.scaling_other": {
+        "en": "{current:.2f} A of the remainder are not assigned to an order (e.g. orders without a phasor in the "
+              "result file) – as measured.",
+        "de": "{current:.2f} A des Rests sind keiner Ordnung zugeordnet (z. B. Ordnungen ohne Zeiger in der "
+              "Ergebnisdatei) – wie gemessen."},
+    "equivalent_source.even_orders": {
+        "en": "Even orders {orders}: {current:.2f} A ({share:.0f} % of the harmonic content; largest order {order} with "
+              "{largest:.2f} A) – included as measured, not scaled. Even harmonics are unusual for the voltage of a "
+              "network: check for another cause (e.g. a DC component or saturation at the fault inception, current "
+              "clamps).",
+        "de": "Gerade Ordnungen {orders}: {current:.2f} A ({share:.0f} % des Oberschwingungsanteils; größte Ordnung "
+              "{order} mit {largest:.2f} A) – wie gemessen enthalten, nicht skaliert. Gerade Harmonische sind für die "
+              "Spannung eines Netzes ungewöhnlich: auf eine andere Ursache prüfen (z. B. Gleichanteil oder Sättigung beim "
+              "Fehlereintritt, Stromzangen)."},
+    "equivalent_source.voltages_no_orders": {
+        "en": "ires_over_time: no column of the voltages matches an order of the series ({orders}).",
+        "de": "ires_over_time: keine Spalte der Spannungen passt zu einer Ordnung der Reihe ({orders})."},
+    "equivalent_source.voltages_missing": {
+        "en": "ires_over_time: {n} of {total} time steps lack the voltage of an order of the model – they are "
+              "left out (NaN).",
+        "de": "ires_over_time: {n} von {total} Zeitschritten fehlt die Spannung einer Ordnung des Modells – nicht "
+              "verwendet (NaN)."},
 })
 
 
@@ -1569,7 +1601,7 @@ def fit_equivalent_source(measurements: Sequence[SourceMeasurement], orders: Uni
         hints.append(tr("equivalent_source.exactly_determined", n=len(measurements)))
     return SourceSeries(list(measurements), fits, IG,
                         dict(normalization=normalization, reference=reference, sequence=sequence, method=method,
-                             rq_non_negative=rq_non_negative, min_current_A=min_current_A,
+                             rq_non_negative=rq_non_negative, min_current_A=min_current_A, min_level_V=min_level_V,
                              thevenin_tolerance=(tol_mag, tol_deg), source="fitted"), hints)
 
 
@@ -1736,8 +1768,8 @@ def _measured_only(measurements: Sequence[SourceMeasurement], impedance: str, or
                  if used else tr("equivalent_source.measured_none"))
     IG = np.array([abs(mm.I.get(1, np.nan)) for mm in measurements])
     settings = dict(normalization="complex", reference=reference, sequence="natural", method="measured",
-                    rq_non_negative=rq, min_current_A=min_current_A, thevenin_tolerance=THEVENIN_TOLERANCE,
-                    source="measured", impedance=impedance)
+                    rq_non_negative=rq, min_current_A=min_current_A, min_level_V=min_level_V,
+                    thevenin_tolerance=THEVENIN_TOLERANCE, source="measured", impedance=impedance)
     return SourceSeries(list(measurements), fits, IG, settings, hints)
 
 
@@ -1793,42 +1825,52 @@ def compare_sources(measured: SourceSeries, fitted: SourceSeries, Z_E: Union[com
 
 
 # -------------------------------------------------------------------------------- residual current
+# rules of the scaling per order (column ``rule`` of the table of ires_at_impedance, see formulas.order_scaling)
+_RULE_OWN, _RULE_THD, _RULE_MEASURED, _RULE_NONE = fml.SCALING_RULES
+#: share of the harmonic content from which the even orders get a hint (diagnostic, not an assessment value)
+_EVEN_HINT_SHARE = 0.05
+
+
+def _u95_of(u95: Optional[Mapping[int, float]], m: int) -> Optional[float]:
+    """The quantile of order m from ``u95`` (None if missing or not a finite number)."""
+    if not u95:
+        return None
+    u = u95.get(m)
+    try:
+        u = float(u) if u is not None else None
+    except (TypeError, ValueError):
+        return None
+    return u if u is not None and np.isfinite(u) else None
+
+
+def _order_factor(m: int, u: Optional[float], level: float, f_thd: Optional[float], safety_factor: float, ll: bool,
+                  min_level: float) -> Tuple[float, str]:
+    """Scaling factor and rule of one order ([`groundfault.formulas.order_scaling`])."""
+    return fml.order_scaling(m, u, level, f_thd=f_thd, safety_factor=safety_factor, from_ll=ll, min_level=min_level)
+
+
 def _scaling(series: SourceSeries, u95: Optional[Mapping[int, float]], u95_reference: str,
              thd95_percent: Optional[float], thd_measured_percent: Optional[float],
-             safety_factor: float, hints: Optional[List[str]] = None) -> Dict[int, float]:
-    """Scaling factors to the 95 % quantile per order.
-
-    Orders that cannot be scaled individually (no level, zero sequence with line-to-line values, no U95 value) get
-    the flat THD factor if given, otherwise 1 (with a hint)."""
-    hints = hints if hints is not None else []
+             safety_factor: float) -> Tuple[Dict[int, float], Dict[int, str], Optional[float], bool, bool]:
+    """Factors and rules of the orders of the model, the flat THD factor (None without THD values), whether the
+    quantiles are line-to-line and whether anything is scaled at all."""
     u95_reference = {"ll": "LL", "seq": "seq"}.get(str(u95_reference).lower(), u95_reference)
     check_option("u95_reference", u95_reference, ("seq", "LL"))
-    k = {m: 1.0 for m in series.fits}
     f_thd = None
     if thd95_percent is not None:
         if not thd_measured_percent or thd_measured_percent <= 0:
             raise ValueError(tr("equivalent_source.thd_measured_missing"))
         f_thd = safety_factor * thd95_percent / thd_measured_percent
-    if u95:
-        without = []
-        for m, F in series.fits.items():
-            u = u95.get(m)
-            ll = u95_reference == "LL"
-            if (u is None or not (np.isfinite(F.level_reference) and F.level_reference > 0)
-                    or (ll and F.sequence == "zero")):
-                without.append(m)
-                if f_thd is not None:
-                    k[m] = f_thd
-                continue
-            u_seq = u / math.sqrt(3) if ll else u
-            k[m] = safety_factor * u_seq / F.level_reference
-        if without:
-            fallback = (tr("equivalent_source.scaling_thd_factor", factor=f_thd) if f_thd is not None
-                        else tr("equivalent_source.scaling_unscaled"))
-            hints.append(tr("equivalent_source.scaling_not_possible", orders=without, fallback=fallback))
-    elif f_thd is not None:
-        k = {m: f_thd for m in series.fits}
-    return k
+    ll = u95_reference == "LL"
+    scaled = bool(u95) or f_thd is not None
+    min_level = float(series.settings.get("min_level_V", 1.0))
+    k, rules = {}, {}
+    for m, F in series.fits.items():
+        if scaled:
+            k[m], rules[m] = _order_factor(m, _u95_of(u95, m), F.level_reference, f_thd, safety_factor, ll, min_level)
+        else:
+            k[m], rules[m] = 1.0, _RULE_MEASURED
+    return k, rules, f_thd, ll, scaled
 
 
 def _ig_choice(series: SourceSeries, IG: Union[str, float]) -> float:
@@ -1848,6 +1890,128 @@ def _rest(series: SourceSeries, rest: bool) -> float:
     return float(r.max()) if r.size else 0.0
 
 
+def _rest_terms(series: SourceSeries) -> List[dict]:
+    """The remainder of every test split into its orders: ``name``, ``rest`` (total in A), ``terms`` [(m, |I_m|,
+    level of the natural sequence of m in V)] of the orders with a phasor outside the model, and ``other`` (content
+    not assigned to an order, e.g. orders without a phasor in the result file)."""
+    fitted = set(series.fits)
+    reference = series.settings.get("reference", "mean")
+    reference = reference if reference in _LEVELS else "mean"
+    out = []
+    for mm, r in zip(series.measurements, series.ih_rest()):
+        terms, s2 = [], 0.0
+        for m in sorted(mm.I):
+            if m < 2 or m in fitted:
+                continue
+            i = float(abs(mm.I[m]))
+            level = float(abs(mm.level(m, natural_sequence(m), reference, complex_=False)))
+            terms.append((int(m), i, level))
+            s2 += i * i
+        other = math.sqrt(max(r * r - s2, 0.0)) if np.isfinite(r) else float("nan")
+        out.append(dict(name=mm.name, rest=float(r), terms=terms, other=other))
+    return out
+
+
+def _rest_largest(terms: Sequence[dict], u95: Optional[Mapping[int, float]], ll: bool, f_thd: Optional[float],
+                  safety_factor: float, min_level: float, scaled: bool) -> Optional[dict]:
+    """The remainder of the test with the largest (scaled) remainder: ``total`` in A, ``index``, ``name``, ``rows``
+    [(m, |I_m|, level, factor, rule)] and ``other``; None if no test has a remainder."""
+    best = None
+    for j, t in enumerate(terms):
+        if not np.isfinite(t["rest"]):
+            continue
+        rows, s2 = [], 0.0
+        for m, i, level in t["terms"]:
+            k, rule = (_order_factor(m, _u95_of(u95, m), level, f_thd, safety_factor, ll, min_level) if scaled
+                       else (1.0, _RULE_MEASURED))
+            rows.append((m, i, level, k, rule))
+            s2 += (k * i) ** 2
+        other = t["other"] if np.isfinite(t["other"]) else 0.0
+        total = math.sqrt(s2 + other ** 2)
+        if best is None or total > best["total"]:
+            best = dict(total=total, index=j, name=t["name"], rows=rows, other=other)
+    return best
+
+
+def _ires(series: SourceSeries, Z_E: complex, IG: Union[str, float], u95: Optional[Mapping[int, float]],
+          u95_reference: str, thd95_percent: Optional[float], thd_measured_percent: Optional[float],
+          safety_factor: float, rest: bool, uncertainty_I: float, terms: Optional[List[dict]] = None,
+          table: bool = True, thd_text: Optional[str] = None) -> Dict[str, object]:
+    """Residual current at Z_E with the scaling rules (see ires_at_impedance); ``terms`` = precomputed
+    ``_rest_terms`` (time series), ``table`` = build the table and the hints, ``thd_text`` = text of the THD
+    fallback in the hint (time series: a factor per time step)."""
+    ig = _ig_choice(series, IG)
+    k, rules, f_thd, ll, scaled = _scaling(series, u95, u95_reference, thd95_percent, thd_measured_percent,
+                                           safety_factor)
+    min_level = float(series.settings.get("min_level_V", 1.0))
+    parts, parts_s = {}, {}
+    for m, F in sorted(series.fits.items()):
+        parts[m] = F.current(Z_E)
+        parts_s[m] = F.current(Z_E, k[m])
+    r = _rest(series, rest)
+    best = None
+    if rest:
+        best = _rest_largest(terms if terms is not None else _rest_terms(series), u95, ll, f_thd, safety_factor,
+                             min_level, scaled)
+    r_s = (best["total"] if best is not None else r) if scaled else r
+    IH = math.sqrt(sum(v * v for v in parts.values()) + r * r)
+    IHs = math.sqrt(sum(v * v for v in parts_s.values()) + r_s * r_s)
+    IRES = math.sqrt(ig ** 2 + IH ** 2)
+    IRESs = math.sqrt(ig ** 2 + IHs ** 2)
+    zmin, zmax = series.Z_range
+    out = dict(Z_E=Z_E, IG=ig, IH=IH, IRES=IRES, parts=parts, factors=k, rules=rules, IH_rest=r, IH_rest_scaled=r_s,
+               IH_scaled=IHs, IRES_scaled=IRESs,
+               IRES_assessed=IRES * (1 + uncertainty_I), IRES_scaled_assessed=IRESs * (1 + uncertainty_I),
+               interpolation=bool(zmin - 1e-9 <= abs(Z_E) <= zmax + 1e-9))
+    if not table:
+        return out
+    # ---- the result per order: the orders of the model at Z_E and the remainder of the test with the largest one
+    f1 = float(np.mean([mm.f1 for mm in series.measurements])) if series.measurements else 50.0
+    rows = []
+    for m, F in sorted(series.fits.items()):
+        rows.append(dict(order=m, f_Hz=F.f_Hz, category=fml.harmonic_category(m), part="model", test="",
+                         I_A=parts[m], U_level_V=F.level_reference,
+                         U95_V=_u95_of(u95, m) if _u95_of(u95, m) is not None else np.nan, factor=k[m],
+                         rule=rules[m], I_scaled_A=parts_s[m]))
+    if best is not None:
+        for m, i, level, kk, rule in best["rows"]:
+            rows.append(dict(order=m, f_Hz=m * f1, category=fml.harmonic_category(m), part="remainder",
+                             test=best["name"], I_A=i, U_level_V=level,
+                             U95_V=_u95_of(u95, m) if _u95_of(u95, m) is not None else np.nan, factor=kk, rule=rule,
+                             I_scaled_A=kk * i))
+    columns = ["order", "f_Hz", "category", "part", "test", "I_A", "U_level_V", "U95_V", "factor", "rule",
+               "I_scaled_A"]
+    tab = pd.DataFrame(rows, columns=columns).sort_values(["order", "part"], kind="stable").reset_index(drop=True)
+    other = best["other"] if best is not None else 0.0
+    tab.attrs["other_A"] = other
+    tab.attrs["test"] = best["name"] if best is not None else ""
+    out["table"] = tab
+    out["rest_test"] = best["name"] if best is not None else ""
+    quad = lambda cat: float(math.sqrt(float((tab.loc[tab["category"] == cat, "I_scaled_A"] ** 2).sum())))
+    out.update(IH_zero=quad("zero"), IH_even=quad("even"), IH_other=float(other))
+    hints: List[str] = []
+    if scaled:
+        without = sorted({int(m) for m, rl in zip(tab["order"], tab["rule"]) if rl in (_RULE_THD, _RULE_NONE)})
+        if without:
+            fallback = (tr("equivalent_source.scaling_unscaled") if f_thd is None else
+                        thd_text or tr("equivalent_source.scaling_thd_factor", factor=f_thd))
+            hints.append(tr("equivalent_source.scaling_not_possible", orders=without, min_level=min_level,
+                            fallback=fallback))
+        zero = sorted({int(m) for m in tab.loc[tab["category"] == "zero", "order"]})
+        if zero:
+            hints.append(tr("equivalent_source.scaling_zero_measured", orders=zero))
+        if other > 0.01 * IH:                     # content without an order: a hint from 1 % of the harmonic content
+            hints.append(tr("equivalent_source.scaling_other", current=other))
+    even = tab[tab["category"] == "even"]
+    if len(even) and IH > 0 and out["IH_even"] >= _EVEN_HINT_SHARE * IH:
+        top = even.loc[even["I_A"].idxmax()]
+        hints.append(tr("equivalent_source.even_orders", orders=sorted(int(m) for m in even["order"]),
+                        current=out["IH_even"], share=100 * out["IH_even"] / IH, order=int(top["order"]),
+                        largest=float(top["I_A"])))
+    out["hints"] = hints
+    return out
+
+
 def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] = "max",
                       u95: Optional[Mapping[int, float]] = None, u95_reference: str = "seq",
                       thd95_percent: Optional[float] = None, thd_measured_percent: Optional[float] = None,
@@ -1857,10 +2021,25 @@ def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] 
 
     I_RES(Z_E) = √(I_G² + Σ_n |k_n·U_q,n/(Z_q,n + Z_E)|² + I_rest²)
 
+    Scaling to a power-quality quantile (``u95`` and/or ``thd95_percent``), per order
+    ([`groundfault.formulas.harmonic_category`][groundfault.formulas.harmonic_category]):
+
+    * orders of the positive or negative sequence (5, 7, 11, 13, 17, 19 …): with their own voltage,
+      k_m = safety_factor·U_95,m/U_level,m (U_level,m = level of the natural sequence of m in the tests); an order
+      without its own value (no ``u95`` value, no level of at least ``settings["min_level_V"]``) with the flat THD
+      factor safety_factor·THD_95/THD_test, without a THD as measured (with a hint);
+    * orders of the zero sequence (3, 9, 15 …): as measured – the zero sequence arises in the earth fault;
+    * even orders (2, 4, 6 …): as measured, listed separately (a hint if they carry 5 % of the harmonic content or
+      more – atypical, they may point to another cause);
+    * the remainder I_rest outside the orders of the model: the same rules for each of its orders, with the levels of
+      the test it comes from (the test with the largest scaled remainder); content not assigned to an order as
+      measured.
+
     Parameters
     ----------
     series : SourceSeries
-        Result of [`fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source].
+        Result of [`fit_equivalent_source`][groundfault.equivalent_source.fit_equivalent_source] or
+        [`measured_source`][groundfault.equivalent_source.measured_source].
     Z_E : complex
         Earthing impedance in Ω.
     IG : {"max", "median"} or float, optional
@@ -1870,16 +2049,16 @@ def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] 
     u95 : mapping of int to float, optional
         95 % quantile of the harmonic voltage per order in V for the scaling per order.
     u95_reference : {"seq", "LL"}, optional
-        Reference of ``u95``: ``"seq"`` = sequence voltage line-to-earth, ``"LL"`` = line-to-line (divided by √3;
-        zero-sequence orders cannot be scaled with it).
+        Reference of ``u95``: ``"seq"`` = sequence voltage line-to-earth (e.g. the largest phase of a PQ
+        measurement), ``"LL"`` = line-to-line (divided by √3).
     thd95_percent, thd_measured_percent : float, optional
-        Flat scaling with the THD: 95 % quantile of the THD and THD of the measurement series in %. Used for all
-        orders without ``u95`` and for the orders that cannot be scaled individually.
+        Flat factor with the THD: 95 % quantile of the THD and THD of the measurement series in % – for the orders of
+        the positive or negative sequence without their own value (alone: for all of them).
     safety_factor : float, optional
         Additional factor applied to the scaling factors (1 = none).
     rest : bool, optional
         Add the harmonic content not covered by the two-terminal equivalents (largest value of the series,
-        independent of Z_E – conservative) quadratically; when scaling, with the largest factor.
+        independent of Z_E – conservative) quadratically.
     uncertainty_I : float, optional
         Measurement-uncertainty margin m_I of currents for the assessment values ``IRES_assessed`` =
         I_RES·(1 + m_I), defined by the user; default 0 (no margin).
@@ -1887,39 +2066,112 @@ def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] 
     Returns
     -------
     dict
-        ``Z_E``, ``IG``, ``IH``, ``IRES``, ``parts`` ({order: current in A}, unscaled), ``factors``
-        ({order: scaling factor}), ``IH_rest``, ``IH_scaled``, ``IRES_scaled``, ``IRES_assessed``,
-        ``IRES_scaled_assessed``, ``interpolation`` (True if |Z_E| lies within the range of the additional
-        impedances) and ``hints``.
+        ``Z_E``, ``IG``, ``IH``, ``IRES``, ``parts`` ({order: current in A}, unscaled), ``factors`` ({order: scaling
+        factor}), ``rules`` ({order: rule}), ``IH_rest``, ``IH_rest_scaled``, ``IH_scaled``, ``IRES_scaled``,
+        ``IRES_assessed``, ``IRES_scaled_assessed``, ``IH_zero``, ``IH_even`` and ``IH_other`` (not scaled parts of
+        the scaled result), ``rest_test`` (test of the remainder), ``table`` (the result per order: ``order``,
+        ``f_Hz``, ``category``, ``part`` = ``"model"``/``"remainder"``, ``test``, ``I_A``, ``U_level_V``, ``U95_V``,
+        ``factor``, ``rule`` = ``"own voltage"``/``"THD"``/``"as measured"``/``"no information"``, ``I_scaled_A``),
+        ``interpolation`` (True if |Z_E| lies within the range of the additional impedances) and ``hints``.
 
     Raises
     ------
     ValueError
-        If ``thd95_percent`` is given without a positive ``thd_measured_percent``.
+        If ``thd95_percent`` is given without a positive ``thd_measured_percent``, or for an unknown ``IG`` or
+        ``u95_reference``.
     """
-    ig = _ig_choice(series, IG)
-    hints: List[str] = []
-    k = _scaling(series, u95, u95_reference, thd95_percent, thd_measured_percent, safety_factor, hints)
-    parts, parts_s = {}, {}
-    for m, F in sorted(series.fits.items()):
-        parts[m] = F.current(Z_E)
-        parts_s[m] = F.current(Z_E, k[m])
-    r = _rest(series, rest)
-    r_s = r * max(k.values()) if k else r
-    IH = math.sqrt(sum(v * v for v in parts.values()) + r * r)
-    IHs = math.sqrt(sum(v * v for v in parts_s.values()) + r_s * r_s)
-    zmin, zmax = series.Z_range
-    IRES = math.sqrt(ig ** 2 + IH ** 2)
-    IRESs = math.sqrt(ig ** 2 + IHs ** 2)
-    return dict(Z_E=Z_E, IG=ig, IH=IH, IRES=IRES, parts=parts, factors=k, IH_rest=r,
-                IH_scaled=IHs, IRES_scaled=IRESs,
-                IRES_assessed=IRES * (1 + uncertainty_I), IRES_scaled_assessed=IRESs * (1 + uncertainty_I),
-                interpolation=bool(zmin - 1e-9 <= abs(Z_E) <= zmax + 1e-9), hints=hints)
+    return _ires(series, Z_E, IG, u95, u95_reference, thd95_percent, thd_measured_percent, safety_factor, rest,
+                 uncertainty_I)
+
+
+def ires_over_time(series: SourceSeries, Z_E: complex, voltages: pd.DataFrame, IG: Union[str, float] = "max",
+                   u95_reference: str = "seq", thd_percent: Optional[pd.Series] = None,
+                   thd_measured_percent: Optional[float] = None, safety_factor: float = 1.0, rest: bool = True,
+                   uncertainty_I: float = 0.0) -> pd.DataFrame:
+    """Residual current at Z_E for every time step of a series of harmonic voltages (e.g. the 10-min values of a
+    power-quality measurement).
+
+    Per time step t the harmonic voltages U_m(t) take the place of ``u95`` in
+    [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance] (and ``thd_percent(t)`` that of
+    ``thd95_percent``), with the same rules per order. A quantile of the result is the quantile of the residual current
+    itself – smaller than the residual current from the quantiles of the voltages when the orders do not reach their
+    high values at the same time.
+
+    Parameters
+    ----------
+    series : SourceSeries
+        Equivalent sources (fitted or measured).
+    Z_E : complex
+        Earthing impedance in Ω.
+    voltages : pandas.DataFrame
+        One row per time step, one column per order (int) – harmonic voltage in V with the reference
+        ``u95_reference`` (e.g. the largest phase per interval, line-to-earth).
+    IG, u95_reference, safety_factor, rest, uncertainty_I
+        As in [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance].
+    thd_percent : pandas.Series, optional
+        THD per time step in % (same index) for the flat factor of the orders without their own voltage.
+    thd_measured_percent : float, optional
+        THD of the series of fault tests in % (needed with ``thd_percent``).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Index of ``voltages``; columns ``IG``, ``IH``, ``IRES``, ``IRES_assessed``, ``IH_rest`` and ``I_<m>_A`` per
+        order of the series (scaled). A time step without the voltage of an order of the model that is scaled with
+        its own voltage is NaN (it does not enter a quantile). ``attrs["hints"]`` holds the hints (once each).
+
+    Raises
+    ------
+    ValueError
+        If no column of ``voltages`` is an order of the series, or as in ``ires_at_impedance``.
+    """
+    cols = {}
+    for c in voltages.columns:
+        try:
+            cols[int(c)] = c
+        except (TypeError, ValueError):
+            continue
+    if not set(cols) & set(series.fits):
+        raise ValueError(tr("equivalent_source.voltages_no_orders", orders=sorted(series.fits)))
+    rows, hints = [], []
+    values = voltages[[cols[m] for m in sorted(cols)]].to_numpy(float)
+    orders = sorted(cols)
+    thd = thd_percent.reindex(voltages.index).to_numpy(float) if thd_percent is not None else None
+    # a time step without the voltage of an order of the model scaled with its own voltage is left out (not the
+    # unscaled test level)
+    needed = [j for j, m in enumerate(orders) if m in series.fits and fml.harmonic_category(m) == "pos_neg"]
+    empty = dict(IG=np.nan, IH=np.nan, IRES=np.nan, IRES_assessed=np.nan, IH_rest=np.nan,
+                 **{"I_%d_A" % m: np.nan for m in sorted(series.fits)})
+    terms = _rest_terms(series)
+    n_missing, first = 0, True
+    for i, t in enumerate(voltages.index):
+        if needed and not np.all(np.isfinite(values[i, needed])):
+            n_missing += 1
+            rows.append(dict(empty))
+            continue
+        u = {m: float(values[i, j]) for j, m in enumerate(orders) if np.isfinite(values[i, j])}
+        kw = dict(thd95_percent=float(thd[i]), thd_measured_percent=thd_measured_percent) \
+            if thd is not None and np.isfinite(thd[i]) else dict(thd95_percent=None, thd_measured_percent=None)
+        r = _ires(series, Z_E, IG, u, u95_reference, kw["thd95_percent"], kw["thd_measured_percent"], safety_factor,
+                  rest, uncertainty_I, terms=terms, table=first, thd_text=tr("equivalent_source.scaling_thd_per_step"))
+        if first:                                  # the hints of the first time step (the rules are the same)
+            hints.extend(h for h in r["hints"] if h not in hints)
+            first = False
+        row = dict(IG=r["IG"], IH=r["IH_scaled"], IRES=r["IRES_scaled"], IRES_assessed=r["IRES_scaled_assessed"],
+                   IH_rest=r["IH_rest_scaled"])
+        row.update({"I_%d_A" % m: r["parts"][m] * r["factors"][m] for m in sorted(series.fits)})
+        rows.append(row)
+    if n_missing:
+        hints.append(tr("equivalent_source.voltages_missing", n=n_missing, total=len(voltages)))
+    out = pd.DataFrame(rows, index=voltages.index)
+    out.attrs["hints"] = hints
+    return out
 
 
 def ires_over_line(series: SourceSeries, Z_E: complex, Z1L: Union[complex, Callable[[int], complex]],
                    Z0L: Union[complex, Callable[[int], complex]], IG: Union[str, float] = "max",
-                   factors: Optional[Mapping[int, float]] = None, rest: bool = True) -> Dict[str, object]:
+                   factors: Optional[Mapping[int, float]] = None, rest: bool = True,
+                   rest_A: Optional[float] = None) -> Dict[str, object]:
     """Residual current for a fault behind a line (e.g. at a secondary substation).
 
     I_m = 3·k_m·U_q,m/(3·Z_q,m + Z_1L,m + Z_2L,m + Z_0L,m + 3·Z_E) with Z_2L = Z_1L.
@@ -1939,10 +2191,14 @@ def ires_over_line(series: SourceSeries, Z_E: complex, Z1L: Union[complex, Calla
     IG : {"max", "median"} or float, optional
         Fundamental component (see [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance]).
     factors : mapping of int to float, optional
-        Scaling factor k_m per order (default 1).
+        Scaling factor k_m per order (default 1), e.g. ``factors`` of
+        [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance].
     rest : bool, optional
         Add the harmonic content not covered by the two-terminal equivalents (independent of the line –
         conservative).
+    rest_A : float, optional
+        The remainder in A instead of the largest unscaled one of the series – e.g. ``IH_rest_scaled`` of
+        ``ires_at_impedance`` with the same scaling.
 
     Returns
     -------
@@ -1956,7 +2212,7 @@ def ires_over_line(series: SourceSeries, Z_E: complex, Z1L: Union[complex, Calla
         z0 = Z0L(m) if callable(Z0L) else complex(Z0L)
         k = (factors or {}).get(m, 1.0)
         parts[m] = float(abs(3 * k * F.Uq / (3 * F.Zq + 2 * z1 + z0 + 3 * Z_E)))
-    r = _rest(series, rest)                     # rest independent of the line (conservative)
+    r = (float(rest_A) if rest_A is not None else _rest(series, True)) if rest else 0.0   # independent of the line
     IH = math.sqrt(sum(v * v for v in parts.values()) + r * r)
     return dict(IG=ig, IH=IH, IRES=math.sqrt(ig ** 2 + IH ** 2), parts=parts, IH_rest=r)
 

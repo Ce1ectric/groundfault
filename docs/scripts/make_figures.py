@@ -22,7 +22,7 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 
 from groundfault import (Intervals, corrections, demo, detect_roles, earthing, equivalent_source, evaluate,  # noqa: E402
-                         i18n, open_recording, report)
+                         i18n, open_recording, pq, report)
 from groundfault.layout import ENGLISH  # noqa: E402
 
 
@@ -60,6 +60,13 @@ def main(argv=None):
     series = equivalent_source.fit_equivalent_source(equivalent_source.load_series(entries))
     save(report.source_fit(series, Z_E=2.5), "equivalent_source_fit")
     save(report.ires_over_ze(series, 10.0), "equivalent_source_ires_over_ze")    # no limits: the user defines them
+
+    # power-quality measurement of the demo busbar (synthetic export of the demo campaign), an invented factor 1.5
+    pqa = pq.assess(pq.read(os.path.join(camp, d["pq"]["file"])), factor=1.5)
+    levels = {"%g Ω" % z: pq.pre_fault_levels(results[z][0])[0][5] for z in (0.0, 2.5, 5.0)}
+    save(report.pq_series(pqa), "pq_series")
+    save(report.pq_duration(pqa, levels=levels), "pq_duration")
+    save(report.pq_profile(pqa), "pq_profile")
 
     # disturbed states: network change at 3.8 s (Iv +12 A, coil currents unchanged) and the active residual current
     # increase of the demo from 4.6 to 5.4 s, both inside the steady-state interval

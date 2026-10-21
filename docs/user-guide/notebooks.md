@@ -41,7 +41,7 @@ campaigns folder; in a folder without one (a new, empty work folder) the layout 
 line such as
 
 ```text
-groundfault 3.1.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
+groundfault 3.2.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
 ```
 
 One copy of the measurement notebook is enough for all recordings of a campaign: for the next recording change
@@ -118,6 +118,7 @@ skipped and the notebook prints a short note (ℹ) that names the variable.
 | `REFERENCE_CURRENT` | `None` | reference current of the reduction factor in A; `None` = the largest of `LIMITS`. Without both, the relevance is “–” |
 | `UNCERTAINTY_I`, `UNCERTAINTY_U` | `0.0` | measurement-uncertainty margins m_I and m_U as fractions (`Settings.uncertainty_I`, `uncertainty_U`): assessment value = measured value × (1 + m_I) for currents, × (1 − m_U) for voltages; `0.0` = no margin |
 | `PQ_SAFETY_FACTOR` | `1.0` | factor k_s on the 95 % quantile of a power-quality measurement (`Settings.pq_safety_factor`); `1.0` = no factor |
+| `PQ_FACTORS` | `None` | factor on the quantile by the duration of the power-quality measurement, `{minimum days: factor}` – the factor of the longest duration the measurement reaches ([Power-quality measurement](#power-quality-measurement)); `None` = `PQ_SAFETY_FACTOR` |
 | `R_TYPICAL` | `None` | range `(low, high)` of the reduction factor at 50 Hz that you expect, e.g. from your own experience; `None` = no classification |
 
 The values that become settings are stored in the result file; the campaign notebook takes U_Tp, F and the largest
@@ -131,7 +132,7 @@ U_Tp and F come from the block above.
 |---|---|---|
 | `T_win` | `0.200` | window length in s; the hop equals the window length. Change only for good reasons |
 | `harmonics` | `(1, 3, 5, 7)` | orders of the assessment quantities; the result file stores the orders 1 to 25 regardless (for the equivalent-source method) |
-| `u_thd95_percent` | `None` | 95 % quantile of the line-to-line THD of a power-quality measurement in %; adds the rows scaled to it to the assessment quantities (needs the voltages before or after the fault) |
+| `u_thd95_percent` | `None` | 95 % quantile of the line-to-line THD of a power-quality measurement in %; adds the rows scaled to it to the assessment quantities (needs the voltages before or after the fault). With `PQ_FILES` it comes from the measurement together with the quantiles per order `pq_u95` ([Power-quality measurement](#power-quality-measurement)) |
 | `correct_polarity` | `True` | if the active component Iw is negative (reversed clamp), rotate the current phasors by 180°. Set `False` only if the hint “Polarity decision uncertain” appears and the polarity of the clamp is known for sure |
 | `exclude_disturbances` | `True` | leave disturbed states inside `STEADY_STATE` – an active residual current increase, a network change – out of the max window, the statistics and the checks ([Disturbed states](evaluation.md#disturbed-states)); `False` only reports them |
 | `transformer_sign` | `None` | polarity of the transformer currents: `None` = from the angle of the upstream impedance during the fault (generator reference arrow system → reversed); `1` as measured; `-1` reversed ([Transformer node](../methods/transformer-node.md#polarity-of-the-current-transformers)) |
@@ -208,7 +209,7 @@ The campaign notebook works only with the **result files** of the measurement no
 | 1 · Configuration | enter the campaign and the list of measurements |
 | 2 · Load the results – overview and consistency | run all cells; check the overview, the consistency checks and the hints of the single measurements |
 | 3 · Equivalent-source method | check the two-terminal equivalents per order – fitted (Thevenin check) and with the measured source (single tests, comparison of both) – and the checks (substation measurements) |
-| 4 · Residual current at the earthing impedance and resistive approach | read I_RES at Z_E with the source of `SOURCE` and the other one for comparison (and the scaled value; needs `Z_E`) |
+| 4 · Residual current at the earthing impedance and resistive approach | with `PQ_FILES` first the power-quality measurement: quantiles, the tests in its distribution, three figures; then read I_RES at Z_E with the source of `SOURCE` and the other one for comparison (and the scaled value per order, as a time series and with the THD factor; needs `Z_E`) |
 | 5 · Stations | look at the stations per frequency and at the comparison with groundmeas |
 | 6 · Export the report tables and figures | find the exported files |
 | 7 · groundmeas | read the dry run; enter all measurements on request |
@@ -262,15 +263,18 @@ MEASUREMENTS = [
 
 | Variable | Default | Meaning – when to change |
 |---|---|---|
-| `U95` | `None` | 95 % quantiles of the harmonic voltages per order in V, e.g. `{5: U_5, 7: U_7}` – every order is scaled with its own value |
+| `U95` | `None` | 95 % quantiles of the harmonic voltages per order in V, e.g. `{5: U_5, 7: U_7}` – every order of the positive or negative sequence is scaled with its own value |
 | `U95_REFERENCE` | `"LL"` | `"LL"`: the values are line-to-line (power-quality instrument, divided by √3); `"seq"`: sequence voltage (line-to-earth) |
-| `THD95_PERCENT` | `None` | 95 % quantile of the line-to-line THD in % – one factor THD95/THD of the measurement series; alone for all orders, together with `U95` for the orders `U95` cannot scale |
+| `THD95_PERCENT` | `None` | 95 % quantile of the line-to-line THD in % – one factor THD95/THD of the measurement series; alone for every order of the positive or negative sequence, together with `U95` for those without their own value |
+| `PQ_FILES`, `PQ_TIMEZONE`, `PQ_QUANTILE` | `None`, `None`, `0.95` | export(s) of a power-quality measurement of the busbar; they replace `U95`, `U95_REFERENCE`, `THD95_PERCENT` and `PQ_SAFETY_FACTOR` ([Power-quality measurement](#power-quality-measurement)) |
 
-`U95` and `THD95_PERCENT` can be given alone or together. With `U95` and `"LL"`, orders of the zero sequence (3, 9 …)
-cannot be scaled per order – a line-to-line voltage contains no zero sequence –, nor can orders without a value in
-`U95`; with `THD95_PERCENT` as well they get the flat THD factor, otherwise they stay unscaled (with a hint). The THD
-of the series is the mean over the pre- and post-fault intervals of the largest line-to-line THD of the substation
-tests ([Campaign evaluation](campaign.md#scaling-to-a-power-quality-measurement)).
+`U95` and `THD95_PERCENT` can be given alone or together. The orders of the zero sequence (3, 9, 15 …) – the zero
+sequence arises in the earth fault – and the even orders are never scaled; an order of the positive or negative
+sequence without a value in `U95` (or with a level below 1 V in the tests) gets the flat THD factor with
+`THD95_PERCENT`, otherwise it stays as measured (with a hint). The same rules apply to the remainder outside the
+orders of the model, with the levels of its test. Below the residual current at Z_E the notebook shows the **result
+per order** (`r["table"]`). The THD of the series is the mean over the pre- and post-fault intervals of the largest
+line-to-line THD of the substation tests ([Campaign evaluation](campaign.md#scaling-to-a-power-quality-measurement)).
 
 **Limits, margins and factors – defined by you**, as in the measurement notebook: groundfault contains none, the
 defaults leave them unset, and the parts that need them are skipped with a note (ℹ).
@@ -284,6 +288,7 @@ defaults leave them unset, and the parts that need them are skipped with a note 
 | `LOO_LIMIT_PCT` | `None` | permissible deviation in % of the leave-one-out check (every test from the model of the other tests, `loo_table`); `None` = the deviations are shown without assessment |
 | `LOO_LIMIT_A` | `None` | permissible deviation in A of the same check – for the small currents of the higher orders, where a few tenths of an ampere are many per cent; a value within one of the two limits passes |
 | `PQ_SAFETY_FACTOR` | `1.0` | factor on the 95 % quantiles `U95`/`THD95_PERCENT`; `1.0` = no factor |
+| `PQ_FACTORS` | `None` | factor on the quantile by the duration of the power-quality measurement, `{minimum days: factor}`; `None` = `PQ_SAFETY_FACTOR` |
 | `R_TYPICAL` | `None` | range `(low, high)` of the reduction factor at 50 Hz that you expect; `None` = no classification |
 
 With `DEMO = True` the evaluation of the demo recordings uses `LIMITS`, `U_TP`, `F_FACTOR` and `UNCERTAINTY_I` as well.
@@ -305,6 +310,36 @@ note that names it.
 | `I_res_max` | `None` | permissible residual current in A; `None` = F·U_Tp/(r·R_E,max) from `F_FACTOR` and `U_TP` |
 
 `EXPORT_FORMATS` – file formats of the figures, as in the measurement notebook.
+
+## Power-quality measurement
+
+All four notebooks read the export of a power-quality measurement of the busbar with the same variables
+([Power-quality measurements](pq.md)):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PQ_FILES` | `None` | path of the export or a list of paths – relative to the campaign folder (measurement and campaign notebook) or to the work folder (forecast notebooks), or absolute; several files are combined, duplicates and overlaps are recognised. Keep the exports with the raw data of the campaign (`raw/PQ/`, `1_Rohdaten/PQ/`) |
+| `PQ_TIMEZONE` | `None` | time zone of the instrument clock, e.g. `"Europe/Berlin"` – needed to compare the time of the tests (UTC) with the PQ measurement; `None` = the time stamps as exported |
+| `PQ_QUANTILE` | `0.95` | quantile of the 10-min values (largest phase per interval); in the network-model notebook `QUANTILE` |
+| `PQ_FACTORS` | `None` | your rule for the factor on the quantile, `{minimum days: factor}`: the factor of the longest minimum duration the measurement reaches – counted over the longest stretch of gapless values; a measurement shorter than all of them is not valid and is not used for any scaling or forecast (warning ⚠); `None` = `PQ_SAFETY_FACTOR` |
+| `PQ_SAFETY_FACTOR` | `1.0` | the factor on the quantile when `PQ_FACTORS` is not set |
+
+What the notebooks take from it:
+
+* **measurement notebook** – the quantiles per order (`pq_u95`), the THD quantile of the largest loop
+  (`u_thd95_percent`) and the factor (`pq_safety_factor`): the rows `UTHD_95`, `IH_zero`, `IH_even`, `IH_other`,
+  `IH_scaled` and `IRMS_forecast` of the assessment quantities and the table `harmonic_scaling` per order;
+* **campaign notebook** – section 4: the quantiles per order (`U95`, line-to-earth of the largest phase, reference
+  `"seq"`), the THD quantile, the factor, the harmonic voltage of the loops for the resistive approach (if
+  `RESISTIVE["U_thd95_V"]` is not set), the table of the tests in the distribution of the PQ measurement, the figures
+  of the 10-min values, the duration curve and the weekly profile, and the comparison of I_RES at Z_E per order, as the
+  quantile of the time series and with the THD factor; the export writes the tables `pq_quantiles`, `pq_summary`,
+  `pq_tests` and `pq_scaling` and the three figures;
+* **network-model notebook** – `VOLTAGES` = the quantile per order × factor (line-to-earth) for the orders of the
+  positive or negative sequence; the zero sequence and the even orders keep the pre-fault voltage of the calibration
+  tests (`MODEL.test_voltages()`, not scaled); with `PQ_SERIES = True` every 10-min value per phase (time series) and
+  the quantile `QUANTILE` of I_H and I_RES;
+* **notebook without an earth fault** – `VOLTAGES` = the quantile per order × factor.
 
 ## The forecast notebooks
 

@@ -90,7 +90,7 @@ import numpy as np
 import pandas as pd
 from IPython.display import Markdown, display
 from groundfault import (campaign, corrections, demo, diagnostics, disturbances, earthing, equivalent_source,
-                         explorer, i18n, interactive, layout, legacy, register, report, rms, sites, transformer)
+                         explorer, i18n, interactive, layout, legacy, pq, register, report, rms, sites, transformer)
 
 i18n.set_language(LANGUAGE)
 ''' + t("# work folder = this folder or the first folder above it with a campaigns folder (\"campaigns\" or\n"
@@ -145,6 +145,8 @@ POST_FAULT   = (7.0, 8.8)   # nach dem Abklingen der Verlagerungsspannung''')
         rms_file = "None"
         db = 'str(WORK_FOLDER / "demo_groundmeas.db")   ' + t("# demo database (written with the demo campaign)",
                                                               "# Demo-Datenbank (mit der Demo-Kampagne angelegt)")
+        pq_files = t('''["raw/PQ/SUB_PQ_export.csv"]   # demo: PQ export of the demo busbar (written with the demo campaign)''',
+                     '''["1_Rohdaten/PQ/UW_PQ_Export.csv"]   # Demo: PQ-Export der Demo-Sammelschiene (mit der Demo-Kampagne angelegt)''')
     else:
         conf = t('''CAMPAIGN    = "YYYY-MM-DD_Place"                     # folder in the campaigns folder
 FILE        = "raw/<site>/<file>.cfg"                 # .cfg relative to the campaign folder
@@ -169,6 +171,8 @@ POST_FAULT   = None   # (t0, t1) nach dem Abklingen der Verlagerungsspannung''')
         rms_file = "None"
         db = "None   " + t("# None = as groundmeas (environment variable GROUNDMEAS_DB or ~/.config/groundmeas/config.json)",
                            "# None = wie groundmeas (Umgebungsvariable GROUNDMEAS_DB bzw. ~/.config/groundmeas/config.json)")
+        pq_files = t('''None    # export(s) of a PQ instrument at the busbar, e.g. ["…/Export.csv"] (relative to the campaign folder or absolute; None = no scaling)''',
+                     '''None    # Export(e) eines PQ-Messgeräts an der Sammelschiene, z. B. ["…/Export.csv"] (relativ zum Kampagnenordner oder absolut; None = keine Skalierung)''')
     notes = "notes/corrections.csv" if lang == "en" else "0_Notizen/Korrekturen.csv"
     cells = [
         md(t('''
@@ -238,9 +242,19 @@ REFERENCE_CURRENT = None    # reference current in A for the reduction factor (N
 UNCERTAINTY_I     = 0.0     # measurement-uncertainty margin m_I of currents as a fraction: I·(1 + m_I) (0.0 = none)
 UNCERTAINTY_U     = 0.0     # measurement-uncertainty margin m_U of voltages as a fraction: U·(1 − m_U) (0.0 = none)
 PQ_SAFETY_FACTOR  = 1.0     # factor on the 95 % quantile of a PQ measurement (1.0 = none)
+PQ_FACTORS        = None    # factor on the quantile by the duration of the PQ measurement {minimum days: factor} (None = PQ_SAFETY_FACTOR)
 R_TYPICAL         = None    # range (low, high) of the reduction factor at 50 Hz you expect, e.g. from your experience
 # (LIMITS, U_TP, F_FACTOR, UNCERTAINTY_I/_U and PQ_SAFETY_FACTOR become the settings ires_limits, u_tp, f_factor,
 #  uncertainty_I/_U and pq_safety_factor and are stored in the result file)
+
+# ---------------------------------------------------------------- power-quality (PQ) measurement of the busbar
+# With PQ_FILES the quantiles of the PQ measurement scale the harmonic content in section 4: every order of the
+# positive or negative sequence (5, 7, 11, 13 …) with its own quantile (largest phase per 10-min interval), without one
+# with the quantile of the THD (largest line-to-line loop); the zero sequence (3, 9, 15 …) and the even orders stay as
+# measured (table harmonic_scaling, rows IH_zero, IH_even, IH_other, IH_scaled and IRMS_forecast).
+PQ_FILES          = ''' + pq_files + '''
+PQ_TIMEZONE       = None    # time zone of the instrument clock, e.g. "Europe/Berlin" (None = time stamps as exported)
+PQ_QUANTILE       = 0.95    # quantile of the 10-min values
 
 # ---------------------------------------------------------------- evaluation parameters
 SETTINGS = gf.Settings(
@@ -248,7 +262,7 @@ SETTINGS = gf.Settings(
     harmonics=(1, 3, 5, 7),      # orders of the assessment quantities
     uncertainty_I=UNCERTAINTY_I,  # increases currents
     uncertainty_U=UNCERTAINTY_U,  # decreases voltages
-    u_thd95_percent=None,        # 95 % quantile of the THD (line-to-line) of a PQ measurement in % (None = no scaling)
+    u_thd95_percent=None,        # 95 % quantile of the THD (line-to-line) of a PQ measurement in % (None = no scaling; with PQ_FILES from the measurement)
     pq_safety_factor=PQ_SAFETY_FACTOR,
     correct_polarity=True,       # Iw < 0 → rotate the current phasors by 180° (clamp reversed)
     exclude_disturbances=True,   # active residual current increase and network change are not the reference
@@ -297,9 +311,19 @@ REFERENCE_CURRENT = None    # Bezugsstrom in A für den Reduktionsfaktor (None =
 UNCERTAINTY_I     = 0.0     # Messunsicherheitszuschlag m_I der Ströme als Anteil: I·(1 + m_I) (0.0 = keiner)
 UNCERTAINTY_U     = 0.0     # Messunsicherheitszuschlag m_U der Spannungen als Anteil: U·(1 − m_U) (0.0 = keiner)
 PQ_SAFETY_FACTOR  = 1.0     # Faktor auf das 95-%-Quantil einer PQ-Messung (1.0 = keiner)
+PQ_FACTORS        = None    # Faktor auf das Quantil nach Dauer der PQ-Messung {Mindesttage: Faktor} (None = PQ_SAFETY_FACTOR)
 R_TYPICAL         = None    # erwarteter Bereich (unten, oben) des Reduktionsfaktors bei 50 Hz, z. B. aus Erfahrung
 # (LIMITS, U_TP, F_FACTOR, UNCERTAINTY_I/_U und PQ_SAFETY_FACTOR werden zu den Einstellungen ires_limits, u_tp,
 #  f_factor, uncertainty_I/_U und pq_safety_factor und in der Ergebnisdatei gespeichert)
+
+# ---------------------------------------------------------------- Netzqualitätsmessung (PQ) der Sammelschiene
+# Mit PQ_FILES skalieren die Quantile der PQ-Messung den Oberschwingungsanteil in Abschnitt 4: jede Ordnung des Mit-
+# oder Gegensystems (5, 7, 11, 13 …) mit ihrem eigenen Quantil (größter Leiter je 10-min-Intervall), ohne eines mit dem
+# Quantil des THD (größte Leiter-Leiter-Schleife); Nullsystem (3, 9, 15 …) und gerade Ordnungen bleiben wie gemessen
+# (Tabelle harmonic_scaling, Zeilen IH_null, IH_gerade, IH_sonstige, IH_skaliert und IRMS_prognose).
+PQ_FILES          = ''' + pq_files + '''
+PQ_TIMEZONE       = None    # Zeitzone der Geräteuhr, z. B. "Europe/Berlin" (None = Zeitstempel wie exportiert)
+PQ_QUANTILE       = 0.95    # Quantil der 10-min-Werte
 
 # ---------------------------------------------------------------- Auswerteparameter
 SETTINGS = gf.Settings(
@@ -307,7 +331,7 @@ SETTINGS = gf.Settings(
     harmonics=(1, 3, 5, 7),      # Ordnungen der Bewertungsgrößen
     uncertainty_I=UNCERTAINTY_I,  # vergrößert die Ströme
     uncertainty_U=UNCERTAINTY_U,  # verkleinert die Spannungen
-    u_thd95_percent=None,        # 95-%-Quantil des THD (L-L) einer PQ-Messung in % (None = keine Skalierung)
+    u_thd95_percent=None,        # 95-%-Quantil des THD (L-L) einer PQ-Messung in % (None = keine Skalierung; mit PQ_FILES aus der Messung)
     pq_safety_factor=PQ_SAFETY_FACTOR,
     correct_polarity=True,       # Iw < 0 → Stromzeiger um 180° drehen (verpolte Zange)
     exclude_disturbances=True,   # Wattreststromerhöhung und Netzänderung nicht als Referenz verwenden
@@ -424,6 +448,25 @@ interactive.rms_values(rec, roles, intervals=INTERVALS, disturbances=SCAN).show(
 if SHOW_ENVELOPE:
     interactive.overview(rec, roles, intervals=INTERVALS).show()'''),
         md(t("## 4 · Evaluation", "## 4 · Auswertung")),
+        keyed("pq-scaling", code('''PQ = None
+if PQ_FILES:                           ''' + t("# PQ measurement of the busbar: quantiles per order and of the THD, factor of the scaling (SETTINGS)",
+                                           "# PQ-Messung der Sammelschiene: Quantile je Ordnung und des THD, Faktor der Skalierung (SETTINGS)") + '''
+    from dataclasses import replace
+    files = [CAMPAIGN_FOLDER / p for p in ([PQ_FILES] if isinstance(PQ_FILES, (str, Path)) else PQ_FILES)]
+    PQ = pq.assess(pq.read(files, timezone=PQ_TIMEZONE), quantile=PQ_QUANTILE,
+                   **(dict(factors=PQ_FACTORS) if PQ_FACTORS else dict(factor=PQ_SAFETY_FACTOR)))
+    print(PQ.summary())
+    for h in PQ.hints:
+        print("ℹ", h)
+    if PQ.valid:
+        SETTINGS = replace(SETTINGS, **PQ.settings())
+        print(i18n.format_text("''' + t("Factor {:g} · THD quantile (largest line-to-line loop per interval) {:.3f} % → U_95 = {:.3f} % · quantiles per order: {}",
+                                         "Faktor {:g} · THD-Quantil (größte Leiter-Leiter-Schleife je Intervall) {:.3f} % → U_95 = {:.3f} % · Quantile je Ordnung: {}") + '''",
+                               PQ.factor, PQ.thd95(), PQ.thd95(True),
+                               ", ".join(i18n.format_text("{}: {:.1f} V", m, u) for m, u in PQ.u95().items())))
+    else:
+        print("''' + t("⚠ The PQ measurement is not valid for the assessment (gapless values shorter than every duration of PQ_FACTORS) – no scaling.",
+                       "⚠ Die PQ-Messung ist für die Bewertung nicht gültig (lückenlose Werte kürzer als jede Dauer von PQ_FACTORS) – keine Skalierung.") + '''")''')),
         code('''res = None
 if STEADY_STATE is None:
     display(Markdown("''' + t("**➜ First enter `STEADY_STATE` (and `PRE_FAULT`/`POST_FAULT`) in section 1 and run again.**",
@@ -435,6 +478,10 @@ else:
     display(Markdown("''' + t("**Assessment quantities** – measured value and assessment value with the measurement-uncertainty margins of section 1",
                               "**Bewertungsgrößen** – Messwert und Bewertung mit den Messunsicherheitszuschlägen aus Abschnitt 1") + '''"))
     show(res.table("assessment_quantities"))
+    if "harmonic_scaling" in res.tables:
+        display(Markdown("''' + t("**Scaling per order** – positive/negative sequence with its own quantile (`own voltage`), without one with the THD; zero sequence and even orders as measured (`IH_other`: content without an order, as measured)",
+                                  "**Skalierung je Ordnung** – Mit-/Gegensystem mit dem eigenen Quantil (`eigene Spannung`), ohne eines mit dem THD; Nullsystem und gerade Ordnungen wie gemessen (`IH_sonstige`: Anteil ohne Ordnung, wie gemessen)") + '''"))
+        show(res.table("harmonic_scaling"))
     display(Markdown("''' + t("**Plausibility checks**", "**Plausibilitätsprüfungen**") + '''"))
     show(res.table("plausibility"))
     if res.disturbances is not None and res.disturbances.found:
@@ -955,6 +1002,8 @@ MEASUREMENTS = [
                                                               "# Demo-Datenbank (mit der Demo-Kampagne angelegt)")
         z_e = "2.5                " + t("# demo value: earthing impedance in Ω at which I_RES is computed",
                                         "# Demo-Wert: Erdungsimpedanz in Ω, an der I_RES berechnet wird")
+        pq_files = t('''["raw/PQ/SUB_PQ_export.csv"]   # demo: PQ export of the demo busbar (written with the demo campaign)''',
+                     '''["1_Rohdaten/PQ/UW_PQ_Export.csv"]   # Demo: PQ-Export der Demo-Sammelschiene (mit der Demo-Kampagne angelegt)''')
     else:
         conf = t('''CAMPAIGN = "YYYY-MM-DD_Place"
 DEMO     = False
@@ -979,6 +1028,8 @@ MEASUREMENTS = [
                            "# None = wie groundmeas (Umgebungsvariable GROUNDMEAS_DB bzw. ~/.config/groundmeas/config.json)")
         z_e = "None               " + t("# earthing impedance in Ω at which I_RES is computed – a value of your network (None = not set)",
                                         "# Erdungsimpedanz in Ω, an der I_RES berechnet wird – Wert des eigenen Netzes (None = nicht gesetzt)")
+        pq_files = t('''None               # export(s) of a PQ instrument at the busbar, e.g. ["…/Export.csv"] (relative to the campaign folder or absolute)''',
+                     '''None               # Export(e) eines PQ-Messgeräts an der Sammelschiene, z. B. ["…/Export.csv"] (relativ zum Kampagnenordner oder absolut)''')
     conf += t('''
 # optional per measurement: location="…" (exact location name in groundmeas, otherwise from the sites file or the
 # site), description="…" (text before the automatic groundmeas description), timestamp="YYYY-MM-DD hh:mm:ss" (UTC,
@@ -1001,8 +1052,9 @@ data are not read again. Reference copy: `templates/evaluate_campaign_DEFAULT.ip
    **measured source** (U_q = pre-fault voltage of the faulted phase, Z_q from the tests), which carries beyond the
    tested additional impedances.
 3. **Residual current at Z_E** with the measured source (or the fitted one, `SOURCE`), the other one for comparison,
-   scaling to the 95 % quantile of a PQ measurement and your limits of the residual current; **resistive approach**
-   (after the VDE Impuls on the residual earth-fault current).
+   scaling to the quantile of a **PQ measurement** of the busbar (read from the export of the PQ instrument: 10-min
+   values, largest phase, quantile, factor by the duration) and your limits of the residual current; **resistive
+   approach** (after the VDE Impuls on the residual earth-fault current).
 4. **Stations** – earth potential rise and touch voltage per frequency (direct and fault-related), comparison with
    the earthing measurements from **groundmeas**, **reduction factor** (per harmonic and RMS value) and – with PEN
    currents – current into the **LV network** and Z_E,LV with the parallel check.
@@ -1021,7 +1073,8 @@ die Rohdaten werden nicht erneut gelesen. Ausgangsfassung: `Vorlagen/Kampagne_au
    (U_q = Vorfehlerspannung des Fehlerleiters, Z_q aus den Versuchen), die über die Zusatzimpedanzen der Versuche
    hinaus trägt.
 3. **Erdschlussreststrom an Z_E** mit der gemessenen Quelle (oder der geschätzten, `SOURCE`), die andere zum
-   Vergleich, Skalierung auf das 95-%-Quantil einer PQ-Messung und den eigenen Grenzwerten des Reststroms;
+   Vergleich, Skalierung auf das Quantil einer **PQ-Messung** der Sammelschiene (aus dem Export des PQ-Messgeräts:
+   10-min-Werte, größter Leiter, Quantil, Faktor nach Messdauer) und den eigenen Grenzwerten des Reststroms;
    **resistiver Ansatz** (nach dem VDE Impuls zum Erdschluss-Reststrom).
 4. **Station** – Erdungs- und Berührungsspannung je Frequenz (direkt und fehlerbedingt), Vergleich mit den
    Erdungsmessungen aus **groundmeas**, **Reduktionsfaktor** (je Harmonische und effektiv) und – mit PEN-Strömen –
@@ -1045,11 +1098,17 @@ Z_E_MAX       = 10.0               # end of the axis of the figure I_RES(Z_E)
 IG_CHOICE     = "max"              # fundamental component: "max" (conservative) | "median" | a number in A
 
 # ---------------------------------------------------------------- scaling to the 95 % quantile of a PQ measurement
-# U95 scales every order with its own 95 % value; THD95_PERCENT scales flat with THD95/THD of the series. Both
-# given: U95 where possible, the THD factor for the orders U95 cannot scale (no value, zero sequence with "LL").
+# U95 scales every order of the positive or negative sequence (5, 7, 11, 13, 17 …) with its own 95 % value – also in
+# the remainder outside the orders of the model; THD95_PERCENT scales flat with THD95/THD of the series the orders
+# without their own value (alone: all of them). The zero sequence (3, 9, 15 …) and the even orders stay as measured.
 U95 = None                         # per order in V, e.g. {5: U_5, 7: U_7}
 U95_REFERENCE = "LL"               # "LL" = line-to-line (PQ device) | "seq" = sequence voltage (line-to-earth)
 THD95_PERCENT = None               # flat: 95 % quantile of the THD in % (line-to-line), alone or together with U95
+# With PQ_FILES section 4 takes U95 (line-to-earth, largest phase per 10-min interval) and THD95_PERCENT (largest loop)
+# from the export(s) of a PQ instrument at the busbar – the values above are then replaced.
+PQ_FILES      = ''' + pq_files + '''
+PQ_TIMEZONE   = None               # time zone of the instrument clock, e.g. "Europe/Berlin" (None = time stamps as exported)
+PQ_QUANTILE   = 0.95               # quantile of the 10-min values
 
 # ---------------------------------------------------------------- limits, margins and factors – defined by you
 # groundfault contains no limits or safety factors: take them from the operator's specification or the applicable
@@ -1062,6 +1121,7 @@ UNCERTAINTY_I     = 0.0     # measurement-uncertainty margin m_I of currents for
 LOO_LIMIT_PCT     = None    # leave-one-out check: permissible deviation in % of every test from the model of the others (None = without assessment)
 LOO_LIMIT_A       = None    # … and in A, for the small currents of the higher orders (within one of the two = passed; None = not used)
 PQ_SAFETY_FACTOR  = 1.0     # factor on the 95 % quantiles of the PQ measurement (1.0 = none)
+PQ_FACTORS        = None    # factor on the quantile by the duration of the PQ measurement {minimum days: factor} (None = PQ_SAFETY_FACTOR)
 R_TYPICAL         = None    # range (low, high) of the reduction factor at 50 Hz you expect, e.g. from your experience
 
 # ---------------------------------------------------------------- groundmeas (comparison section 5, entries section 7)
@@ -1091,11 +1151,17 @@ Z_E_MAX       = 10.0               # Achsenende im Diagramm I_RES(Z_E)
 IG_CHOICE     = "max"              # Grundschwingung: "max" (konservativ) | "median" | Zahl in A
 
 # ---------------------------------------------------------------- Skalierung auf das 95-%-Quantil einer PQ-Messung
-# U95 skaliert jede Ordnung mit ihrem eigenen 95-%-Wert; THD95_PERCENT pauschal mit THD95/THD der Messreihe. Beide
-# angegeben: U95, wo möglich, der THD-Faktor für die Ordnungen, die U95 nicht skaliert (kein Wert, Nullsystem bei "LL").
+# U95 skaliert jede Ordnung des Mit- oder Gegensystems (5, 7, 11, 13, 17 …) mit ihrem eigenen 95-%-Wert – auch im Rest
+# außerhalb der Ordnungen des Modells; THD95_PERCENT pauschal mit THD95/THD der Messreihe die Ordnungen ohne eigenen
+# Wert (allein: alle). Nullsystem (3, 9, 15 …) und gerade Ordnungen bleiben wie gemessen.
 U95 = None                         # je Ordnung in V, z. B. {5: U_5, 7: U_7}
 U95_REFERENCE = "LL"               # "LL" = Leiter-Leiter (PQ-Gerät) | "seq" = Sequenzspannung (L-E)
 THD95_PERCENT = None               # pauschal: THD-95-%-Quantil in % (L-L), allein oder zusammen mit U95
+# Mit PQ_FILES übernimmt Abschnitt 4 U95 (Leiter-Erde, größter Leiter je 10-min-Intervall) und THD95_PERCENT (größte
+# Schleife) aus dem Export bzw. den Exporten eines PQ-Messgeräts an der Sammelschiene – die Werte oben werden ersetzt.
+PQ_FILES      = ''' + pq_files + '''
+PQ_TIMEZONE   = None               # Zeitzone der Geräteuhr, z. B. "Europe/Berlin" (None = Zeitstempel wie exportiert)
+PQ_QUANTILE   = 0.95               # Quantil der 10-min-Werte
 
 # ---------------------------------------------------------------- Grenzwerte, Zuschläge und Faktoren – selbst festlegen
 # groundfault enthält keine Grenzwerte oder Sicherheitsfaktoren: aus der Vorgabe des Netzbetreibers bzw. der geltenden
@@ -1108,6 +1174,7 @@ UNCERTAINTY_I     = 0.0     # Messunsicherheitszuschlag m_I der Ströme für I_R
 LOO_LIMIT_PCT     = None    # Leave-one-out-Prüfung: zulässige Abweichung in % jedes Versuchs vom Modell der übrigen (None = ohne Bewertung)
 LOO_LIMIT_A       = None    # … und in A, für die kleinen Ströme der höheren Ordnungen (innerhalb einer der beiden = erfüllt; None = nicht genutzt)
 PQ_SAFETY_FACTOR  = 1.0     # Faktor auf die 95-%-Quantile der PQ-Messung (1.0 = keiner)
+PQ_FACTORS        = None    # Faktor auf das Quantil nach Dauer der PQ-Messung {Mindesttage: Faktor} (None = PQ_SAFETY_FACTOR)
 R_TYPICAL         = None    # erwarteter Bereich (unten, oben) des Reduktionsfaktors bei 50 Hz, z. B. aus Erfahrung
 
 # ---------------------------------------------------------------- groundmeas (Vergleich Abschnitt 5, Eintrag Abschnitt 7)
@@ -1311,10 +1378,81 @@ else:
     interactive.source_fit(MAIN, Z_E, comparison=OTHER).show()'''),
         md(t("## 4 · Residual current at the earthing impedance and resistive approach",
              "## 4 · Erdschlussreststrom an der Erdungsimpedanz und resistiver Ansatz")),
+        keyed("pq-text", md(t('''
+### Power-quality measurement of the busbar (PQ)
+
+With `PQ_FILES` the export(s) of a PQ instrument at the busbar replace `U95`, `U95_REFERENCE`, `THD95_PERCENT` and
+`PQ_SAFETY_FACTOR` of section 1: 10-min values (from shorter intervals as the square root of the mean of the
+squares), per interval the **largest phase** (harmonic voltage line-to-earth per order) or **loop** (THD
+line-to-line), of these values the quantile `PQ_QUANTILE`. The factor on the quantile follows from the longest stretch
+of **gapless** values and `PQ_FACTORS`; shorter than every duration of `PQ_FACTORS` the measurement is not valid and
+nothing is scaled with it. The PQ measurement and the tests must refer to the same network and switching state.
+Without a value in `RESISTIVE["U_thd95_V"]` the resistive approach gets the quantile of the harmonic voltage
+(line-to-line) times the factor. The table of the tests shows where their pre-fault voltages lie in the distribution
+of the PQ measurement: a low percentile is normal for a test at a time of low harmonic voltage (night, weekend) –
+compare the time window of the same weekday; a test level above the largest value of the PQ measurement points to a
+different network state (switching state, capacitances, transformer). Figures: 10-min values over the period, duration
+curve with the levels of the tests and the weekly profile.
+''', '''
+### Netzqualitätsmessung der Sammelschiene (PQ)
+
+Mit `PQ_FILES` ersetzt der Export bzw. ersetzen die Exporte eines PQ-Messgeräts an der Sammelschiene `U95`,
+`U95_REFERENCE`, `THD95_PERCENT` und `PQ_SAFETY_FACTOR` aus Abschnitt 1: 10-min-Werte (aus kürzeren Intervallen als
+quadratischer Mittelwert), je Intervall der **größte Leiter** (Oberschwingungsspannung Leiter-Erde je Ordnung) bzw.
+die **größte Schleife** (THD Leiter-Leiter), davon das Quantil `PQ_QUANTILE`. Der Faktor auf das Quantil folgt aus der
+längsten Strecke **lückenloser** Werte und `PQ_FACTORS`; kürzer als jede Dauer von `PQ_FACTORS` ist die Messung nicht
+gültig, und mit ihr wird nichts skaliert. PQ-Messung und Versuche müssen sich auf dasselbe Netz und denselben
+Schaltzustand beziehen. Ohne Wert in `RESISTIVE["U_thd95_V"]` erhält der resistive Ansatz das Quantil der
+Oberschwingungsspannung (Leiter-Leiter) mal Faktor. Die Tabelle der Versuche zeigt, wo deren Vorfehlerspannungen in
+der Verteilung der PQ-Messung liegen: Ein niedriges Perzentil ist normal für einen Versuch zu einer Zeit kleiner
+Oberschwingungsspannung (Nacht, Wochenende) – dazu das Zeitfenster desselben Wochentags vergleichen; ein Pegel über
+dem größten Wert der PQ-Messung deutet auf einen anderen Netzzustand (Schaltzustand, Kapazitäten, Trafo). Abbildungen:
+10-min-Werte über den Zeitraum, Dauerlinie mit den Pegeln der Versuche und Wochengang.
+'''))),
+        keyed("pq", code('''PQ = PQ_COMPARISON = PQ_LEVELS = None
+if PQ_FILES:
+    files = [CAMPAIGN_FOLDER / p for p in ([PQ_FILES] if isinstance(PQ_FILES, (str, Path)) else PQ_FILES)]
+    PQ = pq.assess(pq.read(files, timezone=PQ_TIMEZONE), quantile=PQ_QUANTILE,
+                   **(dict(factors=PQ_FACTORS) if PQ_FACTORS else dict(factor=PQ_SAFETY_FACTOR)))
+    print(PQ.summary())
+    for h in PQ.hints:
+        print("ℹ", h)
+    show(PQ.table().query("order >= 2"))
+    show(PQ.summary_table())
+    if PQ.valid:                       ''' + t("# the values of the measurement replace those of section 1",
+                                         "# die Werte der Messung ersetzen die aus Abschnitt 1") + '''
+        U95, U95_REFERENCE = PQ.u95(), ("seq" if PQ.reference == "LE" else "LL")
+        THD95_PERCENT, PQ_SAFETY_FACTOR = (PQ.thd95() if np.isfinite(PQ.thd95()) else None), PQ.factor
+        if RESISTIVE.get("U_thd95_V") is None and np.isfinite(PQ.uh95_ll):
+            RESISTIVE = dict(RESISTIVE, U_thd95_V=PQ.uh95_ll * PQ.factor, from_ll=True)
+            print(i18n.format_text("''' + t("Resistive approach: U_thd95_V = {:.1f} V (quantile of the harmonic voltage line-to-line × {:g})",
+                                             "Resistiver Ansatz: U_thd95_V = {:.1f} V (Quantil der Oberschwingungsspannung Leiter-Leiter × {:g})") + '''",
+                                   RESISTIVE["U_thd95_V"], PQ.factor))
+    else:
+        print("''' + t("⚠ The PQ measurement is not valid for the assessment (gapless values shorter than every duration of PQ_FACTORS) – nothing is scaled with it; U95/THD95_PERCENT of section 1 stay.",
+                       "⚠ Die PQ-Messung ist für die Bewertung nicht gültig (lückenlose Werte kürzer als jede Dauer von PQ_FACTORS) – mit ihr wird nichts skaliert; U95/THD95_PERCENT aus Abschnitt 1 bleiben.") + '''")
+    PQ_LEVELS, times = {}, {}
+    for m in MEASUREMENTS:
+        if m["Z"] is not None and m["name"] in RESULTS:
+            PQ_LEVELS[m["name"]], times[m["name"]] = pq.pre_fault_levels(RESULTS[m["name"]], kind=PQ.reference)
+    orders = sorted(o for o in (MAIN.fits if MAIN is not None else PQ.u95()) if gf.formulas.harmonic_category(o) == "pos_neg"
+                    and o in PQ.data.orders)
+    PQ_COMPARISON = PQ.comparability(PQ_LEVELS, times, orders=orders or None)
+    for h in PQ_COMPARISON.attrs.get("hints", []):
+        print("ℹ", h)
+    display(Markdown("''' + t("**Fault tests in the distribution of the PQ measurement** – share of the 10-min values below the pre-fault voltage of the test (largest phase) over the whole measurement and in its time window; `factor_to_test` = quantile/level of the test",
+                              "**Erdschlussversuche in der Verteilung der PQ-Messung** – Anteil der 10-min-Werte unter der Vorfehlerspannung des Versuchs (größter Leiter) über die ganze Messung und im Zeitfenster des Versuchs; `Faktor_zu_Versuch` = Quantil/Pegel des Versuchs") + '''"))
+    show(PQ_COMPARISON)
+    report.pq_series(PQ)
+    report.pq_duration(PQ, levels={n: lv[PQ.dominant_order] for n, lv in PQ_LEVELS.items() if PQ.dominant_order in lv})
+    report.pq_profile(PQ)
+else:
+    print("''' + t("ℹ No PQ measurement (PQ_FILES) – U95/THD95_PERCENT of section 1 are used if set.",
+                   "ℹ Keine PQ-Messung (PQ_FILES) – U95/THD95_PERCENT aus Abschnitt 1, falls gesetzt.") + '''")''')),
         code('''SCALING = None
 if MAIN is not None:
-    if U95 or THD95_PERCENT:           ''' + t("# U95 per order; THD95_PERCENT alone for all orders, with U95 for the orders U95 cannot scale",
-                                         "# U95 je Ordnung; THD95_PERCENT allein für alle Ordnungen, mit U95 für die, die U95 nicht skaliert") + '''
+    if U95 or THD95_PERCENT:           ''' + t("# U95 per order; THD95_PERCENT for the orders without their own value (alone: all of them)",
+                                         "# U95 je Ordnung; THD95_PERCENT für die Ordnungen ohne eigenen Wert (allein: alle)") + '''
         SCALING = dict(safety_factor=PQ_SAFETY_FACTOR)
     if U95:
         SCALING.update(u95=U95, u95_reference=U95_REFERENCE)
@@ -1336,8 +1474,13 @@ if MAIN is not None:
         if SCALING:
             print(i18n.format_text("''' + t("scaled", "skaliert") + ''': I_H = {:.2f} A → I_RES = {:.2f} A", r["IH_scaled"], r["IRES_scaled"])
                   + (i18n.format_text(" (''' + t("with the margin", "mit Zuschlag") + ''': {:.2f} A)", r["IRES_scaled_assessed"]) if margin else "")
-                  + i18n.format_text(" | ''' + t("factors", "Faktoren") + ''' {}", ", ".join(i18n.format_text("{}: {:.3f}", m, k)
-                                                                         for m, k in r["factors"].items())))
+                  + i18n.format_text(" | ''' + t("not scaled: zero sequence {:.2f} A, even orders {:.2f} A, without an order {:.2f} A",
+                                                  "nicht skaliert: Nullsystem {:.2f} A, gerade Ordnungen {:.2f} A, ohne Ordnung {:.2f} A") + '''",
+                                     r["IH_zero"], r["IH_even"], r["IH_other"]))
+        display(Markdown(i18n.format_text("''' + t("**Result per order at Z_E = {:g} Ω** – the orders of the model at Z_E, the remainder of the test {} (the largest one); rule: `own voltage` (positive/negative sequence, quantile/level of the tests × factor), `THD` (without their own value), `as measured` (zero sequence, even orders)",
+                                                   "**Ergebnis je Ordnung an Z_E = {:g} Ω** – die Ordnungen des Modells an Z_E, der Rest des Versuchs {} (der größte); Regel: `eigene Spannung` (Mit-/Gegensystem, Quantil/Pegel der Versuche × Faktor), `THD` (ohne eigenen Wert), `wie gemessen` (Nullsystem, gerade Ordnungen)") + '''",
+                                          Z_E, r["rest_test"] or "–")))
+        show(r["table"])
         for h in r["hints"]:
             print("ℹ", h)
         if OTHER is not None:
@@ -1366,6 +1509,68 @@ else:
                                                   U_Tp=U_TP, F=F_FACTOR, from_ll=RESISTIVE.get("from_ll", False),
                                                   r=RESISTIVE.get("r", 1.0)),
                       name="''' + t("resistive approach", "resistiver Ansatz") + '''"))'''),
+        keyed("pq-comparison-text", md(t('''
+### PQ scaling at Z_E: per order, as a time series and with the THD
+
+**Result** (`SCALING`): every order of the positive or negative sequence (5, 7, 11, 13, 17 …) with its own factor
+quantile/level of the tests times the factor – also in the remainder outside the orders of the model; an order without
+its own value (no quantile, level below 1 V) with the THD factor. The zero sequence (3, 9, 15 …) arises in the earth
+fault and stays as measured; the even orders stay as measured and are listed separately (atypical – a hint names them
+from 5 % of the harmonic content). **Time series**: the same for every 10-min value, of these I_RES the quantile
+`PQ_QUANTILE` (times the factor) – smaller when the orders do not reach their high values at the same time. **THD**:
+one flat factor THD quantile/THD of the tests for every order of the positive or negative sequence – the rule without
+values per order.
+''', '''
+### PQ-Skalierung an Z_E: je Ordnung, als Zeitreihe und mit dem THD
+
+**Ergebnis** (`SCALING`): jede Ordnung des Mit- oder Gegensystems (5, 7, 11, 13, 17 …) mit ihrem eigenen Faktor
+Quantil/Pegel der Versuche mal Faktor – auch im Rest außerhalb der Ordnungen des Modells; eine Ordnung ohne eigenen
+Wert (kein Quantil, Pegel unter 1 V) mit dem THD-Faktor. Das Nullsystem (3, 9, 15 …) entsteht im Erdschluss und bleibt
+wie gemessen; die geraden Ordnungen bleiben wie gemessen und werden gesondert aufgeführt (untypisch – ein Hinweis nennt
+sie ab 5 % des Oberschwingungsanteils). **Zeitreihe**: dasselbe für jeden 10-min-Wert, davon von I_RES das Quantil
+`PQ_QUANTILE` (mal Faktor) – kleiner, wenn die Ordnungen ihre hohen Werte nicht gleichzeitig erreichen. **THD**: ein
+pauschaler Faktor THD-Quantil/THD der Versuche für jede Ordnung des Mit- oder Gegensystems – die Regel ohne Werte je
+Ordnung.
+'''))),
+        keyed("pq-comparison", code('''PQ_SCALING = None
+if PQ is not None and PQ.valid and MAIN is not None and Z_E is not None and SCALING:
+    kw = dict(IG=IG_CHOICE, uncertainty_I=UNCERTAINTY_I)
+    rows = []
+    r0 = equivalent_source.ires_at_impedance(MAIN, Z_E, **kw)
+    rows.append(("''' + t("without scaling", "ohne Skalierung") + '''", r0["IH"], r0["IRES"], r0["IRES_assessed"]))
+    r1 = equivalent_source.ires_at_impedance(MAIN, Z_E, **kw, **SCALING)
+    rows.append(("''' + t("quantile per order (result)", "Quantil je Ordnung (Ergebnis)") + '''", r1["IH_scaled"], r1["IRES_scaled"],
+                 r1["IRES_scaled_assessed"]))
+    V = pd.DataFrame({m: PQ.largest(m) for m in PQ.data.orders if m >= 2})   ''' + t("# every order of the PQ measurement (model and remainder)",
+                                                                              "# jede Ordnung der PQ-Messung (Modell und Rest)") + '''
+    loops = [c for c in pq.PHASES_LL if c in PQ.data.thd.columns]
+    ts = equivalent_source.ires_over_time(MAIN, Z_E, V, u95_reference=SCALING.get("u95_reference", "seq"),
+                                          thd_percent=PQ.data.thd[loops].max(axis=1) if loops and "thd_measured_percent" in SCALING else None,
+                                          thd_measured_percent=SCALING.get("thd_measured_percent"), safety_factor=PQ.factor, **kw)
+    rows.append((i18n.format_text("''' + t("quantile {:g} of the time series I_RES(t)", "Quantil {:g} der Zeitreihe I_RES(t)") + '''", PQ_QUANTILE),
+                 ts["IH"].quantile(PQ_QUANTILE), ts["IRES"].quantile(PQ_QUANTILE), ts["IRES_assessed"].quantile(PQ_QUANTILE)))
+    if "thd_measured_percent" in SCALING:
+        r2 = equivalent_source.ires_at_impedance(MAIN, Z_E, **kw, thd95_percent=PQ.thd95(),
+                                                 thd_measured_percent=SCALING["thd_measured_percent"], safety_factor=PQ.factor)
+        rows.append(("''' + t("THD factor (without values per order)", "THD-Faktor (ohne Werte je Ordnung)") + '''", r2["IH_scaled"], r2["IRES_scaled"],
+                     r2["IRES_scaled_assessed"]))
+    PQ_SCALING = pd.DataFrame(rows, columns=["method", "IH_A", "IRES_A", "IRES_assessed_A"])
+    display(Markdown(i18n.format_text("''' + t("**Residual current at Z_E = {:g} Ω with the PQ measurement** (quantile {:g}, factor {:g}; assessed = with UNCERTAINTY_I)",
+                                               "**Erdschlussreststrom an Z_E = {:g} Ω mit der PQ-Messung** (Quantil {:g}, Faktor {:g}; Bewertung = mit UNCERTAINTY_I)") + '''",
+                                      Z_E, PQ_QUANTILE, PQ.factor)))
+    show(PQ_SCALING)
+    for h in ts.attrs.get("hints", []):
+        if h not in r1["hints"]:
+            print("ℹ", h)
+    for limit in LIMITS:
+        over = [r[0] for r in rows if r[3] > limit]
+        print(i18n.format_text("I_RES ''' + t("above", "über") + ''' {:g} A: ", limit) + (", ".join(over) or "–"))
+elif PQ is not None and not PQ.valid:
+    print("''' + t("ℹ No PQ scaling at Z_E – the PQ measurement is not valid for the assessment (section 4, PQ).",
+                   "ℹ Keine PQ-Skalierung an Z_E – die PQ-Messung ist für die Bewertung nicht gültig (Abschnitt 4, PQ).") + '''")
+elif PQ is not None:
+    print("''' + t("ℹ No comparison at Z_E – Z_E or the equivalent sources are missing (sections 1 and 3).",
+                   "ℹ Kein Vergleich an Z_E – Z_E oder die Ersatzquellen fehlen (Abschnitte 1 und 3).") + '''")''')),
         md(t('''
 ## 5 · Stations: earth potential rise and touch voltage per frequency, earthing measurement (groundmeas)
 
@@ -1491,6 +1696,13 @@ for n, e in STATIONS.items():                     ''' + t("# station: per freque
     for t_, df in REDUCTION.get(n, {}).items():
         if len(df):
             TABLES[t_ + "_" + slug(n)] = df
+if PQ is not None:                                 ''' + t("# PQ measurement: quantiles, characteristic values, tests, residual current at Z_E",
+                                                   "# PQ-Messung: Quantile, Kennwerte, Versuche, Reststrom an Z_E") + '''
+    TABLES["pq_quantiles"] = PQ.table().query("order >= 2")
+    TABLES["pq_summary"] = PQ.summary_table()
+    for name_, df_ in (("pq_tests", PQ_COMPARISON), ("pq_scaling", PQ_SCALING)):
+        if df_ is not None and len(df_):
+            TABLES[name_] = df_
 for name, df in TABLES.items():                    ''' + t("# title with the name of the measurement as given", "# Titel mit dem Namen der Messung wie angegeben") + '''
     display(Markdown("**%s**" % report.table_title(name, RESULTS))); display(report.format_table(df))
 paths = report.export_tables(TABLES, str(OUT), prefix="campaign_", formats=("csv", "md"), names=RESULTS)
@@ -1522,6 +1734,12 @@ if MAIN is not None:                    ''' + t("# result (SOURCE), the other so
     figures += report.save(report.source_plane(MAIN, MC), str(FIG / "source_impedance"), EXPORT_FORMATS, close=True)
     figures += report.save(report.ires_over_ze(MAIN, Z_E_MAX, LIMITS, IG_CHOICE, SCALING, comparison=OTHER),
                            str(FIG / "ires_over_ZE"), EXPORT_FORMATS, close=True)
+if PQ is not None:
+    figures += report.save(report.pq_series(PQ), str(FIG / "pq_series"), EXPORT_FORMATS, close=True)
+    figures += report.save(report.pq_duration(PQ, levels={n: lv[PQ.dominant_order] for n, lv in (PQ_LEVELS or {}).items()
+                                                          if PQ.dominant_order in lv}),
+                           str(FIG / "pq_duration"), EXPORT_FORMATS, close=True)
+    figures += report.save(report.pq_profile(PQ), str(FIG / "pq_profile"), EXPORT_FORMATS, close=True)
 print("''' + t("%d table files in %s", "%d Tabellen-Dateien in %s") + '''" % (len(paths), OUT.relative_to(WORK_FOLDER)))
 print("''' + t("%d figure files in %s", "%d Abbildungsdateien in %s") + '''" % (len(figures), FIG.relative_to(WORK_FOLDER)))'''),
         md(t('''
@@ -1661,7 +1879,10 @@ TWO_SOURCE    = "zero_sequence"   # orders with a source that arises in the faul
 VOLTAGES          = ''' + voltages + '''
 VOLTAGE_REFERENCE = "LE"          # "LE" = line-to-earth | "LL" = line-to-line (divided by √3; no zero sequence)
 CSV_OPTIONS       = dict(sep=";", decimal=",", index_col=0)   # reading a CSV file (pandas.read_csv): one column per order
-QUANTILE          = 0.95          # quantile of a time series
+QUANTILE          = 0.95          # quantile of a time series (and of the 10-min values of PQ_FILES)
+PQ_FILES          = None          # export(s) of a PQ instrument at the busbar → VOLTAGES = quantile per order (line-to-earth, largest phase) × factor; relative to the work folder or absolute
+PQ_TIMEZONE       = None          # time zone of the instrument clock, e.g. "Europe/Berlin" (None = time stamps as exported)
+PQ_SERIES         = False         # True: every 10-min value of PQ_FILES (time series) → quantile QUANTILE of I_H and I_RES
 Z_F               = 0.0           # fault impedance in Ω (0 = fault without resistance)
 LINE              = ''' + line + '''
 # per-length values at 50 Hz (Ω/km, µF/km) give R constant, X ∝ m – not on the safe side; at the orders of interest give
@@ -1672,7 +1893,9 @@ LINE              = ''' + line + '''
 # groundfault contains no margins or limits. Not set (the values below), the forecast is shown without them.
 MARGIN_A      = 0.0     # margin per order in A: a number or {order: A} (0.0 = none), e.g. from the checks of section 3
 FUNDAMENTAL_A = None    # fundamental residual current in A (None = median of √(I_w² + I_v²) of the tests)
-LIMITS        = ()      # limits of the residual current in A, e.g. (I_1, I_2)''', '''
+LIMITS        = ()      # limits of the residual current in A, e.g. (I_1, I_2)
+PQ_SAFETY_FACTOR = 1.0  # factor on the quantile of the PQ measurement (1.0 = none)
+PQ_FACTORS    = None    # factor on the quantile by the duration of the PQ measurement {minimum days: factor} (None = PQ_SAFETY_FACTOR)''', '''
 # optional je Eintrag: name="…" (Standard: die Messung), meta=dict(…) (z. B. Last, PV-Einspeisung, Schaltzustand),
 # transformer="…" (Trafoaufzeichnung desselben Erdschlusses, zweites Messgerät: deren Vorimpedanz Z_vor),
 # line=dict(…) (ein Versuch im Netz: die Leitung bis zu seinem Fehlerort)
@@ -1687,7 +1910,10 @@ TWO_SOURCE    = "zero_sequence"   # Ordnungen mit einer im Fehler entstehenden Q
 VOLTAGES          = ''' + voltages + '''
 VOLTAGE_REFERENCE = "LE"          # "LE" = Leiter-Erde | "LL" = Leiter-Leiter (durch √3 geteilt; ohne Nullsystem)
 CSV_OPTIONS       = dict(sep=";", decimal=",", index_col=0)   # Lesen einer CSV-Datei (pandas.read_csv): eine Spalte je Ordnung
-QUANTILE          = 0.95          # Quantil einer Zeitreihe
+QUANTILE          = 0.95          # Quantil einer Zeitreihe (und der 10-min-Werte von PQ_FILES)
+PQ_FILES          = None          # Export(e) eines PQ-Messgeräts an der Sammelschiene → VOLTAGES = Quantil je Ordnung (Leiter-Erde, größter Leiter) × Faktor; relativ zum Arbeitsordner oder absolut
+PQ_TIMEZONE       = None          # Zeitzone der Geräteuhr, z. B. "Europe/Berlin" (None = Zeitstempel wie exportiert)
+PQ_SERIES         = False         # True: jeder 10-min-Wert von PQ_FILES (Zeitreihe) → Quantil QUANTILE von I_H und I_RES
 Z_F               = 0.0           # Fehlerimpedanz in Ω (0 = Fehler ohne Widerstand)
 LINE              = ''' + line + '''
 # Beläge bei 50 Hz (Ω/km, µF/km) heißen R konstant, X ∝ m – nicht auf der sicheren Seite; für die wichtigen Ordnungen
@@ -1698,7 +1924,9 @@ LINE              = ''' + line + '''
 # groundfault enthält keine Zuschläge oder Grenzwerte. Nicht gesetzt (die Werte unten), zeigt die Prognose sie nicht.
 MARGIN_A      = 0.0     # Zuschlag je Ordnung in A: eine Zahl oder {Ordnung: A} (0.0 = keiner), z. B. aus der Prüfung in Abschnitt 3
 FUNDAMENTAL_A = None    # Grundschwingungsreststrom in A (None = Median von √(I_w² + I_v²) der Versuche)
-LIMITS        = ()      # Grenzwerte des Reststroms in A, z. B. (I_1, I_2)''')
+LIMITS        = ()      # Grenzwerte des Reststroms in A, z. B. (I_1, I_2)
+PQ_SAFETY_FACTOR = 1.0  # Faktor auf das Quantil der PQ-Messung (1.0 = keiner)
+PQ_FACTORS    = None    # Faktor auf das Quantil nach Dauer der PQ-Messung {Mindesttage: Faktor} (None = PQ_SAFETY_FACTOR)''')
     cells = [
         md(t('''
 # Forecast of the harmonic residual current – network model of a busbar
@@ -1963,7 +2191,10 @@ e.g. the 95 % quantile of a power-quality measurement – or a time series (CSV 
 `U_H5`; the last number of a column name is the order). Per order |I_F,m| = (|U_m| + |U_s,m|)/|Z_q,m + Z_qL,m + Z_F|
 + margin (Z_qL = 0 at the busbar, (2·Z_1L + Z_0L)/3 behind `LINE`), then I_H = √(Σ I_F,m² + I_rest²) with I_rest =
 harmonic content of the tests outside the forecast orders and I_RES = √(I_1² + I_H²). A time series gives the
-quantile `QUANTILE` of the time series of I_H and I_RES.
+quantile `QUANTILE` of the time series of I_H and I_RES. With `PQ_FILES` the orders of the positive or negative sequence
+get the quantile of the PQ measurement (times the factor of `PQ_FACTORS`); the zero sequence (3, 9, 15 …) – it arises
+in the earth fault – and the even orders keep the pre-fault voltage of the tests (not scaled). A PQ measurement shorter
+than every duration of `PQ_FACTORS` (gapless values) is not valid and gives no voltages.
 ''', '''
 ## 6 · Prognose des Oberschwingungsreststroms
 
@@ -1972,9 +2203,45 @@ Oberschwingungsspannungen der Sammelschiene je Ordnung (Leiter-Erde, die größt
 `U_H5`; die letzte Zahl eines Spaltennamens ist die Ordnung). Je Ordnung |I_F,m| = (|U_m| + |U_s,m|)/|Z_q,m + Z_qL,m +
 Z_F| + Zuschlag (Z_qL = 0 an der Sammelschiene, (2·Z_1L + Z_0L)/3 hinter `LINE`), dann I_H = √(Σ I_F,m² + I_Rest²)
 mit I_Rest = Oberschwingungsanteil der Versuche außerhalb der Prognoseordnungen und I_RES = √(I_1² + I_H²). Eine
-Zeitreihe ergibt das Quantil `QUANTILE` der Zeitreihe von I_H und I_RES.
+Zeitreihe ergibt das Quantil `QUANTILE` der Zeitreihe von I_H und I_RES. Mit `PQ_FILES` erhalten die Ordnungen des Mit-
+oder Gegensystems das Quantil der PQ-Messung (mal Faktor aus `PQ_FACTORS`); das Nullsystem (3, 9, 15 …) – es entsteht
+im Erdschluss – und die geraden Ordnungen behalten die Vorfehlerspannung der Versuche (nicht skaliert). Eine PQ-Messung
+kürzer als jede Dauer von `PQ_FACTORS` (lückenlose Werte) ist nicht gültig und liefert keine Spannungen.
 ''')),
         code('''FORECAST = FORECAST_TABLE = None
+PQ = None
+if PQ_FILES:                           ''' + t("# PQ measurement of the busbar: quantile per order × factor, or the 10-min values",
+                                           "# PQ-Messung der Sammelschiene: Quantil je Ordnung × Faktor oder die 10-min-Werte") + '''
+    files = [WORK_FOLDER / p for p in ([PQ_FILES] if isinstance(PQ_FILES, (str, Path)) else PQ_FILES)]
+    PQ = pq.assess(pq.read(files, timezone=PQ_TIMEZONE), quantile=QUANTILE,
+                   **(dict(factors=PQ_FACTORS) if PQ_FACTORS else dict(factor=PQ_SAFETY_FACTOR)))
+    print(PQ.summary())
+    for h in PQ.hints:
+        print("ℹ", h)
+    if not PQ.valid:
+        print("''' + t("⚠ The PQ measurement is not valid for the assessment (gapless values shorter than every duration of PQ_FACTORS) – no voltages from it; VOLTAGES of section 1 stays.",
+                       "⚠ Die PQ-Messung ist für die Bewertung nicht gültig (lückenlose Werte kürzer als jede Dauer von PQ_FACTORS) – keine Spannungen daraus; VOLTAGES aus Abschnitt 1 bleibt.") + '''")
+    else:
+        VOLTAGES, VOLTAGE_REFERENCE = (PQ.series() if PQ_SERIES else PQ.voltages()), PQ.reference
+        ''' + t("# zero sequence (arises in the earth fault) and even orders: not scaled – the pre-fault voltage of the tests",
+                "# Nullsystem (entsteht im Erdschluss) und gerade Ordnungen: nicht skaliert – die Vorfehlerspannung der Versuche") + '''
+        KEPT = ({m: u for m, u in MODEL.test_voltages().items() if gf.formulas.harmonic_category(m) in ("zero", "even")}
+                if VOLTAGE_REFERENCE == "LE" else {})
+        for m, u in KEPT.items():
+            if PQ_SERIES:
+                for df in VOLTAGES.values():
+                    df[m] = u
+            else:
+                VOLTAGES[m] = u
+        if KEPT:
+            print(i18n.format_text("''' + t("Zero sequence and even orders – pre-fault voltage of the tests (median, not scaled): {}",
+                                             "Nullsystem und gerade Ordnungen – Vorfehlerspannung der Versuche (Median, nicht skaliert): {}") + '''",
+                                   ", ".join(i18n.format_text("{}: {:.1f} V", m, u) for m, u in KEPT.items())))
+        if not PQ_SERIES:
+            print(i18n.format_text("''' + t("VOLTAGES from the PQ measurement (quantile × {:g}, reference {}): {}",
+                                             "VOLTAGES aus der PQ-Messung (Quantil × {:g}, Bezug {}): {}") + '''", PQ.factor,
+                                   PQ.reference, ", ".join(i18n.format_text("{}: {:.1f} V", m, u) for m, u in VOLTAGES.items()
+                                                           if m not in KEPT)))
 if VOLTAGES is None:
     print("''' + t("ℹ Forecast skipped – VOLTAGES is not set (section 1).",
                    "ℹ Prognose übersprungen – VOLTAGES ist nicht gesetzt (Abschnitt 1).") + '''")
@@ -2075,6 +2342,9 @@ R_X_HV = 0.1                    # R/X des HS-Netzes (korrigiertes Instrument von
 ORDERS   = (5, 7)               # orders of the positive and negative sequence (not 3, 9, 15 …: their source arises in the fault)
 VOLTAGES = {5: 250.0, 7: 130.0} # demo values: 95 % quantiles in V (line-to-earth), e.g. of a power-quality measurement
 Z_F      = (0.0, 2.5, 5.0)      # fault impedances in Ω
+PQ_FILES    = None              # export(s) of a PQ instrument at the busbar → VOLTAGES (quantile × factor); relative to the work folder or absolute
+PQ_TIMEZONE = None              # time zone of the instrument clock, e.g. "Europe/Berlin" (None = time stamps as exported)
+PQ_QUANTILE = 0.95              # quantile of the 10-min values
 
 # ---------------------------------------------------------------- assumptions for V1 and V2 (demo values)
 G_MAX   = 0.15                  # V1: upper limit of the damping of the MV network in S (None = V1 not computed)
@@ -2093,6 +2363,9 @@ REFERENCE  = dict(recording="''' + raw + '''/TRU_02h_10_000kHz.cfg", channel="I1
 ORDERS   = (5, 7)               # Ordnungen des Mit- und Gegensystems (nicht 3, 9, 15 …: deren Quelle entsteht im Fehler)
 VOLTAGES = {5: 250.0, 7: 130.0} # Demo-Werte: 95-%-Quantile in V (Leiter-Erde), z. B. einer Netzqualitätsmessung
 Z_F      = (0.0, 2.5, 5.0)      # Fehlerimpedanzen in Ω
+PQ_FILES    = None              # Export(e) eines PQ-Messgeräts an der Sammelschiene → VOLTAGES (Quantil × Faktor); relativ zum Arbeitsordner oder absolut
+PQ_TIMEZONE = None              # Zeitzone der Geräteuhr, z. B. "Europe/Berlin" (None = Zeitstempel wie exportiert)
+PQ_QUANTILE = 0.95              # Quantil der 10-min-Werte
 
 # ---------------------------------------------------------------- Annahmen für V1 und V2 (Demo-Werte)
 G_MAX   = 0.15                  # V1: Obergrenze der Dämpfung des MS-Netzes in S (None = V1 nicht gerechnet)
@@ -2128,6 +2401,9 @@ R_X_HV = None                   # R/X of the HV network (corrected instrument of
 ORDERS   = (5, 7)               # orders of the positive and negative sequence (not 3, 9, 15 …: their source arises in the fault)
 VOLTAGES = None                 # harmonic voltages per order in V, e.g. {5: U_5, 7: U_7} (None = no forecast)
 Z_F      = (0.0,)               # fault impedances in Ω
+PQ_FILES    = None              # export(s) of a PQ instrument at the busbar → VOLTAGES (quantile × factor); relative to the work folder or absolute
+PQ_TIMEZONE = None              # time zone of the instrument clock, e.g. "Europe/Berlin" (None = time stamps as exported)
+PQ_QUANTILE = 0.95              # quantile of the 10-min values
 
 # ---------------------------------------------------------------- assumptions for V1 and V2
 G_MAX   = None                  # V1: upper limit of the damping of the MV network in S (None = V1 not computed)
@@ -2160,6 +2436,9 @@ R_X_HV = None                   # R/X des HS-Netzes (korrigiertes Instrument von
 ORDERS   = (5, 7)               # Ordnungen des Mit- und Gegensystems (nicht 3, 9, 15 …: deren Quelle entsteht im Fehler)
 VOLTAGES = None                 # Oberschwingungsspannungen je Ordnung in V, z. B. {5: U_5, 7: U_7} (None = keine Prognose)
 Z_F      = (0.0,)               # Fehlerimpedanzen in Ω
+PQ_FILES    = None              # Export(e) eines PQ-Messgeräts an der Sammelschiene → VOLTAGES (Quantil × Faktor); relativ zum Arbeitsordner oder absolut
+PQ_TIMEZONE = None              # Zeitzone der Geräteuhr, z. B. "Europe/Berlin" (None = Zeitstempel wie exportiert)
+PQ_QUANTILE = 0.95              # Quantil der 10-min-Werte
 
 # ---------------------------------------------------------------- Annahmen für V1 und V2
 G_MAX   = None                  # V1: Obergrenze der Dämpfung des MS-Netzes in S (None = V1 nicht gerechnet)
@@ -2179,14 +2458,18 @@ REFERENCE  = None               # Referenzzange: dict(recording=…, channel=<Tr
 MIN_HV_SHARE  = None            # V3: smallest share of the HV-driven variation of a reliable recording (None = not assessed)
 V0_RATIO      = None            # V0: below m/m_r < V0_RATIO the column V0_rule_A doubles V0 (None = no such column)
 FUNDAMENTAL_A = None            # fundamental residual current in A for I_RES (None = I_H only)
-LIMITS        = ()              # limits of the residual current in A, e.g. (I_1, I_2)''', '''
+LIMITS        = ()              # limits of the residual current in A, e.g. (I_1, I_2)
+PQ_SAFETY_FACTOR = 1.0          # factor on the quantile of the PQ measurement (1.0 = none)
+PQ_FACTORS    = None            # factor on the quantile by the duration of the PQ measurement {minimum days: factor} (None = PQ_SAFETY_FACTOR)''', '''
 
 # ---------------------------------------------------------------- Grenzwerte – selbst festlegen
 # groundfault enthält keine Grenzwerte. Nicht gesetzt (die Werte unten), listet das Notebook die Werte ohne Bewertung.
 MIN_HV_SHARE  = None            # V3: kleinster Anteil der HS-getriebenen Schwankung einer verlässlichen Aufzeichnung (None = ohne Bewertung)
 V0_RATIO      = None            # V0: unter m/m_r < V0_RATIO verdoppelt die Spalte V0_Regel_A den Wert von V0 (None = keine solche Spalte)
 FUNDAMENTAL_A = None            # Grundschwingungsreststrom in A für I_RES (None = nur I_H)
-LIMITS        = ()              # Grenzwerte des Reststroms in A, z. B. (I_1, I_2)''')
+LIMITS        = ()              # Grenzwerte des Reststroms in A, z. B. (I_1, I_2)
+PQ_SAFETY_FACTOR = 1.0          # Faktor auf das Quantil der PQ-Messung (1.0 = keiner)
+PQ_FACTORS    = None            # Faktor auf das Quantil nach Dauer der PQ-Messung {Mindesttage: Faktor} (None = PQ_SAFETY_FACTOR)''')
     cells = [
         md(t('''
 # Forecast without an earth fault – estimates V0 to V3
@@ -2389,6 +2672,23 @@ gemessenen MS-Netz (Abschnitt 3). Mit `V0_RATIO` verdoppelt die Spalte `V0_Regel
 m/m_r < `V0_RATIO`. Die Zeilen `I_H` sind √Σ I_m² über die Ordnungen der Tabelle.
 ''')),
         code('''COMPARISON = None
+PQ = None
+if PQ_FILES:                           ''' + t("# PQ measurement of the busbar: quantile per order (line-to-earth, largest phase) × factor",
+                                           "# PQ-Messung der Sammelschiene: Quantil je Ordnung (Leiter-Erde, größter Leiter) × Faktor") + '''
+    files = [WORK_FOLDER / p for p in ([PQ_FILES] if isinstance(PQ_FILES, (str, Path)) else PQ_FILES)]
+    PQ = pq.assess(pq.read(files, timezone=PQ_TIMEZONE), quantile=PQ_QUANTILE,
+                   **(dict(factors=PQ_FACTORS) if PQ_FACTORS else dict(factor=PQ_SAFETY_FACTOR)))
+    print(PQ.summary())
+    for h in PQ.hints:
+        print("ℹ", h)
+    if PQ.valid:
+        VOLTAGES = PQ.voltages() if PQ.reference == "LE" else {m: u / 3 ** 0.5 for m, u in PQ.voltages().items() if m % 3}
+        print(i18n.format_text("''' + t("VOLTAGES from the PQ measurement (quantile × {:g}, line-to-earth): {}",
+                                         "VOLTAGES aus der PQ-Messung (Quantil × {:g}, Leiter-Erde): {}") + '''", PQ.factor,
+                               ", ".join(i18n.format_text("{}: {:.1f} V", m, VOLTAGES[m]) for m in ORDERS if m in VOLTAGES)))
+    else:
+        print("''' + t("⚠ The PQ measurement is not valid for the assessment (gapless values shorter than every duration of PQ_FACTORS) – no voltages from it; VOLTAGES of section 1 stays.",
+                       "⚠ Die PQ-Messung ist für die Bewertung nicht gültig (lückenlose Werte kürzer als jede Dauer von PQ_FACTORS) – keine Spannungen daraus; VOLTAGES aus Abschnitt 1 bleibt.") + '''")
 if VOLTAGES is None:
     print("''' + t("ℹ No forecast – VOLTAGES is not set (section 1).",
                    "ℹ Keine Prognose – VOLTAGES ist nicht gesetzt (Abschnitt 1).") + '''")

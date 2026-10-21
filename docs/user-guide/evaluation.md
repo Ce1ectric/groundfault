@@ -318,10 +318,13 @@ parameters are meant to be kept; the limits and margins at the end of the table 
 | `uncertainty_U` | `0.0` | measurement-uncertainty margin m_U of voltages (assessed voltage = measured · (1 − m_U)), defined by the user; `0.0` = no margin |
 | `correct_polarity` | `True` | Iw < 0 → rotate the fault-current phasors by 180° |
 | `max_search_hop` | `None` | finer hop in s for the search of the max window; `None` = `T_hop` |
-| `u_thd95_percent` | `None` | 95 % quantile of the line-to-line THD of a power-quality measurement in % – enables the scaling of the harmonic content |
+| `u_thd95_percent` | `None` | 95 % quantile of the line-to-line THD of a power-quality measurement in % – enables the scaling of the harmonic content: the flat factor for the orders of the positive or negative sequence without their own quantile (alone: for all of them) |
 | `u_thd95_volt` | `None` | alternatively the 95 % quantile of the line-to-line harmonic voltage in V |
-| `pq_safety_factor` | `1.0` | factor k_s applied to the 95 % quantile, defined by the user; `1.0` = no factor |
-| `thd_reference` | `"mean"` | interval of the measured THD the scaling refers to: `"pre_fault"`, `"post_fault"` or `"mean"` |
+| `pq_u95` | `None` | 95 % quantile per order in V, `{order: U}` – every order of the positive or negative sequence (5, 7, 11, 13 …) is scaled with its own voltage, U95,m/U_m (U_m = its level in the test); the zero sequence (3, 9, 15 …) and the even orders are never scaled |
+| `pq_u95_reference` | `"seq"` | reference of `pq_u95`: `"seq"` (line-to-earth) or `"LL"` (line-to-line, divided by √3) |
+| `pq_min_level_V` | `1.0` | smallest level of an order in the test for its own factor in V (below it: the THD factor) |
+| `pq_safety_factor` | `1.0` | factor k_s applied to the 95 % quantiles, defined by the user; `1.0` = no factor |
+| `thd_reference` | `"mean"` | interval of the measured THD and of the levels per order the scaling refers to: `"pre_fault"`, `"post_fault"` or `"mean"` |
 | `transformer_voltage` | `"mv"` | side of the transformer currents, i.e. the voltage set of the transformer node: `"mv"` (with HV voltages the upstream impedance is split into transformer and HV network) or `"hv"` |
 | `transformer_sign` | `None` | polarity of the transformer currents: `None` = from the angle of the upstream impedance (generator reference arrow system → reversed, [Transformer node](../methods/transformer-node.md#polarity-of-the-current-transformers)); `1` as measured; `-1` reversed |
 | `ires_limits` | `()` | limits of the residual current in A, defined by the user; the station voltages are extrapolated to them, the largest is the reference current of the reduction factor; `()` = none |
@@ -441,24 +444,31 @@ of 0 the assessment equals the measured value; the next example sets margins of 
 | `IH_total` | total harmonic content √(I_RES² − I_G²) |
 | `IH_sum` | root sum of squares of the orders 2…40 – a cross-check of `IH_total` |
 | `UH1n` | fundamental component of the zero-sequence voltage (neutral displacement voltage) |
-| `UTHD_meas`, `UTHD_95`, `IH_scaled`, `IRMS_forecast` | only with `u_thd95_percent`/`u_thd95_volt`: measured THD (or harmonic voltage), its 95 % quantile × safety factor, the harmonic content scaled to it and the residual current with the scaled harmonic content |
+| `UTHD_meas`, `UTHD_95` | only with `u_thd95_percent`/`u_thd95_volt`: measured THD (or harmonic voltage) and its 95 % quantile × safety factor |
+| `IH_zero`, `IH_even`, `IH_other` | with a scaling: the harmonic content of the zero sequence (3, 9, 15 …), of the even orders and without an order (interharmonics, DC and low-frequency parts) – kept as measured |
+| `IH_scaled`, `IRMS_forecast` | with a scaling: the harmonic content scaled per order and the residual current with it |
 
-With a power-quality quantile the table gets the four scaling rows:
+With a power-quality quantile the table gets the scaling rows, and the table `harmonic_scaling` lists every order with
+its level, quantile, factor and rule (the values of a PQ export: `gf.Settings(**pq.assess(…).settings())`,
+[Power-quality measurements](pq.md)):
 
 ```python
 k_s, m_I, m_U = 1.2, 0.03, 0.02          # illustrative values – define your own
 settings_pq = gf.Settings(u_thd95_percent=3.0, pq_safety_factor=k_s, uncertainty_I=m_I, uncertainty_U=m_U)
 res_pq = gf.evaluate(rec, intervals, settings_pq, roles, z_fault_ohm=0.0)
-print(res_pq.table("assessment_quantities").tail(4)[["quantity", "measured_value", "assessment", "unit",
-                                                     "equation"]].round(2).to_string(index=False))
+print(res_pq.table("assessment_quantities").tail(7)[["quantity", "measured_value", "assessment", "unit"]]
+      .round(2).to_string(index=False))
 ```
 
 ```text
-     quantity  measured_value  assessment unit                      equation
-    UTHD_meas            2.16        2.12    %   U_assess = U_meas·(1 − m_U)
-      UTHD_95            3.60        3.60    %           U_95 = U_PQ,95%·k_s
-    IH_scaled           77.55       81.51    A  I_H,scaled = I_H·U_95/U_meas
-IRMS_forecast           83.90       87.93    A I_RMS = √(I_G² + I_H,scaled²)
+     quantity  measured_value  assessment unit
+    UTHD_meas            2.16        2.12    %
+      UTHD_95            3.60        3.60    %
+      IH_zero            4.04        4.16    A
+      IH_even            0.01        0.01    A
+     IH_other            0.61        0.63    A
+    IH_scaled           77.36       81.30    A
+IRMS_forecast           83.72       87.74    A
 ```
 
 The quantities are explained in [Assessment quantities](../methods/assessment.md).

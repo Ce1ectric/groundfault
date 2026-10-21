@@ -119,7 +119,12 @@ def test_residual_current_and_scaling(series):
     a = equivalent_source.ires_at_impedance(r, 2.5, uncertainty_I=0.03)  # margin of the user (invented)
     assert a["IRES_assessed"] == pytest.approx(1.03 * e["IRES"]) and a["IRES"] == e["IRES"]
     k = equivalent_source.ires_at_impedance(r, 2.5, thd95_percent=3.0, thd_measured_percent=1.5)
-    assert k["IH_scaled"] == pytest.approx(2.0 * k["IH"])
+    # THD alone: every order of the positive or negative sequence × THD95/THD, the zero sequence and even orders as
+    # measured
+    assert k["factors"] == {m: (2.0 if m % 2 and m % 3 else 1.0) for m in r.fits} and 3 in r.fits
+    assert k["IH_scaled"] == pytest.approx(math.sqrt(sum((k["factors"][m] * v) ** 2 for m, v in k["parts"].items())
+                                                     + k["IH_rest_scaled"] ** 2))
+    assert k["IH"] < k["IH_scaled"] < 2.0 * k["IH"]
     u = equivalent_source.ires_at_impedance(r, 2.5, u95={5: 360.0}, u95_reference="LL")
     assert u["factors"][5] == pytest.approx(360.0 / math.sqrt(3) / r.fits[5].level_reference)
     # line with Z = 0 → identical to the residual current at Z_E
@@ -368,10 +373,15 @@ def test_two_measurements_via_source_fit():
 def test_u95_scaling_reports_unscalable_orders(series):
     r = equivalent_source.fit_equivalent_source(series)                       # 3rd harmonic: zero sequence, not normalized
     u = equivalent_source.ires_at_impedance(r, 2.5, u95={3: 50.0, 5: 360.0}, u95_reference="LL")
-    assert u["factors"][3] == 1.0 and any("[3" in h for h in u["hints"])
+    # the zero sequence is never scaled; an order of the positive/negative sequence without its own value stays as
+    # measured (with a hint) when there is no THD
+    assert u["factors"][3] == 1.0 and u["rules"][3] == "as measured"
+    assert u["rules"][5] == "own voltage" and u["rules"][7] == "no information" and u["factors"][7] == 1.0
+    assert any("[7, 11, 13" in h for h in u["hints"]) and any("[3, 9" in h for h in u["hints"])
     v = equivalent_source.ires_at_impedance(r, 2.5, u95={5: 360.0}, u95_reference="LL", thd95_percent=3.0,
                                             thd_measured_percent=1.5)
-    assert v["factors"][3] == pytest.approx(2.0)              # fallback to the THD factor
+    assert v["factors"][3] == 1.0                              # zero sequence: not even with the THD
+    assert v["factors"][7] == pytest.approx(2.0) and v["rules"][7] == "THD"   # fallback to the THD factor
 
 
 def test_messages_in_english():

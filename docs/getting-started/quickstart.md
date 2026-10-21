@@ -341,7 +341,7 @@ To try them, put the example notebooks into an empty folder – copy them, or ge
 The first cell prints the version, the work folder it found and the detected folder layout:
 
 ```text
-groundfault 3.1.0 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
+groundfault 3.2.0 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
 ```
 
 For your own campaigns use the reference copies in `notebooks/en/templates/` (placeholders instead of the demo

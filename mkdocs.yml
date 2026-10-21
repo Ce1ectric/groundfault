@@ -90,6 +90,7 @@ nav:
       - Stations and the LV network: user-guide/station.md
       - Earthing measurements (groundmeas): user-guide/earthing.md
       - Campaign evaluation: user-guide/campaign.md
+      - Power-quality measurements: user-guide/pq.md
       - Signal explorer: user-guide/explorer.md
       - Corrections of the measuring chain: user-guide/corrections.md
       - Reports and exports: user-guide/report.md
@@ -121,6 +122,7 @@ nav:
       - transformer: reference/transformer.md
       - earthing: reference/earthing.md
       - equivalent_source: reference/equivalent_source.md
+      - pq: reference/pq.md
       - forecast: reference/forecast.md
       - formulas: reference/formulas.md
       - campaign: reference/campaign.md

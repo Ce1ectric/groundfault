@@ -29,6 +29,8 @@ transformer        transformer node: power, apparent and upstream impedance (tra
 earthing           groundmeas: read earthing measurements, compare them with the staged fault test (reduction
                    factor, LV network in parallel) and enter the fault test
 rms                evaluation of RMS recordings (trend, resonance curve, comparison with the device RMS values)
+pq                 power-quality measurements of the busbar voltage: exports of PQ instruments, 10-min values,
+                   quantiles per order and of the THD, factor by duration, scaling of the harmonic content
 campaign           overview and consistency check of a measurement campaign, resistive approach
 equivalent_source  equivalent-source method (active two-terminal equivalent per harmonic order)
 diagnostics        raw-data diagnostics (.dat structure, time base, active channels, time offset)
@@ -48,7 +50,7 @@ forecast           forecast of the harmonic residual current: a learnable networ
                    checks, faults behind a line – built on the result files of the evaluation
                    (``from groundfault import forecast``)
 """
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 """Version of the package."""
 
 from .comtrade import Recording, ComtradeError, open_recording, write_comtrade  # noqa: E402

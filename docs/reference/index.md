@@ -27,6 +27,7 @@ complex RMS phasors, English column names and language-neutral codes in all tabl
 | [transformer](transformer.md) | transformer node: power, apparent and upstream impedance (transformer + HV network) per order and sequence before, during and after the fault |
 | [earthing](earthing.md) | groundmeas: read earthing measurements, compare them with the staged fault test (reduction factor, LV network in parallel) and enter the fault test |
 | [equivalent_source](equivalent_source.md) | equivalent-source method (active two-terminal equivalent per harmonic order) |
+| [pq](pq.md) | power-quality measurements of the busbar: reading exports, 10-min values, quantiles of the largest phase, factor by duration, comparison with the tests and the values for the scaling |
 | [formulas](formulas.md) | closed-form formulas (residual current, √2 method, angle method, measurement uncertainty, harmonics, resistive approach, limits, line parameters) |
 | [campaign](campaign.md) | overview and consistency check of a measurement campaign, resistive approach |
 

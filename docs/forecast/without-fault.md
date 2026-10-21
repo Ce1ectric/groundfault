@@ -217,6 +217,7 @@ of the undisturbed transformer node, one with a reference clamp – and runs wit
 | `C_1`, `Q_C` | operating capacitance per phase; or C_1 = Q_C·C_E |
 | `R_X_UP`, `R_X_HV` | R/X of the upstream impedance and of the HV network at the orders – your assumptions |
 | `ORDERS`, `VOLTAGES`, `Z_F` | orders, harmonic voltages (e.g. 95 % quantiles), fault impedances |
+| `PQ_FILES`, `PQ_TIMEZONE`, `PQ_QUANTILE`, `PQ_FACTORS`, `PQ_SAFETY_FACTOR` | export(s) of a power-quality measurement of the busbar instead of `VOLTAGES`: the quantile per order (line-to-earth, largest phase per 10-min interval) × your factor; a measurement shorter than every duration of `PQ_FACTORS` (gapless values) is not valid and gives no voltages ([Power-quality measurements](../user-guide/pq.md)) |
 | `G_MAX`, `G`, `G_RANGE` | damping for V1, V2 and the envelope – your assumptions |
 | `RECORDINGS`, `SIGN`, `CT_ANGLE`, `REFERENCE` | the undisturbed recordings (pattern or list), polarity, angle error or reference clamp |
 | `MIN_HV_SHARE`, `V0_RATIO`, `FUNDAMENTAL_A`, `LIMITS` | your limits: share of the HV side, rule for V0 below the resonance, fundamental residual current, limits of I_RES – not set, the notebook lists the values without assessing them |

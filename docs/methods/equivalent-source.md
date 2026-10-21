@@ -433,21 +433,49 @@ range of the tested additional impedances – outside, the value is an extrapola
 
 ## Scaling to the 95 % quantile
 
-Per order, the source voltage is scaled to the 95 % quantile of the harmonic voltage from a power-quality measurement:
+Each order is scaled by its sequence to the 95 % quantile of the harmonic voltage from a power-quality measurement of
+the same network and switching state
+([`order_scaling`](../reference/formulas.md#groundfault.formulas.order_scaling)):
 
-\[
-k_m = k_\text{s}\,\frac{U_{95,m}}{\tilde{U}_m}
-\]
+* **Positive or negative sequence** (odd orders that are not a multiple of 3: 5, 7, 11, 13, 17, 19 …) – with its own
+  voltage,
 
-with the level \(\tilde{U}_m\) of the order during the tests (`level_reference_V`, a sequence voltage line-to-earth)
-and a factor k_s that you define (`safety_factor`, default 1 – no factor). `u95` gives the quantiles per order, either
-as sequence voltages line-to-earth (`u95_reference="seq"`) or line-to-line as a power-quality instrument reports them
-(`"LL"`, divided by √3). Zero-sequence orders cannot be scaled with line-to-line values – a line-to-line voltage
-contains no zero sequence – and neither can orders without a level or without a value. They get the flat factor
-\( k = k_\text{s}\,\mathrm{THD}_{95}/\mathrm{THD}_\text{series} \) if `thd95_percent` and the THD of the series are
-given, otherwise they stay unscaled (hint). The remainder I_rest is scaled with the largest factor. Without `u95`, the
-flat THD factor applies to all orders. The scaled results are `IH_scaled`, `IRES_scaled` and `IRES_scaled_assessed`;
-an example is in [Campaign evaluation](../user-guide/campaign.md#scaling-to-a-power-quality-measurement).
+  \[
+  k_m = k_\text{s}\,\frac{U_{95,m}}{\tilde{U}_m}
+  \]
+
+  with the level \(\tilde{U}_m\) of the order during the tests (`level_reference_V`, a sequence voltage
+  line-to-earth) and a factor k_s that you define (`safety_factor`, default 1 – no factor). `u95` gives the quantiles
+  per order, either as sequence voltages line-to-earth (`u95_reference="seq"`) or line-to-line as a power-quality
+  instrument reports them (`"LL"`, divided by √3). An order without its own value – no quantile, or no level of at
+  least `settings["min_level_V"]` (1 V) – gets the flat factor
+  \( k = k_\text{s}\,\mathrm{THD}_{95}/\mathrm{THD}_\text{series} \) if `thd95_percent` and the THD of the series are
+  given, otherwise it stays as measured (hint). Without `u95` the flat THD factor applies to all of these orders.
+* **Zero sequence** (odd multiples of 3: 3, 9, 15 …) – as measured (k = 1). Its source arises in the earth fault – the
+  displaced neutral and the loads on the healthy phases –, so the PQ measurement of undisturbed operation says nothing
+  about it.
+* **Even orders** (2, 4, 6, 8 …) – as measured and listed separately; a hint names them from 5 % of the harmonic
+  content: unusual for the voltage of a network, they may point to another cause.
+
+The **remainder** I_rest outside the orders of the model follows the same rules order by order: per test its orders
+\( \lvert\underline{I}_m\rvert \) with the levels \( \tilde{U}_{m,k} \) of the same test, the content without a phasor
+(orders above those of the result file) as measured; the test with the largest scaled remainder is used (independent
+of Z_E, as for the unscaled remainder). The result per order is the table `table` of the result: the orders of the
+model at Z_E and the orders of the remainder with their test, level, quantile, factor and rule (`own voltage`, `THD`,
+`as measured`, `no information`). The scaled results are `IH_scaled`, `IRES_scaled`, `IRES_scaled_assessed` and
+`IH_rest_scaled`, the parts not scaled `IH_zero`, `IH_even` and `IH_other`; an example is in
+[Campaign evaluation](../user-guide/campaign.md#scaling-to-a-power-quality-measurement).
+
+The scaling per order assumes that all orders reach their quantile at the same time. For a time series of harmonic
+voltages – e.g. the 10-min values of a PQ measurement –
+[`ires_over_time`](../reference/equivalent_source.md#groundfault.equivalent_source.ires_over_time) gives I_RES at Z_E
+for every time step, with k_m(t) = k_s·U_m(t)/Ũ_m; its quantile is the quantile of the residual current itself and is
+at most the result per order when the orders rise together (comonotone), smaller when they do not.
+
+The level Ũ_m is the natural-sequence voltage at the faulted phase, while a PQ instrument records line-to-earth
+voltages. The largest phase contains the other sequences of the order as well,
+\( \max_x |\underline{U}_x| \geq \sqrt{(|\underline{U}_0|^2 + |\underline{U}_1|^2 + |\underline{U}_2|^2)} \geq |\underline{U}_\text{nat}| \),
+so k_m = k_s·U95,m/Ũ_m is at least the ratio of the largest phases of the PQ measurement and of the tests.
 
 ## Fault behind a line
 

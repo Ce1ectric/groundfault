@@ -64,6 +64,7 @@ __all__ = ["ReportStyle", "STYLE", "set_style", "used_font", "activate_style", "
            "COLOR_TYPICAL",
            "instantaneous", "rms_trend", "harmonics_trend", "spectrum", "spectrum_comparison",
            "voltage_spectrum", "phasor_diagram", "source_fit", "source_plane", "ires_over_ze",
+           "pq_series", "pq_duration", "pq_profile",
            "v_curve", "station_voltages", "station_frequency", "station_background", "station_colors", "probe_label",
            "earthing_comparison", "reduction_factor", "typical_band", "lv_network", "transformer_power",
            "transformer_impedance", "number",
@@ -136,6 +137,15 @@ i18n.register({
     "report.with_source": {"en": "{symbol} ({source})", "de": "{symbol} ({source})"},
     "report.single_tests": {"en": "single tests", "de": "einzelne Versuche"},
     "report.remainder_not_fitted": {"en": "remainder (not fitted)", "de": "Rest (nicht gefittet)"},
+    # ---- power-quality measurement
+    "report.pq_largest_phase": {"en": "largest phase per 10 min", "de": "größter Leiter je 10 min"},
+    "report.pq_quantile": {"en": "{q} % quantile", "de": "{q}-%-Quantil"},
+    "report.pq_with_factor": {"en": "{q} % quantile × {k}", "de": "{q}-%-Quantil × {k}"},
+    "report.pq_time_exceeded": {"en": "Time exceeded in %", "de": "Überschreitungsdauer in %"},
+    "report.pq_hour": {"en": "Hour of the day", "de": "Stunde des Tages"},
+    "report.pq_workdays": {"en": "Mon–Fri", "de": "Mo–Fr"},
+    "report.pq_saturday": {"en": "Saturday", "de": "Samstag"},
+    "report.pq_sunday": {"en": "Sunday", "de": "Sonntag"},
     "report.per_100_a": {"en": "{symbol} in V per 100 A", "de": "{symbol} in V je 100 A"},
     "report.epr": {"en": "earth potential rise", "de": "Erdungsspannung"},
     "report.touch_voltage": {"en": "touch voltage", "de": "Berührungsspannung"},
@@ -1277,6 +1287,185 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
         ax.set_xlim(0, Z_E_max); ax.set_ylim(0, ymax)
         ax.set_xlabel(r"$Z_\mathrm{E}$ in Ω"); ax.set_ylabel(r"$I$ in A")
         _legend(ax, n, ncol=4)
+    return _finish(fig, axes)
+
+
+def _pq_orders(assessment, orders, n: int = 3) -> List[int]:
+    """Orders of a PQ figure: the given ones or the ``n`` largest quantiles above the fundamental."""
+    if orders is not None:
+        return [int(m) for m in orders]
+    t = assessment.table()
+    t = t[t["order"] >= 2].sort_values("U_quantile_V", ascending=False)
+    return [int(m) for m in t["order"].head(n)]
+
+
+def _pq_q(assessment) -> str:
+    return _g(100 * assessment.quantile)
+
+
+def pq_series(assessment, orders: Optional[Sequence[int]] = None, width="full", height_cm: float = 6.5):
+    """10-min values of a power-quality measurement over the measuring period – per order the largest of the three
+    phases – with the quantile (dashed) and, with a factor, the quantile times the factor (dotted).
+
+    Parameters
+    ----------
+    assessment : PQAssessment
+        Result of [`groundfault.pq.assess`][groundfault.pq.assess].
+    orders : sequence of int, optional
+        Orders (default: the three largest quantiles).
+    width : {"full", "half"} or float
+        Figure width (see [`figure`][groundfault.report.figure]).
+    height_cm : float
+        Figure height in cm.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    import matplotlib.dates as mdates
+    ords = sorted(_pq_orders(assessment, orders))
+    fig, axes = figure(width, height_cm); ax = axes[0, 0]
+    n = 0
+    with _rc():
+        for i, m in enumerate(ords):
+            s = assessment.largest(m)
+            t = s.index.tz_localize(None) if s.index.tz is not None else s.index      # wall-clock time of the clock
+            color = COLORS[i % 8]
+            ax.plot(t, s.to_numpy(), color=color, lw=0.6, label="%g Hz" % round(m * assessment.f1)); n += 1
+            q = assessment.u95()[m]
+            ax.axhline(q, color=color, lw=0.9, ls="--")
+            if np.isfinite(assessment.factor) and assessment.factor != 1.0:
+                ax.axhline(q * assessment.factor, color=color, lw=0.9, ls=":")
+        ax.plot([], [], color="#333333", lw=0.9, ls="--", label=tr("report.pq_quantile", q=_pq_q(assessment))); n += 1
+        if np.isfinite(assessment.factor) and assessment.factor != 1.0:
+            ax.plot([], [], color="#333333", lw=0.9, ls=":",
+                    label=tr("report.pq_with_factor", q=_pq_q(assessment), k=_g(assessment.factor))); n += 1
+        ax.set_ylim(bottom=0)
+        ax.set_ylabel(r"$U$ in V")
+        idx = assessment.data.harmonics.index
+        idx = idx.tz_localize(None) if idx.tz is not None else idx
+        if len(idx) > 1:
+            # ticks at an even spacing from the first midnight or full hour (a locator by calendar days starts again
+            # at each month and the labels collide)
+            t0, t1 = idx.min(), idx.max()
+            span_h = (t1 - t0) / pd.Timedelta(hours=1)
+            if span_h > 120 * 24.0:                                  # months: the first day of every k-th month
+                months = pd.date_range(t0.floor("D"), t1, freq="MS")
+                ticks = months[::max(1, int(math.ceil(len(months) / 8.0)))]
+                fmt = "%m.%Y" if _comma() else "%b %Y"
+            else:
+                if span_h > 72.0:                                    # days
+                    step = pd.Timedelta(days=max(1, int(math.ceil(span_h / 24.0 / 8.0))))
+                    fmt = "%d.%m." if _comma() else "%d %b"
+                    grid = pd.Timedelta(days=1)
+                else:                                                # hours
+                    step = pd.Timedelta(hours=next((h for h in (1, 2, 3, 4, 6, 12) if span_h / h <= 6.0), 24))
+                    fmt = "%d.%m.\n%H:%M" if _comma() else "%d %b\n%H:%M"
+                    grid = step
+                midnight = t0.floor("D")
+                first = midnight + grid * int(math.ceil((t0 - midnight) / grid))
+                ticks = pd.date_range(first, t1, freq=step)
+            if len(ticks):
+                ax.set_xticks(list(ticks.to_pydatetime()))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter(fmt))
+        _legend(ax, n, ncol=min(n, 5))
+        if ax.get_legend() is not None:
+            for h in ax.get_legend().get_lines()[:len(ords)]:
+                h.set_linewidth(1.6)
+    return _finish(fig, axes)
+
+
+def pq_duration(assessment, order: Optional[int] = None, levels: Optional[Mapping[str, float]] = None, width="full",
+                height_cm: float = 6.5):
+    """Duration curve of one order of a power-quality measurement: the 10-min values of the largest phase sorted
+    from the largest, over the share of time they are exceeded, with the quantile, the quantile times the factor and
+    the pre-fault voltages of fault tests.
+
+    Parameters
+    ----------
+    assessment : PQAssessment
+        Result of [`groundfault.pq.assess`][groundfault.pq.assess].
+    order : int, optional
+        Order (default: the largest quantile).
+    levels : mapping of str to float, optional
+        ``{test: U}`` – pre-fault voltage of the largest phase of fault tests in V (points on the curve).
+    width : {"full", "half"} or float
+        Figure width (see [`figure`][groundfault.report.figure]).
+    height_cm : float
+        Figure height in cm.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    m = _pq_orders(assessment, None if order is None else [order], 1)[0]
+    s = np.sort(assessment.largest(m).dropna().to_numpy())[::-1]
+    share = 100.0 * (np.arange(1, s.size + 1) - 0.5) / s.size
+    q = assessment.u95()[m]
+    fig, axes = figure(width, height_cm); ax = axes[0, 0]
+    n = 0
+    with _rc():
+        ax.plot(share, s, color="#111111", lw=1.1, label=tr("report.pq_largest_phase")); n += 1
+        x_q = 100.0 * (1.0 - assessment.quantile)
+        ax.axhline(q, color=COLORS[7], lw=0.9, ls="--", label=tr("report.pq_quantile", q=_pq_q(assessment))); n += 1
+        ax.axvline(x_q, color=COLORS[7], lw=0.6, ls="--")
+        if np.isfinite(assessment.factor) and assessment.factor != 1.0:
+            ax.axhline(q * assessment.factor, color=COLORS[7], lw=0.9, ls=":",
+                       label=tr("report.pq_with_factor", q=_pq_q(assessment), k=_g(assessment.factor))); n += 1
+        for i, (name, u) in enumerate((levels or {}).items()):
+            x = 100.0 * float((s >= u).mean())
+            ax.plot([x], [u], marker="o", ms=4, color=COLORS[i % 7], ls="none", label=str(name)); n += 1
+        ax.set_xlim(0, 100); ax.set_ylim(bottom=0)
+        ax.set_xlabel(tr("report.pq_time_exceeded"))
+        ax.set_ylabel(r"$U_{%d}$ in V" % m)
+        _legend(ax, n, ncol=min(n, 4))
+    return _finish(fig, axes)
+
+
+def pq_profile(assessment, order: Optional[int] = None, width="full", height_cm: float = 6.5):
+    """Weekly profile of one order of a power-quality measurement: median of the 10-min values of the largest phase
+    per hour of the day, Monday to Friday, Saturday and Sunday, with the quantile of the whole measurement.
+
+    Parameters
+    ----------
+    assessment : PQAssessment
+        Result of [`groundfault.pq.assess`][groundfault.pq.assess].
+    order : int, optional
+        Order (default: the largest quantile).
+    width : {"full", "half"} or float
+        Figure width (see [`figure`][groundfault.report.figure]).
+    height_cm : float
+        Figure height in cm.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    m = _pq_orders(assessment, None if order is None else [order], 1)[0]
+    s = assessment.largest(m).dropna()
+    t = s.index - pd.Timedelta(seconds=float(assessment.data.interval_s))       # beginning of the interval
+    frame = pd.DataFrame({"u": s.to_numpy(), "day": t.dayofweek, "hour": t.hour + t.minute / 60.0})
+    fig, axes = figure(width, height_cm); ax = axes[0, 0]
+    n = 0
+    with _rc():
+        for days, label, color in (((0, 1, 2, 3, 4), tr("report.pq_workdays"), COLORS[0]),
+                                   ((5,), tr("report.pq_saturday"), COLORS[1]),
+                                   ((6,), tr("report.pq_sunday"), COLORS[2])):
+            f = frame[frame["day"].isin(days)]
+            if not len(f):
+                continue
+            g = f.groupby(np.floor(f["hour"]))["u"]
+            med = g.median()
+            ax.plot(med.index + 0.5, med.to_numpy(), color=color, lw=1.1, label=label, marker="o", ms=2); n += 1
+            if len(days) > 1:
+                ax.fill_between(med.index + 0.5, g.quantile(0.05).to_numpy(), g.quantile(0.95).to_numpy(), color=color,
+                                alpha=0.15, lw=0)
+        ax.axhline(assessment.u95()[m], color=COLORS[7], lw=0.9, ls="--",
+                   label=tr("report.pq_quantile", q=_pq_q(assessment))); n += 1
+        ax.set_xlim(0, 24); ax.set_xticks(range(0, 25, 3)); ax.set_ylim(bottom=0)
+        ax.set_xlabel(tr("report.pq_hour"))
+        ax.set_ylabel(r"$U_{%d}$ in V" % m)
+        _legend(ax, n, ncol=min(n, 4))
     return _finish(fig, axes)
 
 
@@ -2539,7 +2728,7 @@ def export_table(df: pd.DataFrame, path_stem: str, formats: Sequence[str] = ("cs
                                             encoding="utf-8-sig")
         elif fmt == "xlsx":
             with pd.ExcelWriter(p, engine="openpyxl") as w:
-                shown.to_excel(w, index=False, sheet_name=sheet)
+                _excel_ready(shown).to_excel(w, index=False, sheet_name=sheet)
                 _format_xlsx(w.sheets[sheet], shown)
         elif fmt == "md":
             with open(p, "w", encoding="utf-8") as f:
@@ -2553,6 +2742,21 @@ def export_table(df: pd.DataFrame, path_stem: str, formats: Sequence[str] = ("cs
             raise ValueError(tr("report.unknown_table_format", format=fmt))
         paths.append(p)
     return paths
+
+
+def _excel_ready(df: pd.DataFrame) -> pd.DataFrame:
+    """Time stamps with a time zone as text (Excel has no time zones): columns of a datetime dtype with a time zone
+    and single values with ``tzinfo`` in columns of dtype object."""
+    out = None
+    for c in df.columns:
+        s = df[c]
+        if isinstance(s.dtype, pd.DatetimeTZDtype):
+            out = df.copy() if out is None else out
+            out[c] = s.astype(str)
+        elif s.dtype == object and s.map(lambda v: getattr(v, "tzinfo", None) is not None).any():
+            out = df.copy() if out is None else out
+            out[c] = s.map(lambda v: str(v) if getattr(v, "tzinfo", None) is not None else v)
+    return df if out is None else out
 
 
 def _export_library(library: str) -> bool:
@@ -2644,7 +2848,7 @@ def export_tables(tables: Mapping[str, pd.DataFrame], folder: str, prefix: str =
                 if df is None or df.empty:
                     continue
                 sheet = name[:31]
-                shown = _localize(df)
+                shown = _excel_ready(_localize(df))
                 shown.to_excel(w, index=False, sheet_name=sheet)
                 _format_xlsx(w.sheets[sheet], shown)
         paths.append(p)
