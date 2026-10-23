@@ -749,3 +749,80 @@ def test_pq_measurement_in_several_periods(campaign, tmp_path):
     unc = {r[0]: r for r in _table_with(path, "Beitrag")}
     assert "Abschnitte der PQ-Messung" in unc and unc["Abschnitte der PQ-Messung"][1].startswith(
         "IRES(ZE) skaliert mit einem Abschnitt allein")
+
+
+def _tables_with(path, first_cell):
+    d = docx.Document(str(path))
+    return [[[c.text.strip() for c in r.cells] for r in t.rows] for t in d.tables
+            if t.rows and t.rows[0].cells[0].text.strip() == first_cell]
+
+
+def test_network_expansion(campaign, tmp_path):
+    """Section *Netzausbau*: the equivalent sources converted to more cable at the substation – the planned value and
+    the capacitive earth-fault current at which every limit is reached, for both splits of the source impedance as
+    equivalent_source.expansion_curve gives them, the larger value deciding; in the key results, the summary and
+    the uncertainties. expansion=False leaves the section out; wrong settings raise."""
+    ns = campaign
+    cases = [dict(limit_A=60.0, Z_E=2.5), dict(limit_A=90.0, Z_E=1.7, condition="alle Z_E < 1,7 Ω")]
+    controller = dict(coils_A={"C1": 300.0, "C2": 320.0}, detuning_pct=4.0)
+    info = dict(ns["REPORT"], limit_cases=cases, coil_controller=controller, expansion=dict(I_CE=700.0))
+    path = tmp_path / "expansion.docx"
+    kw = _kwargs(ns, info=info)
+    res = document.campaign_report(ns["RESULTS"], str(path), raw=False, bootstrap=0, **kw)
+    assert any(os.path.basename(f).startswith("ires_over_ice") for f in res["figures"])
+    h = _headings(path)
+    assert h.index("Netzausbau") == h.index("Ersatzquellenverfahren und Prognose") + 1
+    text = _text(path)
+    assert "Für die Netzplanung stellt sich die Frage" in text and "der folgende Abschnitt rechnet" in text
+    # the same computation with the package
+    ice, il = 620.0 / 1.04, 620.0
+    subs = [m["name"] for m in ns["MEASUREMENTS"] if m["Z"] is not None]
+    d = float(np.median([ns["RESULTS"][n].values["Iw"] for n in subs])) / ice
+    S = ns["MAIN"]
+    splits = ("sources", "busbar") if not equivalent_source.busbar_impedances(S).empty else ("sources",)
+    assert splits == ("sources", "busbar")
+    common = dict(IG=ns["IG_CHOICE"], uncertainty_I=kw["uncertainty_I"], uncertainty_U=kw["uncertainty_U"],
+                  **ns["SCALING"], I_L=il, damping=d)
+    planned = {sp: equivalent_source.expansion_curve(S, ns["Z_E"], ice, [ice, 700.0], split=sp, **common)
+               for sp in splits}
+    col = "IRES_scaled_assessed_A"
+    tab = next(t for t in _tables_with(path, "") if t[1][0] == "Kapazitiver Erdschlussstrom ICE in A")
+    rows = {r[0]: r[1:] for r in tab[1:]}
+    assert rows["Strom der Spulen IL in A"] == [_n(il), _n(il * 700.0 / ice)]
+    assert rows["IRES,Bew in A – Netzdaten"] == [_n(v) for v in planned["sources"][col]]
+    assert rows["IRES,Bew in A – Sammelschiene"] == [_n(v) for v in planned["busbar"][col]]
+    now = planned["sources"][col].iloc[0]
+    assert rows["IRES,Bew in A – proportional zu ICE"][1] == _n(now * 700.0 / ice)
+    decisive = max(planned[sp][col].iloc[1] for sp in splits)
+    key = {r[0]: r for r in _table_with(path, "Größe")}
+    row = key["Netzausbau auf ICE = 700 A – IRES,Bew an ZE = 2,50 Ω"]
+    assert row[1] == _n(decisive) + " A" and row[2] == "60,0 A"
+    # where the limits are reached: the curves of both splits, the larger value deciding
+    grid = np.linspace(ice, max(4 * ice, 1.1 * 700.0), 241)
+    limits = _tables_with(path, "Grenzwert in A")[-1]
+    assert limits[0][5:7] == ["ICE in A – Netzdaten", "ICE in A – Sammel\u00adschiene"]   # a soft hyphen
+    for case, line in zip(cases, limits[1:]):
+        curves = {sp: equivalent_source.expansion_curve(S, case["Z_E"], ice, grid, split=sp, **common)
+                  for sp in splits}
+        top = pd.DataFrame({"I_C_A": grid, "x": np.maximum(*(curves[sp][col] for sp in splits))})
+        r = equivalent_source.expansion_limit(top, case["limit_A"], "x")
+        k = "ICE, bei dem IRES,Bew %s A erreicht (ZE = %s Ω)" % (_n(case["limit_A"]).rstrip("0").rstrip(","),
+                                                                  _n(case["Z_E"]))
+        if r["status"] == "reached":
+            assert key[k][1] == "≈ %d A" % round(r["I_C_A"], -1) and line[-1] == "%d" % round(r["margin_A"], -1)
+        elif r["status"] == "exceeded":
+            assert key[k][3] == "überschritten" and line[5] == "heute überschritten"
+        assert line[4] == _n(curves["sources"][col].iloc[0])
+    unc = {r[0]: r for r in _table_with(path, "Beitrag")}
+    assert unc["Netzausbau: Aufteilung von Zq"][2] == "der größere Wert"
+    assert "Netzausbau: Bei ICE = 700 A ist an ZE = 2,50 Ω ein Erdschlussreststrom" in text
+    assert "Er erreicht den Grenzwert 60 A (ZE = 2,50 Ω) bei ICE ≈ " in text
+    # left out on request; the forecast bullet then points to the network model
+    path2 = tmp_path / "no_expansion.docx"
+    document.campaign_report(ns["RESULTS"], str(path2), raw=False, bootstrap=0,
+                             **_kwargs(ns, info=dict(info, expansion=False)))
+    assert "Netzausbau" not in _headings(path2) and "für sie ist das Netzmodell der Prognose" in _text(path2)
+    for bad in (dict(I_CE=-5.0), dict(planned=800.0), dict(zero_sequence="spule"), "ja", dict(c1_ratio=0.0)):
+        with pytest.raises(ValueError):
+            document.campaign_report(ns["RESULTS"], str(tmp_path / "bad.docx"), raw=False, bootstrap=0,
+                                     **_kwargs(ns, info=dict(info, expansion=bad)))

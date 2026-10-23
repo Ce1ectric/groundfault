@@ -30,6 +30,7 @@ from typing import Mapping, Optional, Sequence, Tuple, Union
 import numpy as np
 import pandas as pd
 
+from ..formulas import zero_sequence_impedance
 from .network_data import mv_network_from_data
 
 __all__ = ["classical_bound", "resonance_bound", "network_data_estimate", "network_data_envelope", "network_estimate",
@@ -102,7 +103,8 @@ def network_estimate(U_m: float, m: int, Z_mv: complex, Z_up: complex, I_C: floa
       undisturbed operation ([`mv_network_impedance`][groundfault.transformer.mv_network_impedance]);
     * Z_0 = the capacitive zero-sequence impedance from I_C with the coils (as in
       [`classical_bound`][groundfault.forecast.bounds.classical_bound]) plus the series resistance d·X_C0 – with the
-      damping d = I_w/I_C of the coil controller as a resistance in series with the earth capacitances.
+      damping d = I_w/I_C of the coil controller as a resistance in series with the earth capacitances
+      ([`zero_sequence_impedance`][groundfault.formulas.zero_sequence_impedance]).
 
     An estimate, not a bound: the deviations of I_C, d and the effective earth capacitance at the order from their
     values at 50 Hz enter directly, and the source that arises in the fault (orders 3, 9, 15 …) is missing.
@@ -135,8 +137,7 @@ def network_estimate(U_m: float, m: int, Z_mv: complex, Z_up: complex, I_C: floa
     float
         Current in A.
     """
-    XC0 = 3 * U_LE / I_C
-    Z0 = _z0_capacitive(m, I_C, U_LE, I_L) + d * XC0
+    Z0 = zero_sequence_impedance(m, I_C, U_LE, I_L, d)
     Zup = complex(Z_up)
     Z1 = 1.0 / (1.0 / Zup + 1.0 / complex(Z_mv))
     Z2 = 1.0 / (1.0 / Zup + 1.0 / complex(Z_mv if Z_mv_neg is None else Z_mv_neg))

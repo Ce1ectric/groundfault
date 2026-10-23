@@ -45,7 +45,7 @@ import re
 import warnings
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -63,7 +63,7 @@ __all__ = ["ReportStyle", "STYLE", "set_style", "used_font", "activate_style", "
            "CM", "COLORS", "GREY", "GRID", "ROLE_COLORS", "INTERVAL_COLORS", "COLOR_DISTURBED", "COLOR_MAX",
            "COLOR_TYPICAL",
            "instantaneous", "rms_trend", "harmonics_trend", "spectrum", "spectrum_comparison",
-           "voltage_spectrum", "phasor_diagram", "source_fit", "source_plane", "ires_over_ze",
+           "voltage_spectrum", "phasor_diagram", "source_fit", "source_plane", "ires_over_ze", "ires_over_ice",
            "pq_series", "pq_duration", "pq_profile", "touch_voltage_cases",
            "v_curve", "station_voltages", "station_frequency", "station_background", "station_colors", "probe_label",
            "earthing_comparison", "reduction_factor", "typical_band", "lv_network", "transformer_power",
@@ -141,6 +141,12 @@ i18n.register({
     "report.source_fitted": {"en": "fitted source", "de": "geschätzte Quelle"},
     "report.with_source": {"en": "{symbol} ({source})", "de": "{symbol} ({source})"},
     "report.single_tests": {"en": "single tests", "de": "einzelne Versuche"},
+    "report.ice_axis": {"en": "Capacitive earth-fault current $I_\\mathrm{{CE}}$ in A",
+                        "de": "Kapazitiver Erdschlussstrom $I_\\mathrm{{CE}}$ in A"},
+    "report.ires_assessed_axis": {"en": "$I_\\mathrm{{RES,ass}}$ in A", "de": "$I_\\mathrm{{RES,Bew}}$ in A"},
+    "report.ice_today": {"en": "today ({value} A)", "de": "heute ({value} A)"},
+    "report.ice_planned": {"en": "planned", "de": "geplant"},
+    "report.split_band": {"en": "between the two splits", "de": "zwischen den beiden Aufteilungen"},
     "report.remainder_not_fitted": {"en": "remainder (not fitted)", "de": "Rest (nicht gefittet)"},
     # ---- power-quality measurement
     "report.pq_largest_phase": {"en": "largest phase per 10 min", "de": "größter Leiter je 10 min"},
@@ -1332,6 +1338,84 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
                        label=r"$Z_\mathrm{E}$ = %s Ω" % _g(abs(complex(Z_E)))); n += 1
         ax.set_xlim(0, Z_E_max); ax.set_ylim(0, ymax)
         ax.set_xlabel(r"$Z_\mathrm{E}$ in Ω"); ax.set_ylabel(r"$I$ in A")
+        _legend(ax, n, ncol=4)
+    return _finish(fig, axes)
+
+
+def ires_over_ice(curves: Sequence[Mapping[str, Any]], limits: Sequence[Mapping[str, Any]] = (),
+                  I_CE: Optional[float] = None, targets: Sequence[float] = (), column: str = "IRES_scaled_assessed_A",
+                  I_CE_max: Optional[float] = None, width="full", height_cm: float = 7.0):
+    """Residual current over the capacitive earth-fault current I_CE of an expanded network (network expansion with
+    [`expansion_curve`][groundfault.equivalent_source.expansion_curve]).
+
+    Parameters
+    ----------
+    curves : sequence of mapping
+        One entry per earthing impedance: ``Z_E`` in Ω and the curves of the two splits of the source impedance,
+        ``sources`` and ``busbar`` (DataFrames of ``expansion_curve`` over the same I_CE; one may be None). Solid
+        line: the larger value of the two; band: between them.
+    limits : sequence of mapping
+        Limits ``{"limit_A": …, "Z_E": …}`` defined by the user: dotted lines in the colour of the curve of their
+        Z_E.
+    I_CE : float, optional
+        I_CE of the network today (dashed vertical line).
+    targets : sequence of float
+        Planned values of I_CE (dotted vertical lines).
+    column : str
+        Column of the curves that is drawn (default: the scaled assessment value).
+    I_CE_max : float, optional
+        End of the axis in A (default: the end of the curves).
+    width : {"full", "half"} or float
+        Figure width (see [`figure`][groundfault.report.figure]).
+    height_cm : float
+        Figure height in cm.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    fig, axes = figure(width, height_cm); ax = axes[0, 0]
+    n, colors, ymax, x0, x1, drawn = 0, {}, 0.0, np.inf, -np.inf, []
+    with _rc():
+        for i, c in enumerate(curves):
+            frames = [c.get(k) for k in ("sources", "busbar") if c.get(k) is not None and len(c.get(k))]
+            if not frames:
+                continue
+            color = COLORS[i % 8]
+            x = frames[0]["I_C_A"].to_numpy(float)
+            ys = np.vstack([f[column].to_numpy(float) for f in frames])
+            top = np.nanmax(ys, axis=0)
+            if len(frames) > 1:
+                ax.fill_between(x, np.nanmin(ys, axis=0), top, color=color, alpha=0.18, lw=0,
+                                label=tr("report.split_band") if not colors else None)
+                n += 0 if colors else 1
+            ax.plot(x, top, color=color, lw=1.3, label=r"$Z_\mathrm{E}$ = %s Ω" % _g(float(c["Z_E"]))); n += 1
+            drawn.append(top[np.isfinite(top)] if np.isfinite(top).any() else np.zeros(1))
+            colors[round(float(c["Z_E"]), 9)] = color
+            ymax = max(ymax, float(np.nanmax(top)))
+            x0, x1 = min(x0, float(x[0])), max(x1, float(x[-1]))
+        if not np.isfinite(x0):
+            x0, x1 = 0.0, float(I_CE_max or 1.0)
+        x1 = float(I_CE_max) if I_CE_max else x1
+        ends = [(float(y[0]), float(y[-1])) for y in drawn]
+        for lim in limits:
+            g = float(lim["limit_A"])
+            color = colors.get(round(float(lim.get("Z_E") or np.nan), 9), "#333333")
+            ax.axhline(g, color=color, lw=0.7, ls=":")
+            # the label at the end of the axis farther from the curves
+            left = min((abs(a - g) for a, _ in ends), default=0.0) > min((abs(b - g) for _, b in ends), default=0.0)
+            ax.text(x0 + 0.01 * (x1 - x0) if left else x1, g, (" %s A" if left else "%s A ") % _g(g), va="bottom",
+                    ha="left" if left else "right", fontsize=STYLE.font_size_small, color=color)
+            ymax = max(ymax, g)
+        if I_CE is not None and np.isfinite(I_CE):
+            ax.axvline(float(I_CE), color=GREY, lw=0.8, ls="--", label=tr("report.ice_today", value=_g(round(I_CE))))
+            n += 1
+        for k, t in enumerate(targets):
+            ax.axvline(float(t), color=GREY, lw=0.8, ls=":", label=tr("report.ice_planned") if k == 0 else None)
+            n += 1 if k == 0 else 0
+        pad = 0.03 * (x1 - x0) if x1 > x0 else 1.0
+        ax.set_xlim(x0 - pad, x1); ax.set_ylim(0, 1.08 * ymax if ymax > 0 else 1.0)
+        ax.set_xlabel(tr("report.ice_axis")); ax.set_ylabel(tr("report.ires_assessed_axis"))
         _legend(ax, n, ncol=4)
     return _finish(fig, axes)
 

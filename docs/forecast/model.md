@@ -505,7 +505,10 @@ when it does not hold.
 * **Fault resistance of natural earth faults.** A recorded earth fault has an unknown fault impedance; `fault_check`
   forecasts it with the Z_F you give (default 0, the largest current).
 * **Changes of the network.** New feeders, other coils, a new transformer or a changed HV network change the model;
-  calibrate again or check it with the next recorded earth faults.
+  calibrate again or check it with the next recorded earth faults. More cable at the substation with the coils
+  retuned can be estimated beforehand from the equivalent sources
+  ([Network expansion](../methods/equivalent-source.md#network-expansion)) – the busbar split of that estimate uses
+  the sequence impedances of the tests and inherits the limit above.
 
 ## Model file
 

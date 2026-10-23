@@ -1261,6 +1261,276 @@ i18n.register({
         "de": "Die übrigen Grenzwerte gelten nur, wenn ihre Bedingung erfüllt ist: {items}."},
     "document.lc_item": {"en": "{limit} A ({condition}): {i} A {status}",
                          "de": "{limit} A ({condition}): {i} A {status}"},
+    # ---- network expansion
+    "document.sec_expansion": {"en": "Network expansion", "de": "Netzausbau"},
+    "document.expansion_intro": {
+        "en": "Network planning asks whether further cables can be connected at the substation: up to which capacitive "
+              "earth-fault current I_[CE] does the residual current keep the limits? Further cables raise the earth "
+              "and the operating capacitance of the network, and the coils are retuned to the same detuning. The "
+              "equivalent sources of the tests (section {sec}) describe the network at every order m as an active "
+              "two-terminal network with the source voltage U_[q] and the source impedance Z_[q] = (Z_[0] + "
+              "2·Z_[1])/3 of the fault loop. The expansion changes its parts; for the expanded network they are "
+              "converted as follows (Δ: change by the expansion, d: damping I_[w]/I_[CE] of the new cables, I_[L]: "
+              "current of the coils).",
+        "de": "Für die Netzplanung stellt sich die Frage, ob am Umspannwerk weitere Kabel angeschlossen werden können: "
+              "Bis zu welchem kapazitiven Erdschlussstrom I_[CE] hält der Erdschlussreststrom die Grenzwerte ein? "
+              "Weitere Kabel erhöhen die Erd- und die Betriebskapazität des Netzes, die Spulen werden auf dieselbe "
+              "Verstimmung nachgestellt. Die Ersatzquellen der Versuche (Abschnitt {sec}) beschreiben das Netz bei "
+              "jeder Ordnung m als aktiven Zweipol mit der Quellenspannung U_[q] und der Quellenimpedanz Z_[q] = "
+              "(Z_[0] + 2·Z_[1])/3 der Fehlerschleife. Der Ausbau ändert seine Teile; für das ausgebaute Netz werden "
+              "sie so umgerechnet (Δ: Änderung durch den Ausbau, d: Dämpfung I_[w]/I_[CE] der neuen Kabel, I_[L]: "
+              "Strom der Spulen)."},
+    "document.expansion_z0": {
+        "en": "In the zero sequence the added earth capacitance with its losses and the retuned coils lie in parallel "
+              "with Z_[0]:",
+        "de": "Im Nullsystem liegen die zusätzliche Erdkapazität mit ihren Verlusten und die nachgestellten Spulen "
+              "parallel zu Z_[0]:"},
+    "document.eq_expansion_z0": {
+        "en": "1/Z_[0,new] = 1/Z_[0] + (j·m·ΔI_[CE] + d·ΔI_[CE] − j·ΔI_[L]/m) / (3·U_[LE])",
+        "de": "1/Z_[0,neu] = 1/Z_[0] + (j·m·ΔI_[CE] + d·ΔI_[CE] − j·ΔI_[L]/m) / (3·U_[LE])"},
+    "document.expansion_z1": {
+        "en": "in the positive and negative sequence the operating capacitance of the new cables (c = C_[1]/C_[E] = "
+              "{c}) lies in parallel with the busbar – it shifts the parallel resonance of the busbar to lower orders:",
+        "de": "im Mit- und Gegensystem liegt die Betriebskapazität der neuen Kabel (c = C_[1]/C_[E] = {c}) parallel "
+              "zur Sammelschiene – sie verschiebt deren Parallelresonanz zu niedrigeren Ordnungen:"},
+    "document.eq_expansion_z1": {
+        "en": "1/Z_[1,new] = 1/Z_[1] + (j·m·c·ΔI_[CE] + d·ΔI_[CE]) / (3·U_[LE])",
+        "de": "1/Z_[1,neu] = 1/Z_[1] + (j·m·c·ΔI_[CE] + d·ΔI_[CE]) / (3·U_[LE])"},
+    "document.expansion_zq": {"en": "and with both the source impedance changes:",
+                              "de": "und mit beiden ändert sich die Quellenimpedanz:"},
+    "document.eq_expansion_zq": {
+        "en": "Z_[q,new] = Z_[q] + (Z_[0,new] − Z_[0] + 2·(Z_[1,new] − Z_[1])) / 3",
+        "de": "Z_[q,neu] = Z_[q] + (Z_[0,neu] − Z_[0] + 2·(Z_[1,neu] − Z_[1])) / 3"},
+    "document.expansion_uq": {
+        "en": "The harmonic voltage of the busbar comes from sources outside the new cables (HV network, loads) and "
+              "changes with the impedance it acts on,",
+        "de": "Die Oberschwingungsspannung der Sammelschiene stammt von Quellen außerhalb der neuen Kabel (HS-Netz, "
+              "Lasten) und ändert sich mit der Impedanz, an der sie liegt,"},
+    "document.eq_expansion_uq": {"en": "U_[q,new] = U_[q]·Z_[1,new] / Z_[1]", "de": "U_[q,neu] = U_[q]·Z_[1,neu] / Z_[1]"},
+    "document.expansion_uq0_coil": {
+        "en": "at the orders of the zero sequence (3, 9, 15 …), however, the source arises in the fault (nonlinear "
+              "current of the coils) and grows with Z_[0] and with the current of the coils:",
+        "de": "bei den Ordnungen des Nullsystems (3, 9, 15 …) entsteht die Quelle dagegen im Erdschluss (nichtlinearer "
+              "Strom der Spulen) und wächst mit Z_[0] und mit dem Strom der Spulen:"},
+    "document.expansion_uq0_network": {
+        "en": "at the orders of the zero sequence (3, 9, 15 …), however, the source arises in the fault (nonlinear "
+              "current of the coils) and grows with Z_[0] – the current of the coils taken as unchanged:",
+        "de": "bei den Ordnungen des Nullsystems (3, 9, 15 …) entsteht die Quelle dagegen im Erdschluss (nichtlinearer "
+              "Strom der Spulen) und wächst mit Z_[0] – der Strom der Spulen als unverändert angenommen:"},
+    "document.eq_expansion_uq0_coil": {
+        "en": "U_[q,new] = U_[q]·(Z_[0,new] / Z_[0])·(I_[L,new] / I_[L])",
+        "de": "U_[q,neu] = U_[q]·(Z_[0,neu] / Z_[0])·(I_[L,neu] / I_[L])"},
+    "document.eq_expansion_uq0_network": {"en": "U_[q,new] = U_[q]·Z_[0,new] / Z_[0]",
+                                          "de": "U_[q,neu] = U_[q]·Z_[0,neu] / Z_[0]"},
+    "document.expansion_ig": {
+        "en": "The fundamental grows with the active current of the new cables and with the detuning current, which is "
+              "proportional to I_[CE]:",
+        "de": "Die Grundschwingung wächst mit dem Wirkstrom der neuen Kabel und mit dem Verstimmungsstrom, der "
+              "proportional zu I_[CE] ist:"},
+    "document.eq_expansion_ig": {
+        "en": "I_[G,new] = √((I_[w] + d·ΔI_[CE])² + (I_[v]·I_[CE,new] / I_[CE])²)",
+        "de": "I_[G,neu] = √((I_[w] + d·ΔI_[CE])² + (I_[v]·I_[CE,neu] / I_[CE])²)"},
+    "document.expansion_split": {
+        "en": "The split of Z_[q] into Z_[0] and Z_[1] is not part of the equivalent sources. It is taken in two ways; "
+              "the larger residual current of the two is the result:",
+        "de": "Die Aufteilung von Z_[q] auf Z_[0] und Z_[1] ist nicht Teil der Ersatzquellen. Sie wird auf zwei Wegen "
+              "bestimmt; maßgebend ist der größere Reststrom der beiden:"},
+    "document.expansion_split_one": {
+        "en": "The split of Z_[q] into Z_[0] and Z_[1] is not part of the equivalent sources; it is taken from the "
+              "network data (the busbar voltages of the tests needed for a second way are not available):",
+        "de": "Die Aufteilung von Z_[q] auf Z_[0] und Z_[1] ist nicht Teil der Ersatzquellen; sie wird aus den "
+              "Netzdaten bestimmt (die Spannungen der Sammelschiene in den Versuchen für einen zweiten Weg fehlen):"},
+    "document.expansion_split_sources": {
+        "en": "**network data** – Z_[0] = 1/(j·(m/X_[C0] − 1/(m·X_[L0]))) + d·X_[C0] with X_[C0] = 3·U_[LE]/I_[CE] and "
+              "X_[L0] = 3·U_[LE]/I_[L] (I_[CE] = {ice} A, I_[L] = {il} A, d = {d} %, U_[LE] = {ule} V), and Z_[1] = "
+              "(3·Z_[q] − Z_[0])/2;",
+        "de": "**Netzdaten** – Z_[0] = 1/(j·(m/X_[C0] − 1/(m·X_[L0]))) + d·X_[C0] mit X_[C0] = 3·U_[LE]/I_[CE] und "
+              "X_[L0] = 3·U_[LE]/I_[L] (I_[CE] = {ice} A, I_[L] = {il} A, d = {d} %, U_[LE] = {ule} V) und Z_[1] = "
+              "(3·Z_[q] − Z_[0])/2;"},
+    "document.expansion_split_busbar": {
+        "en": "**busbar voltages** – Z_[0] and Z_[1] from the change of the busbar voltages in the tests, Z_[s] = "
+              "3·ΔU_[s]/I_[F] (related to the faulted phase; median of the tests; Z_[1] from the sequence that is not "
+              "the natural one of the order; at the orders of the zero sequence Z_[0] = 3·Z_[q] − 2·Z_[1], because a "
+              "source arises there in the fault).",
+        "de": "**Sammelschienenspannungen** – Z_[0] und Z_[1] aus der Änderung der Spannungen der Sammelschiene in "
+              "den Versuchen, Z_[s] = 3·ΔU_[s]/I_[F] (bezogen auf den Fehlerleiter; Median der Versuche; Z_[1] aus dem "
+              "Symmetriesystem, das nicht das natürliche der Ordnung ist; bei den Ordnungen des Nullsystems Z_[0] = "
+              "3·Z_[q] − 2·Z_[1], da dort im Erdschluss eine Quelle entsteht)."},
+    "document.expansion_assumptions": {"en": "Assumptions", "de": "Annahmen"},
+    "document.expansion_a_cables": {
+        "en": "The new cables are connected at the substation; their operating capacitance is C_[1] = c·C_[E] with "
+              "c = {c}{screen}, their damping d = {d} %{same}.",
+        "de": "Die neuen Kabel werden am Umspannwerk angeschlossen; ihre Betriebskapazität ist C_[1] = c·C_[E] mit "
+              "c = {c}{screen}, ihre Dämpfung d = {d} %{same}."},
+    "document.expansion_a_screen": {"en": " (cables with a screen per core)", "de": " (Kabel mit Schirm je Ader)"},
+    "document.expansion_a_same": {"en": " as that of the network today", "de": " wie die des heutigen Netzes"},
+    "document.expansion_a_coils": {
+        "en": "The coils are retuned to the detuning of today: I_[L,new] = I_[L]·I_[CE,new]/I_[CE] (today I_[L] = "
+              "{il} A){range}.",
+        "de": "Die Spulen werden auf die heutige Verstimmung nachgestellt: I_[L,neu] = I_[L]·I_[CE,neu]/I_[CE] (heute "
+              "I_[L] = {il} A){range}."},
+    "document.expansion_a_range": {
+        "en": "; their range reaches I_[L] = {ilmax} A, that is I_[CE] ≈ {icemax} A",
+        "de": "; ihr Stellbereich reicht bis I_[L] = {ilmax} A, d. h. bis I_[CE] ≈ {icemax} A"},
+    "document.expansion_a_range_unknown": {
+        "en": "; whether their range suffices is to be checked",
+        "de": "; ob ihr Stellbereich reicht, ist zu prüfen"},
+    "document.expansion_a_sources": {
+        "en": "No new harmonic sources come with the cables (e.g. converters); the harmonic voltage of the HV network "
+              "and of the loads stays{scaling}.",
+        "de": "Mit den Kabeln kommen keine neuen Oberschwingungsquellen hinzu (z. B. Umrichter); die "
+              "Oberschwingungsspannung des HS-Netzes und der Lasten bleibt{scaling}."},
+    "document.expansion_a_scaling": {
+        "en": ", and the scaling to the PQ measurement (factor {k}) and the margins hold as in section {sec}",
+        "de": ", die Skalierung auf die PQ-Messung (Faktor {k}) und die Zuschläge gelten wie in Abschnitt {sec}"},
+    "document.expansion_a_rest": {
+        "en": "Orders outside the model (remainder, even orders) stay as measured.",
+        "de": "Ordnungen außerhalb des Modells (Rest, gerade Ordnungen) bleiben wie gemessen."},
+    "document.tab_expansion": {
+        "en": "Residual current at Z_[E] = {Z} Ω after the network expansion",
+        "de": "Erdschlussreststrom an Z_[E] = {Z} Ω nach dem Netzausbau"},
+    "document.col_today": {"en": "Today", "de": "Heute"},
+    "document.col_planned": {"en": "I_[CE] = {ice} A", "de": "I_[CE] = {ice} A"},
+    "document.xrow_ice": {"en": "Capacitive earth-fault current I_[CE] in A",
+                          "de": "Kapazitiver Erdschlussstrom I_[CE] in A"},
+    "document.xrow_delta": {"en": "Change ΔI_[CE]", "de": "Änderung ΔI_[CE]"},
+    "document.xrow_il": {"en": "Current of the coils I_[L] in A", "de": "Strom der Spulen I_[L] in A"},
+    "document.xrow_ig": {"en": "Fundamental I_[G] in A", "de": "Grundschwingung I_[G] in A"},
+    "document.xrow_ih": {"en": "{ih} in A – {split}", "de": "{ih} in A – {split}"},
+    "document.xrow_ires": {"en": "I_[RES,ass] in A – {split}", "de": "I_[RES,Bew] in A – {split}"},
+    "document.xrow_prop": {"en": "I_[RES,ass] in A – proportional to I_[CE]", "de": "I_[RES,Bew] in A – proportional zu I_[CE]"},
+    "document.xrow_status": {"en": "Limit {limit} A", "de": "Grenzwert {limit} A"},
+    "document.split_sources": {"en": "network data", "de": "Netzdaten"},
+    "document.split_busbar": {"en": "busbar voltages", "de": "Sammelschiene"},
+    "document.split_busbar_short": {"en": "busbar voltages", "de": "Sammel\u00adschiene"},
+    "document.tab_expansion_orders": {
+        "en": "Harmonic currents at Z_[E] = {Z} Ω and factor of the source voltage at I_[CE] = {ice} A",
+        "de": "Oberschwingungsströme an Z_[E] = {Z} Ω und Faktor der Quellenspannung bei I_[CE] = {ice} A"},
+    "document.col_i_today": {"en": "Today in A", "de": "Heute in A"},
+    "document.col_i_split": {"en": "{split} in A", "de": "{split} in A"},
+    "document.col_u_split": {"en": "U_[q,new]/U_[q] {split}", "de": "U_[q,neu]/U_[q] {split}"},
+    "document.fig_expansion": {
+        "en": "Residual current I_[RES,ass] over the capacitive earth-fault current I_[CE] after a network expansion, "
+              "at the earthing impedances of the limits (line: the larger value of the two splits; band: between "
+              "them)",
+        "de": "Erdschlussreststrom I_[RES,Bew] über dem kapazitiven Erdschlussstrom I_[CE] nach einem Netzausbau, an "
+              "den Erdungsimpedanzen der Grenzwerte (Linie: der größere Wert der beiden Aufteilungen; Band: zwischen "
+              "ihnen)"},
+    "document.tab_expansion_limits": {
+        "en": "Capacitive earth-fault current at which the residual current reaches a limit",
+        "de": "Kapazitiver Erdschlussstrom, bei dem der Erdschlussreststrom einen Grenzwert erreicht"},
+    "document.col_allowed": {"en": "Permissible in A", "de": "Zulässig in A"},
+    "document.col_ires_today": {"en": "I_[RES,ass] today in A", "de": "I_[RES,Bew] heute in A"},
+    "document.col_reached": {"en": "I_[CE] in A – {split}", "de": "I_[CE] in A – {split}"},
+    "document.col_margin": {"en": "Margin in A", "de": "Reserve in A"},
+    "document.expansion_now_exceeded": {"en": "today exceeded", "de": "heute überschritten"},
+    "document.expansion_beyond": {"en": "> {ice}", "de": "> {ice}"},
+    "document.expansion_allowed_u": {
+        "en": "Permissible is the smaller of the limit and F·U_[Tp]/(r·Z_[E]) = {u} V/(r·Z_[E]) – the earth potential "
+              "rise U_[E] = r·I_[RES,ass]·Z_[E] keeps F·U_[Tp] up to it.",
+        "de": "Zulässig ist der kleinere Wert aus Grenzwert und F·U_[Tp]/(r·Z_[E]) = {u} V/(r·Z_[E]) – bis dahin hält "
+              "die Erdungsspannung U_[E] = r·I_[RES,Bew]·Z_[E] den Wert F·U_[Tp] ein."},
+    "document.expansion_result": {
+        "en": "At I_[CE] = {ice} A ({delta}) the residual current at Z_[E] = {Z} Ω is expected at I_[RES,ass] = "
+              "{range} A (today {now} A{limit}). The fundamental grows to I_[G] = {ig} A (today "
+              "{ig_now} A), the harmonics change to {ih} = {ih_range} A (today {ih_now} A){order}. In proportion to "
+              "I_[CE] – every part growing like I_[CE] – it would be {prop} A.",
+        "de": "Bei I_[CE] = {ice} A ({delta}) ist an Z_[E] = {Z} Ω ein Erdschlussreststrom von I_[RES,Bew] = {range} A "
+              "zu erwarten (heute {now} A{limit}). Die Grundschwingung wächst auf I_[G] = "
+              "{ig} A (heute {ig_now} A), die Oberschwingungen ändern sich auf {ih} = {ih_range} A (heute "
+              "{ih_now} A){order}. Proportional zu I_[CE] hochgerechnet – jeder Anteil wächst wie I_[CE] – wären es "
+              "{prop} A."},
+    "document.expansion_vs_limit": {"en": "; limit {limit} A: {status}", "de": "; Grenzwert {limit} A: {status}"},
+    "document.expansion_order": {
+        "en": "; the voltage of the {m}th order at the busbar changes by the factor {k} (table {t})",
+        "de": "; die Spannung der {m}. Ordnung an der Sammelschiene ändert sich um den Faktor {k} (Tabelle {t})"},
+    "document.expansion_limit_reached": {
+        "en": "Limit {limit} A ({condition}, Z_[E] = {Z} Ω{u}): reached at I_[CE] ≈ {ice} A – a margin of about {margin} A "
+              "over today{split}.",
+        "de": "Grenzwert {limit} A ({condition}, Z_[E] = {Z} Ω{u}): erreicht bei I_[CE] ≈ {ice} A – eine Reserve von etwa "
+              "{margin} A gegenüber heute{split}."},
+    "document.expansion_limit_u": {"en": "; permissible {allowed} A because of U_[E] ≤ F·U_[Tp]",
+                                   "de": "; zulässig {allowed} A wegen U_[E] ≤ F·U_[Tp]"},
+    "document.expansion_limit_split": {
+        "en": " (network data {a} A, busbar voltages {b} A)",
+        "de": " (Netzdaten {a} A, Sammelschiene {b} A)"},
+    "document.expansion_limit_exceeded": {
+        "en": "Limit {limit} A ({condition}, Z_[E] = {Z} Ω{u}): exceeded already today (I_[RES,ass] = {now} A).",
+        "de": "Grenzwert {limit} A ({condition}, Z_[E] = {Z} Ω{u}): bereits heute überschritten (I_[RES,Bew] = {now} A)."},
+    "document.expansion_limit_not_reached": {
+        "en": "Limit {limit} A ({condition}, Z_[E] = {Z} Ω{u}): not reached up to I_[CE] = {ice} A.",
+        "de": "Grenzwert {limit} A ({condition}, Z_[E] = {Z} Ω{u}): bis I_[CE] = {ice} A nicht erreicht."},
+    "document.expansion_coils_short": {
+        "en": "The range of the coils ends at I_[CE] ≈ {ice} A; beyond it a further coil is needed.",
+        "de": "Der Stellbereich der Spulen endet bei I_[CE] ≈ {ice} A; darüber ist eine weitere Spule nötig."},
+    "document.expansion_negative": {
+        "en": "At the orders {orders} one split gives an impedance with a negative real part – their data do not fully "
+              "match a passive network (phase errors at the harmonic frequency, a drifting source), and their change "
+              "is uncertain.",
+        "de": "Bei den Ordnungen {orders} ergibt eine Aufteilung eine Impedanz mit negativem Realteil – ihre Daten "
+              "passen nicht ganz zu einem passiven Netz (Winkelfehler bei der Oberschwingungsfrequenz, eine driftende "
+              "Quelle), ihre Änderung ist unsicher."},
+    "document.expansion_negative_one": {
+        "en": "At the {orders}th order one split gives an impedance with a negative real part – its data do not fully "
+              "match a passive network (phase errors at the harmonic frequency, a drifting source), and its change is "
+              "uncertain.",
+        "de": "Bei der {orders}. Ordnung ergibt eine Aufteilung eine Impedanz mit negativem Realteil – ihre Daten "
+              "passen nicht ganz zu einem passiven Netz (Winkelfehler bei der Oberschwingungsfrequenz, eine driftende "
+              "Quelle), ihre Änderung ist unsicher."},
+    "document.expansion_validity": {
+        "en": "The conversion extrapolates the network model of the tests: it holds for a network built as today and "
+              "for the assumptions above; the difference of the two splits shows how well the split of Z_[q] is "
+              "known. After the expansion a new measurement checks the value.",
+        "de": "Die Umrechnung extrapoliert das Netzmodell der Versuche: Sie gilt für ein Netz, das wie heute aufgebaut "
+              "ist, und für die Annahmen oben; der Unterschied der beiden Aufteilungen zeigt, wie gut die Aufteilung "
+              "von Z_[q] bekannt ist. Nach dem Ausbau prüft eine neue Messung den Wert."},
+    "document.expansion_failed": {
+        "en": "Network expansion not computed: {error}", "de": "Netzausbau nicht berechnet: {error}"},
+    "document.expansion_invalid": {
+        "en": "expansion is not valid: {error} – expected True, False or a dict with I_CE (planned capacitive "
+              "earth-fault current(s) in A), damping_added (≥ 0), c1_ratio (> 0), I_L_max (A), I_CE_max (A) and "
+              "zero_sequence (\"coil\" or \"network\").",
+        "de": "expansion ist ungültig: {error} – erwartet: True, False oder ein dict mit I_CE (geplanter kapazitiver "
+              "Erdschlussstrom in A, auch mehrere), damping_added (≥ 0), c1_ratio (> 0), I_L_max (A), I_CE_max (A) "
+              "und zero_sequence (\"coil\" oder \"network\")."},
+    "document.kr_expansion": {
+        "en": "Network expansion to I_[CE] = {ice} A – I_[RES,ass] at Z_[E] = {Z} Ω",
+        "de": "Netzausbau auf I_[CE] = {ice} A – I_[RES,Bew] an Z_[E] = {Z} Ω"},
+    "document.kr_expansion_limit": {
+        "en": "I_[CE] at which I_[RES,ass] reaches {limit} A (Z_[E] = {Z} Ω)",
+        "de": "I_[CE], bei dem I_[RES,Bew] {limit} A erreicht (Z_[E] = {Z} Ω)"},
+    "document.kr_today": {"en": "today {ice}\u00a0A", "de": "heute {ice}\u00a0A"},
+    "document.sum_expansion": {
+        "en": "Network expansion: at I_[CE] = {ice} A the residual current at Z_[E] = {Z} Ω is expected at "
+              "I_[RES,ass] ≈ {value} A{limit}.",
+        "de": "Netzausbau: Bei I_[CE] = {ice} A ist an Z_[E] = {Z} Ω ein Erdschlussreststrom von I_[RES,Bew] ≈ "
+              "{value} A zu erwarten{limit}."},
+    "document.sum_expansion_limit": {"en": " (limit {limit} A: {status}{already})",
+                                     "de": " (Grenzwert {limit} A: {status}{already})"},
+    "document.sum_expansion_already": {"en": ", already today", "de": ", bereits heute"},
+    "document.sum_expansion_reached": {"en": "It reaches {items}.", "de": "Er erreicht {items}."},
+    "document.sum_expansion_reached_item": {
+        "en": "the limit {limit} A (Z_[E] = {Z} Ω) at I_[CE] ≈ {ice} A",
+        "de": "den Grenzwert {limit} A (Z_[E] = {Z} Ω) bei I_[CE] ≈ {ice} A"},
+    "document.sum_expansion_not_reached": {
+        "en": "It does not reach {items} up to I_[CE] = {ice} A.",
+        "de": "Bis I_[CE] = {ice} A erreicht er {items} nicht."},
+    "document.sum_expansion_exceeded": {"en": "It exceeds {items} already today.",
+                                        "de": "Bereits heute überschreitet er {items}."},
+    "document.sum_expansion_item": {"en": "the limit {limit} A (Z_[E] = {Z} Ω)",
+                                    "de": "den Grenzwert {limit} A (Z_[E] = {Z} Ω)"},
+    "document.u_expansion": {"en": "Network expansion: split of Z_[q]", "de": "Netzausbau: Aufteilung von Z_[q]"},
+    "document.u_expansion_value": {
+        "en": "I_[RES,ass] at I_[CE] = {ice} A: {a} A (network data), {b} A (busbar voltages)",
+        "de": "I_[RES,Bew] bei I_[CE] = {ice} A: {a} A (Netzdaten), {b} A (Sammelschiene)"},
+    "document.u_expansion_treat": {"en": "the larger value", "de": "der größere Wert"},
+    "document.forecast_3_expansion": {
+        "en": "Growth of the network: the active part of the fundamental grows with I_[CE] (I_[w] = d·I_[CE], d = {d} %); "
+              "the harmonics do not grow in proportion (resonance) – the next section converts the equivalent "
+              "sources to the expanded network.",
+        "de": "Netzausbau: Der Wirkanteil der Grundschwingung wächst mit I_[CE] (I_[w] = d·I_[CE], d = {d} %); die "
+              "Oberschwingungen wachsen nicht proportional (Resonanz) – der folgende Abschnitt rechnet die "
+              "Ersatzquellen auf das ausgebaute Netz um."},
     "document.limit_case_invalid": {
         "en": "Limit case {k} is not valid: {error} – expected a dict with limit_A > 0, Z_E > 0 (optional, default: "
               "Z_E of the report), r in (0, 1] (optional, default 1) and condition (text).",
@@ -1430,6 +1700,18 @@ class ReportInfo:
     assessment : {"auto", "Z_E", "busbar"}
         Decisive value: at the earthing impedance (equivalent sources) or of the largest test (busbar); ``"auto"``:
         Z_E if the equivalent sources and Z_E are given.
+    expansion : bool or mapping
+        Section *Network expansion*: the residual current at the earthing impedances of the limits when further
+        cables are connected at the substation and the coils are retuned to the same detuning, and the capacitive
+        earth-fault current at which every limit is reached
+        ([`expansion_curve`][groundfault.equivalent_source.expansion_curve], both splits of the source impedance).
+        True (default): with the defaults (planned values 1.25, 1.5 and 2 times I_CE of today); False: left out; a
+        mapping: ``I_CE`` (planned capacitive earth-fault current in A, one value or several, e.g. ``800``),
+        ``damping_added`` (damping I_w/I_C of the new cables; default: that of the network), ``c1_ratio`` (C_1/C_E of
+        the new cables; default 1, cables with a screen per core), ``I_L_max`` (largest current of the coils in A),
+        ``I_CE_max`` (end of the curve in A; default four times I_CE of today) and ``zero_sequence`` (``"coil"``:
+        the source of the zero-sequence orders grows with the current of the coils – default; ``"network"``: not).
+        Needs the equivalent sources and I_CE.
     reference_frequency_Hz : float, optional
         Frequency of Z_E of the earthing measurement in the cases 1 and 2 of the touch voltage (default: 50 Hz;
         interpolated if the earthing measurement has no value there, see
@@ -1482,6 +1764,7 @@ class ReportInfo:
     limit_cases: Sequence[Mapping[str, Any]] = ()
     Z_E_basis: str = ""
     assessment: str = "auto"
+    expansion: Union[bool, Mapping[str, Any]] = True
     reference_frequency_Hz: Optional[float] = None
     r_flat: Optional[float] = None
     station_detail: str = "full"
@@ -3160,6 +3443,7 @@ def _is_station(e) -> bool:
 
 _CONTROLLER_KEYS = ("ice_A", "coils_A", "detuning_pct", "active_A", "when")
 _LIMIT_CASE_KEYS = ("limit_A", "Z_E", "r", "condition")
+_EXPANSION_KEYS = ("I_CE", "damping_added", "c1_ratio", "I_L_max", "I_CE_max", "zero_sequence")
 
 
 def _controller(value: Optional[Mapping[str, Any]]) -> dict:
@@ -3179,6 +3463,33 @@ def _controller(value: Optional[Mapping[str, Any]]) -> dict:
         ice, how = total / (1.0 + v / 100.0), "derived"
     active = float(value["active_A"]) if _finite(value.get("active_A")) else float("nan")
     return dict(coils=coils, sum=total, v=v, active=active, when=str(value.get("when") or ""), ice=ice, how=how)
+
+
+def _expansion_settings(value) -> Optional[dict]:
+    """The settings of the network expansion (``ReportInfo.expansion``), checked; None: no section."""
+    if value is None or value is False:
+        return None
+    value = {} if value is True else value
+    try:
+        if not isinstance(value, Mapping):
+            raise TypeError(type(value).__name__)
+        unknown = [k for k in value if k not in _EXPANSION_KEYS]
+        if unknown:
+            raise KeyError(", ".join(map(str, unknown)))
+        t = value.get("I_CE")
+        targets = [] if t is None else [float(t)] if np.ndim(t) == 0 else [float(x) for x in t]
+        da = None if value.get("damping_added") is None else float(value["damping_added"])
+        c1 = float(value.get("c1_ratio", 1.0))
+        il_max = None if value.get("I_L_max") is None else float(value["I_L_max"])
+        top = None if value.get("I_CE_max") is None else float(value["I_CE_max"])
+        zs = str(value.get("zero_sequence", "coil"))
+        if any(not (math.isfinite(x) and x > 0) for x in targets + [c1] + [x for x in (il_max, top) if x is not None]) \
+                or (da is not None and not (math.isfinite(da) and da >= 0)) or zs not in ("coil", "network"):
+            raise ValueError(", ".join("%s=%r" % (k, value.get(k)) for k in _EXPANSION_KEYS if k in value))
+    except (KeyError, TypeError, ValueError) as ex:
+        raise ValueError(tr("document.expansion_invalid", error=ex)) from None
+    return dict(targets=sorted(set(targets)), damping_added=da, c1_ratio=c1, I_L_max=il_max, I_CE_max=top,
+                zero_sequence=zs)
 
 
 def _limit_cases(cases) -> List[dict]:
@@ -3241,6 +3552,7 @@ class _Campaign:
         if info.station_detail not in ("full", "compact"):
             raise ValueError(tr("document.station_detail_invalid", value=info.station_detail))
         cases_in = _limit_cases(info.limit_cases)
+        expansion = _expansion_settings(info.expansion)
         if info.limit_A is not None:
             self.limit = float(info.limit_A)
         elif cases_in:
@@ -3396,10 +3708,18 @@ class _Campaign:
                 basis = "busbar"
             za = abs(complex(z)) if z is not None else float("nan")
             ue = case["r"] * i * za if _finite(i) and _finite(za) else float("nan")
-            self.limit_cases.append(dict(case, Z_E=za, I_A=i, basis=basis, U_E_V=ue, FU_V=fu,
+            self.limit_cases.append(dict(case, Z_E=za, Z_E_value=z, I_A=i, basis=basis, U_E_V=ue, FU_V=fu,
                                          ok_I=bool(i <= case["limit_A"]) if _finite(i) else None,
                                          ok_U=bool(ue <= fu) if _finite(ue) and _finite(fu) else None,
                                          applies=self.limit is not None and abs(case["limit_A"] - self.limit) < 1e-9))
+        # ---- network expansion: I_RES,ass over I_CE at the Z_E of the limits, where every limit is reached
+        self.expansion: Optional[dict] = None
+        if expansion is not None and series is not None and series.fits and _finite(self.ice) and self.ice > 0 \
+                and (Z_E is not None or any(_finite(lc["Z_E"]) for lc in self.limit_cases)):
+            try:
+                self.expansion = self._expansion_study(expansion)
+            except Exception as ex:
+                self.hints.append(tr("document.expansion_failed", error=ex))
         # ---- touch voltage per station
         self.cases: Dict[str, pd.DataFrame] = {}
         for n in self.stations:
@@ -3600,6 +3920,81 @@ class _Campaign:
                 out.update(order=dom, low=100 * (float(b[dom].quantile(0.05)) / q - 1),
                            high=100 * (float(b[dom].quantile(0.95)) / q - 1))
         return out
+
+    def _expansion_study(self, xp: dict) -> dict:
+        """The network expansion (``ReportInfo.expansion``): for both splits of the source impedance the assessment
+        value over I_CE at the earthing impedance of every limit, the values at the planned I_CE and where every limit
+        is reached (the larger value of the splits decides)."""
+        from . import equivalent_source as es
+        ice = float(self.ice)
+        ctrl = self.controller
+        if _finite(ctrl.get("sum")) and ctrl["sum"] > 0:
+            il = float(ctrl["sum"])                            # the coils of the controller display
+        elif _finite(ctrl.get("v")):
+            il = ice * (1.0 + float(ctrl["v"]) / 100.0)
+        elif _finite(self.coil_sum) and self.coil_sum > 0:
+            il = float(self.coil_sum)
+        else:
+            il = ice
+        d = float(self.d) if _finite(self.d) else 0.0
+        da = d if xp["damping_added"] is None else float(xp["damping_added"])
+        targets = list(xp["targets"]) or [10.0 * round(f * ice / 10.0) for f in (1.25, 1.5, 2.0)]
+        kw = dict(I_L=il, damping=d, damping_added=da, c1_ratio=xp["c1_ratio"], zero_sequence=xp["zero_sequence"])
+        base = dict(IG=self.IG, uncertainty_I=self.mI, uncertainty_U=self.mU, **(self.scaling or {}))
+        col = "IRES_scaled_assessed_A" if self.scaling else "IRES_assessed_A"
+        ih_col = "IH_scaled_A" if self.scaling else "IH_A"
+        busbar = not es.busbar_impedances(self.series).empty
+        splits = ("sources", "busbar") if busbar else ("sources",)
+        top = float(xp["I_CE_max"]) if xp["I_CE_max"] else max(4.0 * ice, 1.1 * max(targets))
+        grid = np.linspace(ice, max(top, ice * 1.01), 241)
+        # the earthing impedances (as given, complex possible): that of the report first, then those of the limits
+        key = lambda z: (round(complex(z).real, 9), round(complex(z).imag, 9))
+        with_z = [lc for lc in self.limit_cases if _finite(lc["Z_E"])]
+        z_rep = self.Z_E if self.Z_E is not None else with_z[0]["Z_E_value"]
+        zs = {key(z_rep): z_rep}
+        for lc in sorted(with_z, key=lambda lc: -lc["Z_E"]):
+            zs.setdefault(key(lc["Z_E_value"]), lc["Z_E_value"])
+        curves: Dict[Tuple[float, float], dict] = {}
+        for k, z in zs.items():
+            per = {sp: es.expansion_curve(self.series, z, ice, grid, **base, split=sp, **kw) for sp in splits}
+            dec = pd.DataFrame({"I_C_A": per["sources"]["I_C_A"],
+                                "decisive": np.nanmax(np.vstack([per[sp][col].to_numpy(float) for sp in splits]),
+                                                      axis=0)})
+            curves[k] = dict(Z_E=abs(complex(z)), frames=per, decisive=dec)
+        # the planned values at the earthing impedance of the report
+        rows = {sp: es.expansion_curve(self.series, z_rep, ice, [ice] + targets, **base, split=sp, **kw)
+                for sp in splits}
+        first = {sp: es.network_expansion(self.series, ice, targets[0], split=sp, **kw) for sp in splits}
+        negative = sorted({int(r["order"]) for sp in splits for _, r in first[sp].table.iterrows()
+                           if complex(r["Z0"]).real < 0 or complex(r["Z1"]).real < 0})
+        now = float(curves[key(z_rep)]["decisive"]["decisive"].iloc[0])
+        # the limits: those of the cases (at their Z_E), else the limits of the call at the Z_E of the report
+        fu = float(self.f_factor) * float(self.u_tp) if _finite(self.u_tp) and _finite(self.f_factor) else float("nan")
+        cases = [dict(limit_A=lc["limit_A"], Z_E=float(lc["Z_E"]), key=key(lc["Z_E_value"]), r=lc["r"],
+                      condition=lc["condition"], applies=lc["applies"]) for lc in with_z]
+        if not cases:
+            cases = [dict(limit_A=float(x), Z_E=abs(complex(z_rep)), key=key(z_rep), r=1.0, condition="",
+                          applies=self.limit is not None and abs(float(x) - self.limit) < 1e-9)
+                     for x in sorted(self.limits)]
+        for lc in cases:
+            allowed, governs = float(lc["limit_A"]), "I"
+            if _finite(fu) and lc["Z_E"] > 0:
+                iu = fu / (lc["r"] * lc["Z_E"])
+                if iu < allowed:
+                    allowed, governs = iu, "U"
+            cv = curves[lc["key"]]
+            lc.update(allowed=allowed, governs=governs, now=float(cv["decisive"]["decisive"].iloc[0]),
+                      reach=es.expansion_limit(cv["decisive"], allowed, "decisive"),
+                      per={sp: es.expansion_limit(cv["frames"][sp], allowed, col) for sp in splits})
+        reached = [lc["reach"]["I_C_A"] for lc in cases if lc["reach"]["status"] == "reached"]
+        end = float(xp["I_CE_max"]) if xp["I_CE_max"] else min(grid[-1], max([1.5 * ice, 1.1 * max(targets)] +
+                                                                              [1.1 * x for x in reached]))
+        coil_end = float(xp["I_L_max"]) * ice / il if xp["I_L_max"] else float("nan")
+        return dict(ice=ice, il=il, d=d, damping_added=da, c1_ratio=float(xp["c1_ratio"]),
+                    zero_sequence=xp["zero_sequence"], targets=targets, planned=bool(xp["targets"]), splits=splits,
+                    Z_E=abs(complex(z_rep)), curves=curves, rows=rows, first=first, negative=negative, now=now,
+                    cases=cases, column=col, ih_column=ih_col, end=end, top=float(grid[-1]), I_L_max=xp["I_L_max"],
+                    coil_end=coil_end, U_LE=float(first["sources"].U_LE), fu=fu)
 
     def ok(self, value: float) -> str:
         """Status of a current against the limit of the network."""
@@ -4280,6 +4675,22 @@ class _Writer:
             if lc["applies"] and lc["ok_U"] is not None:
                 add((tr("document.kr_ue_case", Z=_n(lc["Z_E"]), r=_g(lc["r"])), "%s V" % _n(lc["U_E_V"]),
                      "%s V" % _n(lc["FU_V"]), self.status(lc["ok_U"])), "es")
+        x = c.expansion
+        if x is not None:
+            col = x["column"]
+            for i, t in enumerate(x["targets"] if x["planned"] else []):
+                v = max(float(x["rows"][sp][col].iloc[i + 1]) for sp in x["splits"])
+                add((tr("document.kr_expansion", ice=_g(t), Z=_n(x["Z_E"])), "%s A" % _n(v), lim, c.ok(v)), "expansion")
+            for lc in x["cases"]:
+                r = lc["reach"]
+                value = ("–" if r["status"] == "exceeded" else
+                         self.reach_text(r, x["top"]) + " A" if r["status"] == "not_reached" else
+                         "≈ %s A" % _fixed(round(r["I_C_A"], -1), 0))
+                result = (tr("document.exceeded") if r["status"] == "exceeded" else
+                          "+%s A" % _fixed(round(r["margin_A"], -1), 0) if r["status"] == "reached" else
+                          "> +%s A" % _fixed(round(x["top"] - x["ice"], -1), 0))
+                add((tr("document.kr_expansion_limit", limit=_g(lc["allowed"]), Z=_n(lc["Z_E"])), value,
+                     tr("document.kr_today", ice=_n(x["ice"])), result), "expansion")
         for n, cases in c.cases.items():
             ut_all = pd.to_numeric(cases["U_T_V"], errors="coerce")
             if ut_all.notna().any():
@@ -4885,6 +5296,8 @@ class _Writer:
         self.processing_ires()
         if c.subs:
             self.equivalent_sources()
+        if c.expansion is not None:
+            self.expansion()
         for n in c.stations:
             self.station_assessment(n)
         self.uncertainties()
@@ -5066,13 +5479,210 @@ class _Writer:
         reactive = tr("document.forecast_reactive") if len(xq) and (xq < 0).all() else ""
         items = [tr("document.forecast_1", fig=tr("document.ref_figure", n=fig_ze) if fig_ze else "",
                     reactive=reactive), tr("document.forecast_2")]
-        if _finite(c.ice_limit):
+        if c.expansion is not None and _finite(c.d):
+            items.append(tr("document.forecast_3_expansion", d=_fixed(100 * c.d, 1)))
+        elif _finite(c.ice_limit):
             ig = ""
             if _finite(c.v) and c.v > 0 and _finite(c.d) and c.d > 0:
                 ig = tr("document.forecast_3_ig", v=_fixed(100 * c.v, 1), ice=_n(c.limit / math.hypot(c.d, c.v), 2))
             items.append(tr("document.forecast_3", d=_fixed(100 * c.d, 1), limit=_n(c.limit), ice=_n(c.ice_limit, 2),
                             ice_now=_n(c.ice, 3), ig=ig))
         d.bullets(items)
+
+    def expansion(self):
+        """Network expansion: the equivalent sources converted to a network with more cable at the substation."""
+        c, d = self.c, self.d
+        x = c.expansion
+        self.heading(tr("document.sec_expansion"), 2, key="expansion")
+        d.para(tr("document.expansion_intro", sec=self.sections.get("es", "")))
+        d.para(tr("document.expansion_z0"), keep_next=True)
+        d.formula(tr("document.eq_expansion_z0"))
+        d.para(tr("document.expansion_z1", c=_g(x["c1_ratio"])), keep_next=True)
+        d.formula(tr("document.eq_expansion_z1"))
+        d.para(tr("document.expansion_zq"), keep_next=True)
+        d.formula(tr("document.eq_expansion_zq"))
+        d.para(tr("document.expansion_uq"), keep_next=True)
+        d.formula(tr("document.eq_expansion_uq"))
+        coil = x["zero_sequence"] == "coil"
+        d.para(tr("document.expansion_uq0_coil" if coil else "document.expansion_uq0_network"), keep_next=True)
+        d.formula(tr("document.eq_expansion_uq0_coil" if coil else "document.eq_expansion_uq0_network"))
+        d.para(tr("document.expansion_ig"), keep_next=True)
+        d.formula(tr("document.eq_expansion_ig"))
+        two = len(x["splits"]) > 1
+        d.para(tr("document.expansion_split" if two else "document.expansion_split_one"), keep_next=True)
+        items = [tr("document.expansion_split_sources", ice=_n(x["ice"]), il=_n(x["il"]), d=_fixed(100 * x["d"], 1),
+                    ule=_n(x["U_LE"], 4))]
+        if two:
+            items.append(tr("document.expansion_split_busbar"))
+        d.bullets(items)
+        # ---- assumptions
+        d.para("**%s**" % tr("document.expansion_assumptions"), keep_next=True)
+        rng = (tr("document.expansion_a_range", ilmax=_n(x["I_L_max"]), icemax=_n(x["coil_end"]))
+               if x["I_L_max"] else tr("document.expansion_a_range_unknown"))
+        scaling = ""
+        if c.scaling:
+            scaling = tr("document.expansion_a_scaling", k=_n(c.factor) if _finite(c.factor) else "–",
+                         sec=self.sections.get("ires", ""))
+        d.bullets([tr("document.expansion_a_cables", c=_g(x["c1_ratio"]),
+                      screen=tr("document.expansion_a_screen") if abs(x["c1_ratio"] - 1.0) < 1e-9 else "",
+                      d=_fixed(100 * x["damping_added"], 1),
+                      same=tr("document.expansion_a_same") if abs(x["damping_added"] - x["d"]) < 1e-12 else ""),
+                   tr("document.expansion_a_coils", il=_n(x["il"]), range=rng),
+                   tr("document.expansion_a_sources", scaling=scaling),
+                   tr("document.expansion_a_rest")])
+        # ---- the planned values at the earthing impedance of the report
+        col, ihc = x["column"], x["ih_column"]
+        rows_ = x["rows"]
+        name = {sp: tr("document.split_" + sp) for sp in x["splits"]}
+        ih_sym = "I_[H,skaliert]" if (c.scaling and c.lang == "de") else "I_[H,scaled]" if c.scaling else "I_[H]"
+        ref = rows_["sources"]
+        n_t = len(x["targets"])
+        dec = np.nanmax(np.vstack([rows_[sp][col].to_numpy(float) for sp in x["splits"]]), axis=0)
+        prop = [x["now"] * float(v) / x["ice"] for v in ref["I_C_A"]]
+        table = [(tr("document.xrow_ice"),) + tuple(_n(v) for v in ref["I_C_A"]),
+                 (tr("document.xrow_delta"), "–") + tuple("%s A (%s %%)" % (_signed(t - x["ice"], 3),
+                                                                           _signed(100 * (t / x["ice"] - 1), 2))
+                                                        for t in x["targets"]),
+                 (tr("document.xrow_il"),) + tuple(_n(v) for v in ref["I_L_A"]),
+                 (tr("document.xrow_ig"),) + tuple(_n(v) for v in ref["IG_A"])]
+        for sp in x["splits"]:
+            table.append((tr("document.xrow_ih", ih=ih_sym, split=name[sp]),) + tuple(_n(v) for v in rows_[sp][ihc]))
+        for sp in x["splits"]:
+            table.append((tr("document.xrow_ires", split=name[sp]),) + tuple(_n(v) for v in rows_[sp][col]))
+        table.append((tr("document.xrow_prop"),) + tuple(_n(v) for v in prop))
+        if c.limit:
+            table.append((tr("document.xrow_status", limit=_g(c.limit)),) + tuple(c.ok(v) for v in dec))
+        head = ["", tr("document.col_today")] + [tr("document.col_planned", ice=_g(t)) for t in x["targets"]]
+        w0 = 6.6 if n_t <= 3 else 5.4
+        d.table(head, table, caption=tr("document.tab_expansion", Z=_n(x["Z_E"])),
+                widths_cm=[w0] + [(16.2 - w0) / (n_t + 1)] * (n_t + 1), align=["left"] + ["right"] * (n_t + 1),
+                font_size=8.5)
+        # ---- the orders at the first planned value
+        t1 = x["targets"][0]
+        orders = sorted(c.series.fits)
+        orows = []
+        for m in orders:
+            key = "I_%d_A" % m
+            if key not in ref.columns:
+                continue
+            row = [str(m), _n(ref[key].iloc[0])]
+            row += [_n(rows_[sp][key].iloc[1]) for sp in x["splits"]]
+            for sp in x["splits"]:
+                tb = x["first"][sp].table.set_index("order")
+                row.append(_n(tb.loc[m, "source_factor"]) if m in tb.index else "–")
+            orows.append(tuple(row))
+        t_orders = 0
+        if orows:
+            head = [tr("document.col_order"), tr("document.col_i_today")]
+            head += [tr("document.col_i_split", split=_sentence(name[sp]).rstrip(".")) for sp in x["splits"]]
+            head += [tr("document.col_u_split", split=name[sp]) for sp in x["splits"]]
+            k = len(x["splits"])
+            d.table(head, orows, caption=tr("document.tab_expansion_orders", Z=_n(x["Z_E"]), ice=_g(t1)),
+                    widths_cm=[1.7, 1.9] + [3.0] * k + [3.3] * k if k > 1 else [1.7, 2.4, 3.5, 3.9],
+                    align=["right"] * len(head), font_size=8.5)
+            t_orders = self.table_number()
+        # ---- what it means
+        t_rows = {sp: rows_[sp].iloc[1] for sp in x["splits"]}
+        vals = [float(t_rows[sp][col]) for sp in x["splits"]]
+        ihs = [float(t_rows[sp][ihc]) for sp in x["splits"]]
+        span = (lambda v: _n(v[0]) if len(v) == 1 or abs(max(v) - min(v)) < 0.005 else
+                "%s–%s" % (_n(min(v)), _n(max(v))))
+        order = ""
+        parts = {m: float(ref["I_%d_A" % m].iloc[0]) for m in orders if "I_%d_A" % m in ref.columns}
+        if parts and t_orders:
+            dom = max(parts, key=parts.get)
+            ks = []
+            for sp in x["splits"]:
+                tb = x["first"][sp].table.set_index("order")
+                if dom in tb.index:
+                    ks.append(float(tb.loc[dom, "source_factor"]))
+            if ks:
+                order = tr("document.expansion_order", m=dom, k=span(ks), t=t_orders)
+        d.para(tr("document.expansion_result", ice=_g(t1), delta="%s A, %s %%" % (
+            _signed(t1 - x["ice"], 3), _signed(100 * (t1 / x["ice"] - 1), 2)), Z=_n(x["Z_E"]), range=span(vals),
+            now=_n(x["now"]),
+            limit=tr("document.expansion_vs_limit", limit=_g(c.limit), status=c.ok(max(vals))) if c.limit else "",
+            ig=_n(ref["IG_A"].iloc[1]), ig_now=_n(ref["IG_A"].iloc[0]), ih=ih_sym, ih_range=span(ihs),
+            ih_now=_n(ref[ihc].iloc[0]), order=order, prop=_n(x["now"] * t1 / x["ice"])))
+        # ---- I_RES,ass over I_CE
+        curves = []
+        for cv in x["curves"].values():
+            frames = {sp: f[f["I_C_A"] <= x["end"] + 1e-9] for sp, f in cv["frames"].items()}
+            curves.append(dict(Z_E=cv["Z_E"], sources=frames.get("sources"), busbar=frames.get("busbar")))
+        lims = [dict(limit_A=lc["allowed"], Z_E=lc["Z_E"]) for lc in x["cases"]]
+        self.fig(lambda: report.ires_over_ice(curves, lims, I_CE=x["ice"], targets=x["targets"] if x["planned"] else (),
+                                              column=col, I_CE_max=x["end"]),
+                 "ires_over_ice", tr("document.fig_expansion"))
+        # ---- where every limit is reached
+        if x["cases"]:
+            u_col = any(lc["governs"] == "U" for lc in x["cases"])
+            rows = []
+            for lc in x["cases"]:
+                cond = lc["condition"] or tr("document.lc_standard")
+                row = [_g(lc["limit_A"]), cond, _n(lc["Z_E"]), _g(lc["r"])]
+                if u_col:
+                    row.append(_n(lc["allowed"]))
+                row.append(_n(lc["now"]))
+                for sp in x["splits"]:
+                    row.append(self.reach_text(lc["per"][sp], x["top"]))
+                r = lc["reach"]
+                row.append("–" if r["status"] != "reached" else _fixed(round(r["margin_A"], -1), 0))
+                rows.append(tuple(row))
+            head = [tr("document.col_limit"), tr("document.col_condition"), tr("document.col_ze"), tr("document.col_r")]
+            head += [tr("document.col_allowed")] if u_col else []
+            short = {sp: tr("document.split_busbar_short") if sp == "busbar" else name[sp] for sp in x["splits"]}
+            head += [tr("document.col_ires_today")] + [tr("document.col_reached", split=short[sp]) for sp in x["splits"]]
+            head += [tr("document.col_margin")]
+            k = len(x["splits"])
+            wc = 16.2 - (1.9 + 1.3 + 1.0 + 1.9 + 2.5 * k + 1.7) - (1.6 if u_col else 0.0)
+            d.table(head, rows, caption=tr("document.tab_expansion_limits"),
+                    widths_cm=[1.9, wc, 1.3, 1.0] + ([1.6] if u_col else []) + [1.9] + [2.5] * k + [1.7],
+                    align=["right", "left", "right", "right"] + ["right"] * (len(head) - 4), font_size=8)
+            if u_col:
+                d.para(tr("document.expansion_allowed_u", u=_n(x["fu"])))
+        for text in self.expansion_limit_sentences():
+            d.para(text)
+        if _finite(x["coil_end"]) and x["coil_end"] < max(x["targets"] + [lc["reach"]["I_C_A"] for lc in x["cases"]
+                                                                          if lc["reach"]["status"] == "reached"]):
+            d.para(tr("document.expansion_coils_short", ice=_fixed(round(x["coil_end"], -1), 0)))
+        neg = x["negative"]
+        if neg:
+            d.para(tr("document.expansion_negative_one", orders=neg[0]) if len(neg) == 1 else
+                   tr("document.expansion_negative", orders=self.join([str(m) for m in neg])))
+        d.para(tr("document.expansion_validity"))
+
+    @staticmethod
+    def reach_text(r: dict, top: float) -> str:
+        """The I_CE at which a curve reaches a limit (rounded to 10 A), "today exceeded" or "> end of the curve"."""
+        if r["status"] == "exceeded":
+            return tr("document.expansion_now_exceeded")
+        if r["status"] == "not_reached":
+            return tr("document.expansion_beyond", ice=_fixed(round(top, -1), 0))
+        return _fixed(round(r["I_C_A"], -1), 0)
+
+    def expansion_limit_sentences(self) -> List[str]:
+        """Per limit: where the expanded network reaches it."""
+        c = self.c
+        x = c.expansion
+        out = []
+        for lc in x["cases"]:
+            kw = dict(limit=_g(lc["limit_A"]), condition=lc["condition"] or tr("document.lc_standard"), Z=_n(lc["Z_E"]),
+                      u=tr("document.expansion_limit_u", allowed=_n(lc["allowed"])) if lc["governs"] == "U" else "")
+            r = lc["reach"]
+            if r["status"] == "exceeded":
+                out.append(tr("document.expansion_limit_exceeded", now=_n(lc["now"]), **kw))
+            elif r["status"] == "not_reached":
+                out.append(tr("document.expansion_limit_not_reached", ice=_fixed(round(x["top"], -1), 0), **kw))
+            else:
+                split = ""
+                if len(x["splits"]) > 1 and all(lc["per"][sp]["status"] == "reached" for sp in x["splits"]):
+                    a, b = (lc["per"][sp]["I_C_A"] for sp in x["splits"])
+                    if abs(a - b) >= 10:
+                        split = tr("document.expansion_limit_split", a=_fixed(round(a, -1), 0),
+                                   b=_fixed(round(b, -1), 0))
+                out.append(tr("document.expansion_limit_reached", ice=_fixed(round(r["I_C_A"], -1), 0),
+                              margin=_fixed(round(r["margin_A"], -1), 0), split=split, **kw))
+        return out
 
     def limit_cases_table(self):
         """The limits with their conditions: I_RES,ass at the Z_E of every case and U_E = r·I_RES,ass·Z_E."""
@@ -5247,6 +5857,11 @@ class _Writer:
             vals = pd.to_numeric(ps["IRES_A"], errors="coerce").iloc[1:]
             rows.append((tr("document.u_methods"), tr("document.u_methods_value", min=_n(vals.min()), max=_n(vals.max())),
                          tr("document.u_methods_treat")))
+        x = c.expansion
+        if x is not None and len(x["splits"]) > 1:
+            a, b = (float(x["rows"][sp][x["column"]].iloc[1]) for sp in x["splits"])
+            rows.append((tr("document.u_expansion"), tr("document.u_expansion_value", ice=_g(x["targets"][0]),
+                                                        a=_n(a), b=_n(b)), tr("document.u_expansion_treat")))
         if c.es is not None:
             zmin, zmax = c.series.Z_range
             inside = tr("document.inside") if zmin <= abs(c.Z_E) <= zmax else tr("document.outside")
@@ -5329,7 +5944,9 @@ class _Writer:
             if m is not None and not m.empty:
                 d.para(tr("document.sum_station_simple", station=c.place(n), ue=_n(m["UE_max_V"].iloc[0]),
                           i=_n(m["IF_A"].iloc[0])))
-        if _finite(c.ice_limit):
+        if c.expansion is not None:
+            d.para(" ".join(self.expansion_summary()))
+        elif _finite(c.ice_limit):
             ig = ""
             if _finite(c.v) and c.v > 0 and _finite(c.d) and c.d > 0:
                 ig = tr("document.sum_forecast_ig", ice=_n(c.limit / math.hypot(c.d, c.v), 2))
@@ -5345,6 +5962,38 @@ class _Writer:
         else:
             d.placeholder_text(tr("document.recommendation_placeholder"))
             self.placeholders.append(plain(tr("document.recommendation_placeholder")))
+
+    def expansion_summary(self) -> List[str]:
+        """The network expansion in the summary: the first planned value against the limit of the network, then where
+        the residual current reaches every limit."""
+        c = self.c
+        x = c.expansion
+        t = x["targets"][0]
+        v = max(float(x["rows"][sp][x["column"]].iloc[1]) for sp in x["splits"])
+        already = c.limit is not None and x["now"] > c.limit
+        lim = tr("document.sum_expansion_limit", limit=_g(c.limit), status=c.ok(v),
+                 already=tr("document.sum_expansion_already") if already else "") if c.limit else ""
+        out = [tr("document.sum_expansion", ice=_g(t), Z=_n(x["Z_E"]), value=_n(v), limit=lim)]
+        same = lambda lc: lc["applies"] and abs(lc["Z_E"] - x["Z_E"]) < 1e-9
+        reached, beyond, over = [], [], []
+        for lc in x["cases"]:
+            kw = dict(limit=_g(lc["allowed"]), Z=_n(lc["Z_E"]))
+            st = lc["reach"]["status"]
+            if st == "reached":
+                reached.append(tr("document.sum_expansion_reached_item",
+                                  ice=_fixed(round(lc["reach"]["I_C_A"], -1), 0), **kw))
+            elif st == "not_reached":
+                beyond.append(tr("document.sum_expansion_item", **kw))
+            elif not (same(lc) and already):
+                over.append(tr("document.sum_expansion_item", **kw))
+        if reached:
+            out.append(tr("document.sum_expansion_reached", items=self.join(reached)))
+        if beyond:
+            out.append(tr("document.sum_expansion_not_reached", items=self.join(beyond),
+                          ice=_fixed(round(x["top"], -1), 0)))
+        if over:
+            out.append(tr("document.sum_expansion_exceeded", items=self.join(over)))
+        return out
 
     def station_sentence(self, n: str, cases: pd.DataFrame) -> str:
         """The touch voltage of a station over all approaches (summary)."""

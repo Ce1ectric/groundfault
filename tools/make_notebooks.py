@@ -1009,9 +1009,11 @@ MEASUREMENTS = [
                      '''["1_Rohdaten/PQ/UW_PQ_Export.csv"]   # Demo: PQ-Export der Demo-Sammelschiene (mit der Demo-Kampagne angelegt)''')
         report = t('''dict(network="20 kV network of the demo substation",   # demo: invented names
               authors=["Demo author"],
+              expansion=True,                             # network expansion (section 3.3) – e.g. dict(I_CE=800.0): the planned I_CE in A
               places={"SUB": "Demo substation", "Station_Elm_Road": "Station Elm Road"})''',
                    '''dict(network="20-kV-Netz des Demo-Umspannwerks",       # Demo: erfundene Namen
               authors=["Demo-Bearbeitung"],
+              expansion=True,                             # Netzausbau (Abschnitt 3.3) – z. B. dict(I_CE=800.0): der geplante I_CE in A
               places={"UW": "Demo-Umspannwerk", "Station_Elm_Road": "Station Elm Road"})''')
     else:
         conf = t('''CAMPAIGN = "YYYY-MM-DD_Place"
@@ -1041,9 +1043,11 @@ MEASUREMENTS = [
                      '''None               # Export(e) eines PQ-Messgeräts an der Sammelschiene, z. B. ["…/Export.csv"] (relativ zum Kampagnenordner oder absolut)''')
         report = t('''dict(network="",     # line under the title, e.g. "20 kV network of substation …"
               authors=[],     # names on the title page
+              expansion=True, # network expansion (section 3.3): True = 1.25/1.5/2 × I_CE of today, dict(I_CE=800.0) = the planned I_CE in A, False = none
               places={})      # name of every site in the text, e.g. {"SUB": "Substation …", "<station folder>": "…"}''',
                    '''dict(network="",     # Zeile unter dem Titel, z. B. "20-kV-Netzbereich UW …"
               authors=[],     # Namen auf der Titelseite
+              expansion=True, # Netzausbau (Abschnitt 3.3): True = 1,25/1,5/2 × heutiger I_CE, dict(I_CE=800.0) = geplanter I_CE in A, False = keiner
               places={})      # Name jedes Messorts im Text, z. B. {"UW": "Umspannwerk …", "<Stationsordner>": "…"}''')
     report_conf_en = '''
 

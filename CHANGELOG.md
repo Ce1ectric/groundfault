@@ -4,6 +4,44 @@ All notable changes to groundfault are documented in this file. The format is ba
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and groundfault adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-10-23
+
+A minor version for the question of network planning: can further cables be connected at the substation? The
+equivalent sources of today – an active two-terminal network per harmonic order – are converted to a network with more
+cable and the coils retuned, giving the residual current over the capacitive earth-fault current and the value at which
+every limit is reached; the Word report has a section of its own for it. Nothing that 3.3 computes changes.
+
+### Added
+
+- **Network expansion** (`equivalent_source.network_expansion`, `expansion_curve`, `expansion_limit`,
+  `busbar_impedances`): the equivalent sources of today converted to a network with more cable at the substation and
+  the coils retuned to the same detuning, I_L,new = I_L·I_C,new/I_C. Per order the added earth admittance and the
+  coils lie in parallel with Z_0, the operating capacitance of the new cables (C_1 = c·C_E) with Z_1 – it shifts the
+  parallel resonance of the busbar; the source voltage of the busbar follows Z_1,new/Z_1, at the orders of the zero
+  sequence Z_0,new/Z_0 and the coil current; the fundamental grows with the damping of the new cables and the
+  detuning. The split of Z_q into Z_0 and Z_1 comes from network data (`split="sources"`, default) or from the busbar
+  voltages of the tests (`split="busbar"`, the B method of the forecast; at the zero sequence Z_0 = 3·Z_q − 2·Z_1);
+  I_C,new = I_C returns the series unchanged. `expansion_curve`: I_RES at Z_E over I_C with the scaling and the margins
+  of `ires_at_impedance`; `expansion_limit`: the I_C at which a curve reaches a limit. Checked against the nodal
+  calculation of a synthetic network before and after an expansion: the busbar split reproduces it exactly, the split
+  from network data within 2 % (7 % at the 3rd order).
+- **Word report: section *Network expansion*** (3.3; `ReportInfo.expansion`, default on, `False` leaves it out): the
+  residual current at the earthing impedance of every limit over I_CE – both splits of the source impedance, the
+  larger value deciding – in a table at the planned I_CE (`I_CE`, e.g. `800`; default 1.25, 1.5 and 2 times today)
+  with the fundamental, the harmonic content and the proportional estimate, a table per order with the factor of its
+  source voltage, a figure and the I_CE at which every limit is reached (the smaller of the limit and
+  F·U_Tp/(r·Z_E)), with the formulas and the assumptions (`damping_added`, `c1_ratio`, `I_L_max`, `I_CE_max`,
+  `zero_sequence`); in the key results, the summary and the table of uncertainties. The sections after it move by
+  one (3.4 earthing of the stations, 3.5 uncertainties, 3.6 summary).
+- Figure `report.ires_over_ice`: I_RES,ass over I_CE at the earthing impedances of the limits, with the limits, I_CE
+  of today and the planned values.
+- `formulas.zero_sequence_impedance`: Z_0 of the network with its coils at an order from I_C, I_L and the damping –
+  the form of the estimates without an earth fault, which use it now (`forecast.network_estimate`, unchanged results).
+- Campaign notebook: `expansion` in `REPORT`, with a note on the planned I_CE.
+- Documentation: *Network expansion* in *Equivalent-source method* (model, the two splits, the check against the
+  reference network, an example), the section and its settings in *Word report of a campaign*, the figure in
+  *Report*, a pointer in the limits of the forecast model.
+
 ## [3.3.0] - 2026-10-23
 
 A minor version with a new module for the Word report of a campaign (`groundfault.document`, optional with the extra
@@ -565,6 +603,8 @@ available.
   returns I_operating − I_resonance, so `formulas.detuning` and `formulas.sqrt2_method` give the sign of the angle
   method; the resonance-curve formulas of the predecessor used the opposite sign.
 
+[3.4.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.4.0
+[3.3.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.3.0
 [3.2.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.2.0
 [3.1.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.1.0
 [3.0.0]: https://github.com/Ce1ectric/groundfault/releases/tag/v3.0.0

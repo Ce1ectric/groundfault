@@ -27,7 +27,9 @@ and the two compared quantities r·Z_E and Z_E (bottom)](docs/assets/station_red
   during the fault – a network section that trips, a short active residual current increase for fault location – are
   detected and left out of the reference.
 - **Equivalent-source method** – over a series of tests with different fault impedances, an active two-terminal
-  equivalent per harmonic order and from it the residual current at any earthing impedance Z_E.
+  equivalent per harmonic order and from it the residual current at any earthing impedance Z_E – and after a network
+  expansion: with more cable at the substation and the coils retuned, the residual current over the capacitive
+  earth-fault current and where it reaches a limit.
 - **Power-quality measurements** – the export of a PQ instrument at the busbar (WinPQ mobil CSV, or any table):
   10-min values as in IEC 61000-4-30, the quantile of the largest phase per interval, a factor of your own by the
   duration of the gapless values, the position of the tests in the distribution, and the scaling of the harmonic
@@ -55,10 +57,10 @@ and the two compared quantities r·Z_E and Z_E (bottom)](docs/assets/station_red
   SQLite database; evaluated tests can be entered in groundmeas.
 - **Report output** – figures in their final size for an A4 report (PDF/SVG/PNG) and tables as CSV, Markdown, Excel
   and Word; the **Word report of a campaign** in English or German – title page, key results, chapters on set-up,
-  results and assessment (equivalent sources, touch voltage, uncertainties) and appendices with the plausibility
-  checks, every number from the result files, placeholders for the photos on site, set as a scientific report
-  (justified text, footnotes for sources and side remarks, Word equations), optionally in the template of your
-  organisation.
+  results and assessment (equivalent sources, network expansion, touch voltage, uncertainties) and appendices with
+  the plausibility checks, every number from the result files, placeholders for the photos on site, set as a
+  scientific report (justified text, footnotes for sources and side remarks, Word equations), optionally in the
+  template of your organisation.
 - **Signal explorer** – all channels of a recording with RMS values, harmonics and THD on hover, in the notebook and
   as a single HTML file that opens in any browser.
 - **English and German** – output language and campaign folder layout; the files of the in-house predecessor
@@ -202,7 +204,7 @@ GitHub offers them as APA and BibTeX under *Cite this repository*:
 @software{Ehlert_groundfault_2026,
   author  = {Ehlert, Christian},
   title   = {{groundfault}},
-  version = {3.3.0},
+  version = {3.4.0},
   month   = oct,
   year    = {2026},
   url     = {https://github.com/Ce1ectric/groundfault},

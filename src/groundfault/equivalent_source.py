@@ -65,7 +65,8 @@ except Exception:  # pragma: no cover
 __all__ = ["SourceMeasurement", "SourceFit", "SourceSeries", "load_measurement", "load_series",
            "natural_sequence", "phase_factor", "fit_equation_error", "fit_output_error", "fit_rq0",
            "fit_equivalent_source", "measured_source", "compare_sources", "ires_at_impedance", "ires_over_time",
-           "ires_over_line", "monte_carlo", "SEQUENCES", "SEQUENCE_LEGACY", "THEVENIN_TOLERANCE"]
+           "ires_over_line", "monte_carlo", "NetworkExpansion", "busbar_impedances", "network_expansion",
+           "expansion_curve", "expansion_limit", "SEQUENCES", "SEQUENCE_LEGACY", "THEVENIN_TOLERANCE"]
 
 SEQUENCES = ("pos", "neg", "zero")
 """Sequence codes: positive, negative and zero sequence."""
@@ -2330,3 +2331,399 @@ def monte_carlo(series: SourceSeries, Z_E: complex, n: int = 2000, sigma_magnitu
                 ires_sample=ires,
                 settings=dict(sigma_magnitude=float(sigma_magnitude), sigma_phase_deg=float(sigma_phase_deg),
                               sigma_Z=float(sigma_Z), sigma_level=float(sigma_level), model_error=bool(model_error)))
+
+
+# ================================================================================================ network expansion
+i18n.register({
+    "equivalent_source.expansion_positive": {
+        "en": "network_expansion: I_C, I_C_new and U_LE must be positive (I_C={I_C!r}, I_C_new={I_C_new!r}, "
+              "U_LE={U_LE!r}).",
+        "de": "network_expansion: I_C, I_C_new und U_LE müssen positiv sein (I_C={I_C!r}, I_C_new={I_C_new!r}, "
+              "U_LE={U_LE!r})."},
+    "equivalent_source.expansion_no_ule": {
+        "en": "network_expansion: no line-to-earth voltage – the measurements contain no zero-sequence voltage of the "
+              "fundamental; give U_LE.",
+        "de": "network_expansion: keine Leiter-Erde-Spannung – die Messungen enthalten keine Nullspannung der "
+              "Grundschwingung; U_LE angeben."},
+    "equivalent_source.expansion_zero_option": {
+        "en": "network_expansion: zero_sequence must be 'coil' or 'network' (got {value!r}).",
+        "de": "network_expansion: zero_sequence muss 'coil' oder 'network' sein (erhalten: {value!r})."},
+    "equivalent_source.expansion_negative_r": {
+        "en": "Order {order}: {name} = {z} Ω has a negative real part – the data of this order are not those of a "
+              "passive network (phase errors at the harmonic frequency, a drifting source); its change is uncertain.",
+        "de": "Ordnung {order}: {name} = {z} Ω hat einen negativen Realteil – die Daten dieser Ordnung passen nicht zu "
+              "einem passiven Netz (Winkelfehler bei der Oberschwingungsfrequenz, eine driftende Quelle); ihre "
+              "Änderung ist unsicher."},
+    "equivalent_source.expansion_column": {
+        "en": "expansion_limit: no column {column!r} in the curve (columns: {columns}).",
+        "de": "expansion_limit: keine Spalte {column!r} in der Kurve (Spalten: {columns})."},
+    "equivalent_source.expansion_split_option": {
+        "en": "network_expansion: split must be 'sources' or 'busbar' (got {value!r}).",
+        "de": "network_expansion: split muss 'sources' oder 'busbar' sein (erhalten: {value!r})."},
+    "equivalent_source.expansion_no_busbar": {
+        "en": "Order {order}: no busbar voltages of the tests – Z_0 from network data, Z_1 = (3·Z_q − Z_0)/2.",
+        "de": "Ordnung {order}: keine Spannungen der Sammelschiene in den Versuchen – Z_0 aus Netzdaten, "
+              "Z_1 = (3·Z_q − Z_0)/2."},
+})
+
+
+@dataclass
+class NetworkExpansion:
+    """Result of [`network_expansion`][groundfault.equivalent_source.network_expansion]: the equivalent sources of
+    the network after an expansion.
+
+    Attributes
+    ----------
+    series : SourceSeries
+        The equivalent sources after the expansion – for
+        [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance] and the other functions of the series
+        (the fundamental of every measurement is that of the expanded network).
+    I_C, I_C_new : float
+        Capacitive earth-fault current before and after in A.
+    I_L, I_L_new : float
+        Current of the coils before and after (retuned to the same detuning) in A.
+    U_LE : float
+        Line-to-earth voltage used in V.
+    damping, damping_added : float
+        Damping I_w/I_C of the network and of the added part.
+    c1_ratio : float
+        Operating capacitance per earth capacitance of the added part, C_1/C_E.
+    IG_factor : float
+        Fundamental after/before (median of the measurements).
+    table : pandas.DataFrame
+        Per order: ``order``, ``category``, ``Z0``, ``Z0_new``, ``Z1``, ``Z1_new``, ``Zq``, ``Zq_new`` (complex, Ω),
+        ``source_factor`` (|U_q,new/U_q|) and ``split`` (``"sources"``: Z_0 from network data and Z_1 = (3·Z_q −
+        Z_0)/2; ``"busbar"``: from the busbar voltages of the tests; ``"given"``: Z_0 and Z_1 given).
+    hints : list of str
+        Hints.
+    """
+
+    series: SourceSeries
+    I_C: float
+    I_C_new: float
+    I_L: float
+    I_L_new: float
+    U_LE: float
+    damping: float
+    damping_added: float
+    c1_ratio: float
+    IG_factor: float
+    table: pd.DataFrame
+    hints: List[str] = field(default_factory=list)
+
+
+def _expansion_ule(series: SourceSeries) -> float:
+    """Line-to-earth voltage of the series: median of the zero-sequence voltage of the fundamental in the fault."""
+    u = [abs(m.U_fault[1]["zero"]) for m in series.measurements
+         if 1 in m.U_fault and "zero" in m.U_fault[1] and np.isfinite(abs(m.U_fault[1]["zero"]))]
+    if not u:
+        raise ValueError(tr("equivalent_source.expansion_no_ule"))
+    return float(np.median(u))
+
+
+def _median_complex(values: Sequence[complex]) -> complex:
+    """Median of the real and of the imaginary parts."""
+    return complex(float(np.median([z.real for z in values])), float(np.median([z.imag for z in values])))
+
+
+def busbar_impedances(series: SourceSeries, min_current_A: float = 0.3) -> pd.DataFrame:
+    """Zero- and positive-sequence impedance of the busbar per order from the tests of a series.
+
+    The B method of the [network model](../forecast/model.md#calibration-with-a-staged-fault-test): per test and order
+    Z_s = 3·p_s·ΔU_s/I from the change ΔU_s of the busbar voltage with the fault current I, then the median over the
+    tests. Z_1 is taken from the sequence that is not the natural one of the order – at the 5th the positive, at the
+    7th the negative sequence: their change is not the small difference of the large pre-fault voltage and the voltage
+    in the fault, which a drifting background spoils – at the orders of the zero sequence from both (Z_2 = Z_1 in a
+    passive network). At the orders of the zero sequence a source arises in the fault (the nonlinear current of the
+    coils) and changes ΔU_0 as well; there Z_0 = 3·Z_q − 2·Z_1 with Z_q of the equivalent sources, which separate
+    that source.
+
+    Parameters
+    ----------
+    series : SourceSeries
+        Equivalent sources whose measurements hold the busbar voltages before and in the fault (groundfault result
+        files, measured or fitted source).
+    min_current_A : float, optional
+        Smallest current of an order in a test in A; smaller ones are left out.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Per order of the series with busbar voltages: ``order``, ``Z0``, ``Z1`` (complex, Ω), ``Z0_from``
+        (``"busbar"`` or ``"equivalent_source"``: 3·Z_q − 2·Z_1), ``Z1_from`` (the sequence: ``"pos"``, ``"neg"`` or
+        ``"pos/neg"``) and ``n`` (tests); empty without busbar voltages.
+    """
+    from . import forecast as fc              # the forecast imports this module
+    per: Dict[int, Dict[str, List[complex]]] = {}
+    for k, mm in enumerate(series.measurements):
+        orders = [m for m in sorted(series.fits)
+                  if m in mm.I and abs(mm.I[m]) >= min_current_A and m in mm.U_pre and m in mm.U_fault
+                  and all(s in mm.U_fault[m] and s in mm.U_pre[m] for s in ("zero", "pos", "neg"))]
+        if not orders or not mm.U_complex:
+            continue
+        try:
+            model = fc.NetworkModel()
+            cal = model.add_test(fc.fault_data_from_measurement(mm, "test"), orders=orders, name="%d" % k)
+        except ValueError:
+            continue
+        for m, e in cal.orders.items():
+            d = per.setdefault(m, {"Z0": [], "pos": [], "neg": []})
+            d["Z0"].append(e.Z0)
+            d["pos"].append(e.Z1)
+            d["neg"].append(e.Z2)
+    rows = []
+    for m in sorted(per):
+        nat = natural_sequence(m)
+        seq = {"neg": "pos", "pos": "neg"}.get(nat, "pos/neg")
+        z1 = _median_complex(per[m]["pos"] + per[m]["neg"] if seq == "pos/neg" else per[m][seq])
+        if nat == "zero":
+            z0, how = 3 * series.fits[m].Zq - 2 * z1, "equivalent_source"
+        else:
+            z0, how = _median_complex(per[m]["Z0"]), "busbar"
+        rows.append(dict(order=m, Z0=z0, Z1=z1, Z0_from=how, Z1_from=seq, n=len(per[m]["Z0"])))
+    return pd.DataFrame(rows, columns=["order", "Z0", "Z1", "Z0_from", "Z1_from", "n"])
+
+
+def network_expansion(series: SourceSeries, I_C: float, I_C_new: float, *, I_L: Optional[float] = None,
+                      U_LE: Optional[float] = None, damping: Optional[float] = None,
+                      damping_added: Optional[float] = None, c1_ratio: float = 1.0, split: str = "sources",
+                      Z0: Optional[Mapping[int, complex]] = None, Z1: Optional[Mapping[int, complex]] = None,
+                      zero_sequence: str = "coil") -> NetworkExpansion:
+    """The equivalent sources after an expansion of the MV network: more cable at the busbar, the coils retuned.
+
+    Added cables raise the earth capacitance (I_C → I_C,new) and the operating capacitance of the network; the coils
+    are retuned to the same detuning, I_L,new = I_L·I_C,new/I_C. Per order m the two-terminal equivalent of the fault
+    changes in all its parts ([fault loop](../forecast/model.md#fault-loop-per-order),
+    Z_q = (Z_0 + Z_1 + Z_2)/3 with Z_2 = Z_1):
+
+    * **zero sequence** – the added earth admittance and the retuned coils lie in parallel with Z_0:
+      1/Z_0,new = 1/Z_0 + (j·m·ΔI_C + d_a·ΔI_C − j·ΔI_L/m)/(3·U_LE);
+    * **positive and negative sequence** – the operating capacitance of the added cables lies in parallel with the
+      busbar: 1/Z_1,new = 1/Z_1 + (j·m·c·ΔI_C + d_a·ΔI_C)/(3·U_LE) with c = C_1/C_E of the cables (1 for cables
+      with a screen per core); this shifts the parallel resonance of the busbar;
+    * **source** – the harmonic voltage of the busbar is that of sources outside the added cables (HV network,
+      loads) on the busbar impedance, U_q,new = U_q·Z_1,new/Z_1 – for a source behind the upstream impedance and for
+      a current source of the MV network alike; at the orders of the zero sequence the source arises in the fault,
+      U_s = Z_0·I_Nh/3, and grows with Z_0 and with the nonlinear current of the coils, taken proportional to their
+      current (``zero_sequence="coil"``; ``"network"``: the current of the coils unchanged);
+    * **fundamental** – I_w,new = I_w + d_a·ΔI_C, I_v,new = I_v·I_C,new/I_C: with the damping of the network
+      (default) the fundamental grows with I_C.
+
+    The split of Z_q into Z_0 and Z_1 is not part of the equivalent sources; it is taken in one of two ways:
+    ``split="sources"`` (default) – Z_0 from network data
+    ([`zero_sequence_impedance`][groundfault.formulas.zero_sequence_impedance] with I_C, I_L and the damping d) and
+    Z_1 = (3·Z_q − Z_0)/2; ``split="busbar"`` – Z_0 and Z_1 of the busbar from the voltage changes of the tests
+    ([`busbar_impedances`][groundfault.equivalent_source.busbar_impedances], the B method of the forecast; an order
+    without busbar voltages uses the network data). ``Z0``/``Z1`` give them per order and take precedence. The
+    changes are added to the measured Z_q, so I_C,new = I_C returns the series unchanged. Orders outside the model
+    (the remainder, even orders without a fit) keep their measured content; new harmonic sources with the added cables
+    are not included.
+
+    Parameters
+    ----------
+    series : SourceSeries
+        Equivalent sources of the network today (fitted or measured source).
+    I_C, I_C_new : float
+        Capacitive earth-fault current of the network today and after the expansion in A.
+    I_L : float, optional
+        Current of the coils today in A (default I_C, a tuned network).
+    U_LE : float, optional
+        Line-to-earth voltage in V (default: the median zero-sequence voltage of the fundamental in the tests).
+    damping : float, optional
+        Damping d = I_w/I_C of the network (default: the median active current of the tests divided by I_C) – for Z_0
+        from network data.
+    damping_added : float, optional
+        Damping of the added cables (default ``damping``): their active current and conductance.
+    c1_ratio : float, optional
+        C_1/C_E of the added cables (1: cables with a screen per core; overhead lines about 2).
+    split : {"sources", "busbar"}, optional
+        Split of Z_q into Z_0 and Z_1: from network data and the equivalent sources, or from the busbar voltages of
+        the tests (see above).
+    Z0, Z1 : mapping of int to complex, optional
+        Zero- and positive-sequence impedance of the busbar per order in Ω (an order not given is split by
+        ``split``).
+    zero_sequence : {"coil", "network"}, optional
+        Source of the zero-sequence orders: growing with the current of the coils, or with Z_0 only.
+
+    Returns
+    -------
+    NetworkExpansion
+
+    Raises
+    ------
+    ValueError
+        For a non-positive current or voltage, or an unknown ``split`` or ``zero_sequence``.
+    """
+    return _expand(series, I_C, I_C_new, _expansion_split(series, split), I_L=I_L, U_LE=U_LE, damping=damping,
+                   damping_added=damping_added, c1_ratio=c1_ratio, Z0=Z0, Z1=Z1, zero_sequence=zero_sequence)
+
+
+_EXPANSION_KEYS = ("I_L", "U_LE", "damping", "damping_added", "c1_ratio", "split", "Z0", "Z1", "zero_sequence")
+
+
+def _expansion_split(series: SourceSeries, split: str) -> Optional[Dict[int, Tuple[complex, complex]]]:
+    """(Z_0, Z_1) per order of ``split="busbar"`` (None for ``"sources"``)."""
+    if split not in ("sources", "busbar"):
+        raise ValueError(tr("equivalent_source.expansion_split_option", value=split))
+    if split == "sources":
+        return None
+    return {int(r.order): (complex(r.Z0), complex(r.Z1)) for r in busbar_impedances(series).itertuples()}
+
+
+def _expand(series: SourceSeries, I_C: float, I_C_new: float, bus: Optional[Dict[int, Tuple[complex, complex]]], *,
+            I_L: Optional[float], U_LE: Optional[float], damping: Optional[float], damping_added: Optional[float],
+            c1_ratio: float, Z0: Optional[Mapping[int, complex]], Z1: Optional[Mapping[int, complex]],
+            zero_sequence: str) -> NetworkExpansion:
+    """[`network_expansion`][groundfault.equivalent_source.network_expansion] with the busbar split ``bus``."""
+    if zero_sequence not in ("coil", "network"):
+        raise ValueError(tr("equivalent_source.expansion_zero_option", value=zero_sequence))
+    U = float(U_LE) if U_LE is not None else _expansion_ule(series)
+    if not (I_C > 0 and I_C_new > 0 and U > 0):
+        raise ValueError(tr("equivalent_source.expansion_positive", I_C=I_C, I_C_new=I_C_new, U_LE=U))
+    IL = float(I_L) if I_L else float(I_C)
+    IL_new = IL * I_C_new / I_C
+    iw = np.asarray([m.Iw for m in series.measurements], float)
+    d = float(damping) if damping is not None else (
+        float(np.nanmedian(iw)) / I_C if np.isfinite(iw).any() else 0.0)
+    d_a = d if damping_added is None else float(damping_added)
+    dI, dIL = float(I_C_new) - float(I_C), IL_new - IL
+    out = replace(series, measurements=[replace(m) for m in series.measurements],
+                  fits={m: replace(F) for m, F in series.fits.items()}, IG_measured=np.array(series.IG_measured),
+                  hints=list(series.hints))
+    rows, hints = [], []
+    for m, F in sorted(out.fits.items()):
+        if Z0 and m in Z0 and Z1 and m in Z1:
+            z0, z1, how = complex(Z0[m]), complex(Z1[m]), "given"
+        elif bus is not None and m in bus:
+            (z0, z1), how = bus[m], "busbar"
+        else:
+            z0, how = fml.zero_sequence_impedance(m, I_C, U, IL, d), "sources"
+            z1 = (3 * F.Zq - z0) / 2
+            if bus is not None:
+                hints.append(tr("equivalent_source.expansion_no_busbar", order=m))
+        for name, z in (("Z_0", z0), ("Z_1", z1)):
+            if z.real < 0:
+                hints.append(tr("equivalent_source.expansion_negative_r", order=m, name=name, z=_fmt_z(z)))
+        par = lambda z, y: z / (1 + z * y) if abs(z) > 1e-12 else z      # z ∥ 1/y; a stiff busbar stays stiff
+        z0n = par(z0, (1j * m * dI + d_a * dI - 1j * dIL / m) / (3 * U))
+        z1n = par(z1, (1j * m * c1_ratio * dI + d_a * dI) / (3 * U))
+        Zq_new = F.Zq + ((z0n - z0) + 2 * (z1n - z1)) / 3
+        cat = fml.harmonic_category(m)
+        ratio = lambda new, old: new / old if abs(old) > 1e-12 else 1.0
+        k = ratio(z0n, z0) * (IL_new / IL if zero_sequence == "coil" else 1.0) if cat == "zero" else ratio(z1n, z1)
+        rows.append(dict(order=m, category=cat, Z0=z0, Z0_new=z0n, Z1=z1, Z1_new=z1n, Zq=F.Zq, Zq_new=Zq_new,
+                         source_factor=float(abs(k)), split=how))
+        F.Zq, F.Uq = Zq_new, F.Uq * k
+    # the fundamental of every measurement: active current with the added damping, detuning current ∝ I_C
+    factors = []
+    for i, mm in enumerate(out.measurements):
+        ig = float(series.IG_measured[i])
+        if np.isfinite(mm.Iw) and np.isfinite(ig):
+            iv = math.sqrt(max(ig * ig - mm.Iw * mm.Iw, 0.0))
+            new = math.hypot(mm.Iw + d_a * dI, iv * I_C_new / I_C)
+            mm.Iw = mm.Iw + d_a * dI
+        else:
+            new = ig * I_C_new / I_C
+        factors.append(new / ig if ig > 0 else float("nan"))
+        out.IG_measured[i] = new
+    f = np.asarray(factors, float)
+    return NetworkExpansion(series=out, I_C=float(I_C), I_C_new=float(I_C_new), I_L=IL, I_L_new=IL_new, U_LE=U,
+                            damping=d, damping_added=d_a, c1_ratio=float(c1_ratio),
+                            IG_factor=float(np.nanmedian(f)) if np.isfinite(f).any() else float(I_C_new / I_C),
+                            table=pd.DataFrame(rows), hints=hints)
+
+
+def expansion_curve(series: SourceSeries, Z_E: complex, I_C: float, I_C_values: Iterable[float], *,
+                    IG: Union[str, float] = "max", u95: Optional[Mapping[int, float]] = None,
+                    u95_reference: str = "seq", thd95_percent: Optional[float] = None,
+                    thd_measured_percent: Optional[float] = None, safety_factor: float = 1.0, rest: bool = True,
+                    uncertainty_I: float = 0.0, uncertainty_U: float = 0.0, **expansion) -> pd.DataFrame:
+    """Residual current at Z_E over the capacitive earth-fault current of an expanded network.
+
+    For every value of ``I_C_values``: [`network_expansion`][groundfault.equivalent_source.network_expansion] (with
+    the keyword arguments ``expansion``) and [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance]
+    with the scaling and the margins given (a number ``IG`` is scaled with the fundamental of the expansion).
+
+    Parameters
+    ----------
+    series : SourceSeries
+        Equivalent sources of the network today.
+    Z_E : complex
+        Earthing impedance in Ω.
+    I_C : float
+        Capacitive earth-fault current today in A.
+    I_C_values : iterable of float
+        Capacitive earth-fault currents after the expansion in A.
+    IG, u95, u95_reference, thd95_percent, thd_measured_percent, safety_factor, rest, uncertainty_I, uncertainty_U
+        As in [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance].
+    **expansion
+        Keyword arguments of [`network_expansion`][groundfault.equivalent_source.network_expansion] (``I_L``,
+        ``U_LE``, ``damping``, ``damping_added``, ``c1_ratio``, ``split``, ``Z0``, ``Z1``, ``zero_sequence``).
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per value: ``I_C_A``, ``I_L_A``, ``IG_A``, ``IH_A``, ``IRES_A``, ``IRES_assessed_A``,
+        ``IH_scaled_A``, ``IRES_scaled_A``, ``IRES_scaled_assessed_A`` (without a scaling equal to the unscaled
+        ones) and ``I_<m>_A`` per order (scaled). ``attrs["hints"]``: the hints (once each).
+    """
+    unknown = [k for k in expansion if k not in _EXPANSION_KEYS]
+    if unknown:
+        raise TypeError("expansion_curve() got unexpected keyword arguments: %s" % ", ".join(unknown))
+    bus = _expansion_split(series, expansion.get("split", "sources"))       # once for all points
+    kw = dict(I_L=expansion.get("I_L"), U_LE=expansion.get("U_LE"), damping=expansion.get("damping"),
+              damping_added=expansion.get("damping_added"), c1_ratio=float(expansion.get("c1_ratio", 1.0)),
+              Z0=expansion.get("Z0"), Z1=expansion.get("Z1"), zero_sequence=expansion.get("zero_sequence", "coil"))
+    rows, hints = [], []
+    for ic in I_C_values:
+        x = _expand(series, I_C, float(ic), bus, **kw)
+        ig = IG if isinstance(IG, str) else float(IG) * x.IG_factor
+        r = ires_at_impedance(x.series, Z_E, IG=ig, u95=u95, u95_reference=u95_reference,
+                              thd95_percent=thd95_percent, thd_measured_percent=thd_measured_percent,
+                              safety_factor=safety_factor, rest=rest, uncertainty_I=uncertainty_I,
+                              uncertainty_U=uncertainty_U)
+        row = dict(I_C_A=float(ic), I_L_A=x.I_L_new, IG_A=r["IG"], IH_A=r["IH"], IRES_A=r["IRES"],
+                   IRES_assessed_A=r["IRES_assessed"], IH_scaled_A=r["IH_scaled"], IRES_scaled_A=r["IRES_scaled"],
+                   IRES_scaled_assessed_A=r["IRES_scaled_assessed"])
+        row.update({"I_%d_A" % m: r["parts"][m] * r["factors"].get(m, 1.0) for m in sorted(r["parts"])})
+        rows.append(row)
+        # the hints of the expansion once each; those of the scaling from the first point (the network today)
+        hints.extend(h for h in x.hints + (list(r["hints"]) if len(rows) == 1 else []) if h not in hints)
+    out = pd.DataFrame(rows)
+    out.attrs["hints"] = hints
+    return out
+
+
+def expansion_limit(curve: pd.DataFrame, limit_A: float, column: str = "IRES_scaled_assessed_A") -> Dict[str, object]:
+    """Where a curve of [`expansion_curve`][groundfault.equivalent_source.expansion_curve] reaches a limit.
+
+    Parameters
+    ----------
+    curve : pandas.DataFrame
+        Result of ``expansion_curve`` over rising I_C (its first row is the network today).
+    limit_A : float
+        Limit of the residual current in A – a value you define.
+    column : str, optional
+        Column compared with the limit (default: the scaled assessment value).
+
+    Returns
+    -------
+    dict
+        ``status``: ``"exceeded"`` (already at the first row), ``"reached"`` or ``"not_reached"`` (within the curve);
+        ``I_C_A``: the capacitive earth-fault current at which the limit is reached – linearly interpolated between
+        the points (the first value if exceeded, NaN if not reached); ``margin_A``: I_C_A minus the first I_C.
+    """
+    if column not in curve.columns:
+        raise ValueError(tr("equivalent_source.expansion_column", column=column, columns=", ".join(curve.columns)))
+    c = curve.sort_values("I_C_A")
+    x, y = c["I_C_A"].to_numpy(float), c[column].to_numpy(float)
+    if not len(x):
+        return dict(status="not_reached", I_C_A=float("nan"), margin_A=float("nan"))
+    if y[0] >= limit_A:
+        return dict(status="exceeded", I_C_A=float(x[0]), margin_A=0.0)
+    for i in range(1, len(x)):
+        if np.isfinite(y[i]) and y[i] >= limit_A:
+            t = (limit_A - y[i - 1]) / (y[i] - y[i - 1]) if y[i] != y[i - 1] else 1.0
+            ic = float(x[i - 1] + t * (x[i] - x[i - 1]))
+            return dict(status="reached", I_C_A=ic, margin_A=ic - float(x[0]))
+    return dict(status="not_reached", I_C_A=float("nan"), margin_A=float("nan"))

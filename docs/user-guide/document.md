@@ -39,15 +39,16 @@ section 8 (`REPORT`, [Notebooks](notebooks.md)).
 | Part | Content |
 |---|---|
 | Title page | title, network area, places and date of the tests (from the recordings), date, authors, version, the software version |
-| Key results | the characteristic values against your limits: I_CE, damping and detuning, the residual current measured and with the margin, scaled to the PQ measurement, at Z_E with the equivalent sources (the decisive value marked), the touch voltage at every station (largest approach), the validity of the PQ measurement |
+| Key results | the characteristic values against your limits: I_CE, damping and detuning, the residual current measured and with the margin, scaled to the PQ measurement, at Z_E with the equivalent sources (the decisive value marked), the network expansion (the residual current at the planned I_CE, the I_CE at which every limit is reached), the touch voltage at every station (largest approach), the validity of the PQ measurement |
 | 1 Set-up and procedure | 1.1 object and measurement set-up: tests with place, additional impedance, fault inception and duration; photo of the additional impedance; recorder and table of measured quantities (channels, measuring points, transducers); photo of the recording; corrections of the measuring chain. 1.2 procedure |
 | 2 Results | 2.1 measurement uncertainty (accuracy of the measuring chain, margins) and processing of the recordings (RMS trend with the intervals of the evaluation); 2.2 fault current – waveforms and the spectrum of every test with all orders above `threshold_A`, grouped by sequence, the split of the fundamental into active and reactive current, coil currents; 2.3 earth potential rise per station – photo of the set-up, waveforms, values per frequency, comparison with the earthing measurement, reduction factor, LV network; 2.4 network voltages – 2.4.1 the power-quality measurement, 2.4.2 the voltages before and after every test |
-| 3 Assessment | 3.1 processing of the residual current in three steps (margin, scaling per order, residual current with the scaled harmonic content); 3.2 equivalent-source method and forecast; 3.3 assessment of the earthing per station (touch voltage, approaches 1 to 4); 3.4 uncertainties; 3.5 summary with the recommendation |
+| 3 Assessment | 3.1 processing of the residual current in three steps (margin, scaling per order, residual current with the scaled harmonic content); 3.2 equivalent-source method and forecast; 3.3 network expansion – can further cables be connected at the substation? (the residual current over I_CE with the coils retuned, the I_CE at which every limit is reached); 3.4 assessment of the earthing per station (touch voltage, approaches 1 to 4); 3.5 uncertainties; 3.6 summary with the recommendation |
 | Appendices | A data of the recordings (file, start, sampling rate, fundamental frequency, intervals, window, corrections, reproduction from the raw data); B plausibility checks (findings of the single evaluations, consistency between the tests, checks of the report); C symbols |
 
-Sections without data are left out or say so: without a station there is no section 2.3 or 3.3; without a PQ
-measurement section 2.4.1 states that none was available and step 2 of 3.1 uses the scaling of the single evaluations
-(none: step 2 is left out); without equivalent sources 3.2 says that none were determined.
+Sections without data are left out or say so: without a station there is no section 2.3 and no assessment of the
+earthing; without a PQ measurement section 2.4.1 states that none was available and step 2 of 3.1 uses the scaling of
+the single evaluations (none: step 2 is left out); without equivalent sources 3.2 says that none were determined, and
+without them or without I_CE there is no network expansion.
 
 ## From the campaign notebook
 
@@ -57,7 +58,8 @@ the campaign (`<campaign>/report`, German layout `4_Bericht`) and lists the plac
 ```python
 REPORT = dict(network="20 kV network of substation …",    # line under the title
               authors=["…"],                              # names on the title page
-              places={"SUB": "Substation …", "Station_Elm_Road": "Station Elm Road"})
+              places={"SUB": "Substation …", "Station_Elm_Road": "Station Elm Road"},
+              expansion=dict(I_CE=800.0))                 # network expansion: the planned I_CE in A
 PHOTOS = {"setup_impedance": "impedance.jpg", "recorder": "recorder.jpg"}   # file names in <campaign>/media
 REPORT_TEMPLATE = None             # Word file of your organisation (styles, header and footer, logo)
 REPORT_STYLES = None               # style names of the template, e.g. {"title": "…", "subtitle": "…"}
@@ -143,6 +145,7 @@ footnote `[^text of the note^]`:
 | `limit_cases` | limits with their conditions on the earthing systems, `[{"limit_A": 60, "Z_E": 2.5}, {"limit_A": 90, "Z_E": 1.7, "condition": "all Z_E < 1.7 Ω"}, {"limit_A": 120, "Z_E": 2.5, "r": 0.5, "condition": "fully cabled, r ≥ 0.5 everywhere"}]` – see below |
 | `Z_E_basis` | where Z_E of the assessment comes from, e.g. “design value of the earthing systems of the network” (a footnote to the result at Z_E) |
 | `assessment` | decisive value: `"Z_E"` (at the earthing impedance, with the equivalent sources), `"busbar"` (the largest test) or `"auto"` (Z_E if given) |
+| `expansion` | network expansion (3.3): `True` (default; planned values 1.25, 1.5 and 2 times I_CE of today), `False` (left out) or a dict – `I_CE` (planned capacitive earth-fault current in A, one value or a list, e.g. `800`), `damping_added` (damping I_w/I_C of the new cables; default that of the network), `c1_ratio` (C_1/C_E of the new cables; default 1, cables with a screen per core), `I_L_max` (largest current of the coils in A: the report says where their range ends), `I_CE_max` (end of the curve in A; default four times today), `zero_sequence` (`"coil"`: the source of the zero-sequence orders grows with the current of the coils – default; `"network"`: not) – see below |
 | `reference_frequency_Hz`, `r_flat` | frequency of Z_E of the earthing measurement in the cases 1 and 2 of the touch voltage (default 50 Hz; not measured there: interpolated linearly between the neighbouring frequencies), flat reduction factor of case 2 (without: case 2 is left out) |
 | `station_detail` | `"full"` (default) or `"compact"`: a station shown for information only – waveforms, earth potential rise per order, the probes in one sentence, Z_E at 50 Hz and the approaches to the touch voltage, without the comparison with the earthing measurement, the reduction factor, the LV network and their notes |
 | `recommendation` | your recommendation (paragraphs separated by a blank line; without: a highlighted placeholder) |
@@ -232,6 +235,17 @@ findings of the plausibility checks, hints – keep the language of the evaluati
   sources (without them: the busbar value, an upper bound) against the limit, and U_E = r·I_RES,ass·Z_E against
   F·U_Tp. The case with `limit_A` applies; the other cases hold only if their condition is met. The figure of I_RES over
   Z_E marks on the line of a limit the Z_E of its condition and adds the assessment value (with the margins).
+* **Network expansion** (3.3): can further cables be connected at the substation? The equivalent sources are
+  converted to a network with more cable and the coils retuned to the same detuning
+  ([Network expansion](../methods/equivalent-source.md#network-expansion)): per order the added earth and operating
+  capacitance in parallel with Z_0 and Z_1, the source voltage of the busbar with the busbar impedance, the
+  fundamental with the damping of the new cables. I_CE of today and the coil current are those of the coil controller
+  (`coil_controller`) or the measured coil currents, the damping that of the tests. The split of Z_q into Z_0 and
+  Z_1 is taken from network data and from the busbar voltages of the tests; the larger residual current of the two
+  decides (the table of uncertainties gives both). For every limit case – at its Z_E, with the smaller of the limit
+  and F·U_Tp/(r·Z_E) – the report gives the I_CE at which the residual current reaches it, and at the planned I_CE
+  the fundamental, the harmonic content, the proportional estimate (every part growing like I_CE) and per order the
+  factor of the source voltage. It assumes no new harmonic sources with the cables and the scaling of 3.1 unchanged.
 * **Context** where a reader would ask: the factors k_m of the scaling are classified by the percentile of the tests in
   the PQ measurement and the median of the dominant order on the weekday of the tests and over the week; a station
   with a larger harmonic current than the busbar test is explained by its larger voltage before the fault (active

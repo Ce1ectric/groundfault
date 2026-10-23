@@ -15,8 +15,10 @@ phasors.
   ([`detuning_current`][groundfault.formulas.detuning_current], [`detuning`][groundfault.formulas.detuning],
   [`damping`][groundfault.formulas.damping]), fundamental component from the minimum of the V curve
   ([`fundamental_from_v_curve`][groundfault.formulas.fundamental_from_v_curve]), angle method
-  ([`angle_method`][groundfault.formulas.angle_method]) and fundamental component from network data
-  ([`fundamental_from_network_data`][groundfault.formulas.fundamental_from_network_data]).
+  ([`angle_method`][groundfault.formulas.angle_method]), fundamental component from network data
+  ([`fundamental_from_network_data`][groundfault.formulas.fundamental_from_network_data]) and the zero-sequence
+  impedance of the network with its coils at a harmonic order
+  ([`zero_sequence_impedance`][groundfault.formulas.zero_sequence_impedance]).
 * **Measurement uncertainty** – assessment values of currents and voltages
   ([`current_with_uncertainty`][groundfault.formulas.current_with_uncertainty],
   [`voltage_with_uncertainty`][groundfault.formulas.voltage_with_uncertainty]); window length in samples
@@ -65,7 +67,7 @@ __all__ = [
     "SCALING_RULES", "scaled_harmonic_current", "rms_current_forecast", "thd_percent_to_volt",
     "sequence_voltage_from_ll", "limit_resistance", "resistive_assessment", "max_residual_current",
     "earth_return_depth", "z0_overhead_line", "r0_overhead_line", "limit_distance", "source_from_two_measurements",
-    "residual_current_from_sources", "fundamental_from_network_data", "MU0",
+    "residual_current_from_sources", "fundamental_from_network_data", "zero_sequence_impedance", "MU0",
 ]
 
 i18n.register({
@@ -408,6 +410,46 @@ def fundamental_from_network_data(I_CE: Number, d: Number, v: Number) -> Number:
     """
     r = np.asarray(I_CE, float) * np.hypot(d, v)
     return float(r) if np.ndim(r) == 0 else r
+
+
+def zero_sequence_impedance(m: int, I_C: float, U_LE: float, I_L: Optional[float] = None, d: float = 0.0) -> complex:
+    """Zero-sequence impedance of the network with its coils at the harmonic order m, seen from the busbar:
+    Z_0,m = 1/(j·(m/X_C0 − 1/(m·X_L0))) + d·X_C0 with X_C0 = 3·U_LE/I_C and X_L0 = 3·U_LE/I_L.
+
+    The earth capacitances (X_C0, from I_C) lie in parallel with the coils (X_L0, from the coil current I_L); the
+    damping d = I_w/I_C enters as the series resistance d·X_C0 – the form of the estimates without an earth fault
+    ([`network_estimate`][groundfault.forecast.bounds.network_estimate]), which the zero-sequence impedances measured
+    in staged tests support at the harmonic orders.
+
+    Parameters
+    ----------
+    m : int
+        Harmonic order (1 = fundamental).
+    I_C : float
+        Capacitive earth-fault current in A.
+    U_LE : float
+        Line-to-earth voltage (fundamental) in V.
+    I_L : float, optional
+        Current of the coils in A (default I_C, tuned network).
+    d : float, optional
+        Damping I_w/I_C in p.u.
+
+    Returns
+    -------
+    complex
+        Z_0,m in Ω (per phase, sequence quantity).
+
+    Examples
+    --------
+    >>> z = zero_sequence_impedance(5, I_C=650.0, U_LE=20e3 / 3 ** 0.5, I_L=680.0, d=0.04)
+    >>> round(z.real, 2), round(z.imag, 2)
+    (2.13, -11.12)
+    """
+    if not (I_C > 0 and U_LE > 0):
+        raise ValueError("I_C and U_LE must be positive (I_C=%r, U_LE=%r)" % (I_C, U_LE))
+    XC0 = 3.0 * U_LE / I_C
+    XL0 = 3.0 * U_LE / (I_L if I_L else I_C)
+    return complex(1.0 / (1j * (m / XC0 - 1.0 / (m * XL0))) + d * XC0)
 
 
 # -------------------------------------------------------------------------------- measurement uncertainty

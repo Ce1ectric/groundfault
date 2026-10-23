@@ -10,6 +10,7 @@ model against it: calibration (B method), forecast, update with a recorded earth
 fault behind a line, the line from a recorded earth fault, and the classical estimate.
 """
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -336,3 +337,106 @@ def test_estimates_without_fault_side_by_side():
     assert h.V0_A == pytest.approx(float(np.sqrt((part.V0_A ** 2).sum())))
     only = fc.estimates_without_fault(U, I_C, U_LE, Z_up, I_L=I_L)
     assert list(only.columns) == ["order", "f_Hz", "Z_F_Ohm", "U_V", "V0_A"]
+
+
+# ------------------------------------------------------------------------------------------- network expansion
+def _series(G, I_Nh, Z_values=(0.0, 2.5, 5.0), IG=30.0, Iw=20.0):
+    """Equivalent sources (measured source; fitted for the zero sequence) of staged tests on the reference."""
+    from groundfault import equivalent_source as es
+    meas = []
+    for Z_F in Z_values:
+        I, U_pre, U_fault = {1: complex(IG)}, {1: {"zero": 0j, "pos": complex(U_LE)}}, {1: {"zero": complex(U_LE)}}
+        for m, g in G.items():
+            sp = _AI @ g.solve()[0][:3]
+            U_pre[m] = dict(zero=sp[0], pos=sp[1], neg=sp[2])
+            V, I[m], _ = g.solve(Z_F, I_Nh.get(m, 0.0))
+            sf = _AI @ V[:3]
+            U_fault[m] = dict(zero=sf[0], pos=sf[1], neg=sf[2])
+        ih = math.sqrt(sum(abs(v) ** 2 for k, v in I.items() if k > 1))
+        meas.append(es.SourceMeasurement("Z %g" % Z_F, complex(Z_F), "", "v2", 50.0, 0.0, I, U_fault,
+                                         U_pre=U_pre, U_post=U_pre, U_complex=True, IRES=math.hypot(IG, ih), Iw=Iw,
+                                         faulted_phase="L1", IH_sum=ih))
+    return es.measured_source(meas)
+
+
+def test_network_expansion_against_the_reference():
+    """More cable at the busbar – earth and operating capacitance +30 %, its damping that of the network – and the
+    coil retuned to the same detuning: the equivalent sources of the expanded network follow from those of today.
+    With Z_0 and Z_1 of the busbar (B method) the currents of the expanded network are reproduced exactly – the
+    background behind the upstream impedance and a source of the MV network move with Z_1, the source of the
+    zero sequence in the fault with Z_0 and the coil current; with Z_0 from network data (damping as a series
+    resistance, the reference has a conductance) within a few per cent."""
+    from groundfault import equivalent_source as es
+    k, Z_E, orders = 1.3, 2.5, (3, 5, 7, 11, 13)
+    E = {**BACKGROUND, 13: (0, 60.0, 0)}
+    I_Nh = {3: 4.0}
+    today = {m: Grid(m, E_seq=E[m], I_mv_seq=(0, 0.4, 0) if m == 7 else (0, 0, 0)) for m in orders}
+    later = {m: Grid(m, C_E=k * CE, X_coil=X_N / k, E_seq=E[m], I_mv_seq=(0, 0.4, 0) if m == 7 else (0, 0, 0))
+             for m in orders}
+    S = _series(today, I_Nh)
+    for m, g in today.items():                                          # the equivalent sources are exact
+        close(S.fits[m].Zq, sum(g.thevenin()) / 3, 1e-8)
+    I_C, I_L = 3 * W * CE * U_LE, U_LE / X_N
+    Z0 = {m: g.thevenin()[0] for m, g in today.items()}
+    Z1 = {m: g.thevenin()[1] for m, g in today.items()}
+    x = es.network_expansion(S, I_C, k * I_C, I_L=I_L, U_LE=U_LE, damping=0.03, Z0=Z0, Z1=Z1)
+    assert x.I_L_new == pytest.approx(k * I_L) and set(x.table["split"]) == {"given"}
+    truth = {m: abs(g.solve(Z_E, k * I_Nh.get(m, 0.0))[1]) for m, g in later.items()}     # I_Nh ∝ coil current
+    for m in orders:
+        assert x.series.fits[m].current(Z_E) == pytest.approx(truth[m], rel=1e-8), m
+        Z0n, Z1n, _ = later[m].thevenin()
+        close(x.table.set_index("order").loc[m, "Z0_new"], Z0n, 1e-8)
+        close(x.table.set_index("order").loc[m, "Z1_new"], Z1n, 1e-8)
+    # without the expansion nothing changes; the fundamental grows with I_C (active current d·I_C)
+    same = es.network_expansion(S, I_C, I_C, I_L=I_L, U_LE=U_LE, Z0=Z0, Z1=Z1)
+    for m, F in S.fits.items():
+        close(same.series.fits[m].Zq, F.Zq, 1e-12)
+        close(same.series.fits[m].Uq, F.Uq, 1e-12)
+    assert x.IG_factor == pytest.approx(math.hypot(20.0 + 0.03 * (k - 1) * I_C, math.sqrt(30 ** 2 - 20 ** 2) * k) / 30)
+    # Z_0 from network data, Z_1 = (3·Z_q − Z_0)/2: an estimate. The damping as a series resistance d·X_C0 (the
+    # reference has a conductance) matters most at the order of the zero sequence, whose source U_s = Z_0·I_Nh/3
+    # moves with Z_0: there the estimate is about 7 % high, at the other orders within 2 %.
+    y = es.network_expansion(S, I_C, k * I_C, I_L=I_L, U_LE=U_LE, damping=0.03)
+    assert set(y.table["split"]) == {"sources"}
+    for m in orders:
+        assert y.series.fits[m].current(Z_E) == pytest.approx(truth[m], rel=0.1 if m == 3 else 0.025), m
+    assert y.series.fits[3].current(Z_E) > truth[3]
+    # Z_0 and Z_1 from the busbar voltages of the tests (B method; at the zero sequence Z_0 = 3·Z_q − 2·Z_1): exact
+    b = es.busbar_impedances(S).set_index("order")
+    assert list(b.index) == list(orders) and set(b["n"]) == {3}
+    assert list(b["Z0_from"]) == ["equivalent_source", "busbar", "busbar", "busbar", "busbar"]
+    assert list(b["Z1_from"]) == ["pos/neg", "pos", "neg", "pos", "neg"]
+    for m in orders:
+        close(b.loc[m, "Z0"], Z0[m], 1e-8)
+        close(b.loc[m, "Z1"], Z1[m], 1e-8)
+    z = es.network_expansion(S, I_C, k * I_C, I_L=I_L, U_LE=U_LE, damping=0.03, split="busbar")
+    assert set(z.table["split"]) == {"busbar"} and not z.hints
+    for m in orders:
+        assert z.series.fits[m].current(Z_E) == pytest.approx(truth[m], rel=1e-8), m
+    # without busbar voltages of the harmonics: the network data, with a hint per order
+    bare = es.measured_source([replace(mm, U_fault={1: mm.U_fault[1]}) for mm in S.measurements])
+    assert es.busbar_impedances(bare).empty
+    w = es.network_expansion(bare, I_C, k * I_C, I_L=I_L, U_LE=U_LE, damping=0.03, split="busbar")
+    assert set(w.table["split"]) == {"sources"} and len(w.hints) == len(orders)
+    # residual current over I_C and where it reaches a limit
+    curve = es.expansion_curve(S, Z_E, I_C, [I_C, 1.15 * I_C, k * I_C], IG="median", I_L=I_L, U_LE=U_LE,
+                               damping=0.03, Z0=Z0, Z1=Z1)
+    assert list(curve["I_C_A"]) == pytest.approx([I_C, 1.15 * I_C, k * I_C])
+    assert curve["I_5_A"].iloc[-1] == pytest.approx(truth[5], rel=1e-8)
+    ires = curve["IRES_A"].to_numpy()
+    assert es.expansion_limit(curve, ires[0] - 1)["status"] == "exceeded"
+    lim = es.expansion_limit(curve, (ires[1] + ires[2]) / 2)
+    assert lim["status"] == "reached" and 1.15 * I_C < lim["I_C_A"] < k * I_C
+    assert es.expansion_limit(curve, ires[-1] + 1)["status"] == "not_reached"
+    bus = es.expansion_curve(S, Z_E, I_C, [I_C, k * I_C], IG="median", I_L=I_L, U_LE=U_LE, damping=0.03,
+                             split="busbar")
+    assert bus["I_5_A"].iloc[-1] == pytest.approx(truth[5], rel=1e-8)
+    assert bus["IRES_A"].iloc[0] == pytest.approx(curve["IRES_A"].iloc[0], rel=1e-12)     # today: the same
+    with pytest.raises(ValueError):
+        es.network_expansion(S, I_C, k * I_C, U_LE=U_LE, zero_sequence="coils")
+    with pytest.raises(ValueError):
+        es.network_expansion(S, I_C, k * I_C, U_LE=U_LE, split="model")
+    with pytest.raises(ValueError):
+        es.network_expansion(S, 0.0, k * I_C, U_LE=U_LE)
+    with pytest.raises(TypeError):
+        es.expansion_curve(S, Z_E, I_C, [I_C], I_LE=U_LE)

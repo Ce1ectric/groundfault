@@ -88,6 +88,7 @@ its own; it returns a matplotlib figure that `report.save` writes:
 | `station_voltages(res)`, `station_frequency(res)`, `station_background(res)`, `lv_network(table, check=None)` | station ([Stations and the LV network](station.md)) |
 | `earthing_comparison(long_df, ratio)`, `reduction_factor(spectrum, effective, r_typical=None)` | earthing measurement ([Earthing measurements](earthing.md)); a grey bar at 50 Hz only for a typical range of r that you give |
 | `source_fit(series, Z_E=None)`, `source_plane(series, mc=None)`, `ires_over_ze(series, Z_E_max, limits=(), IG, scaling)` | equivalent-source method, `ires_over_ze` with lines at the limits of the residual current that you give (none by default); `source_plane` draws the Monte Carlo spread of Z_q given the result of `equivalent_source.monte_carlo` ([Campaign evaluation](campaign.md#checks-and-hints)) |
+| `ires_over_ice(curves, limits=(), I_CE=None, targets=())` | network expansion: the residual current over the capacitive earth-fault current at the earthing impedance of every limit, from `equivalent_source.expansion_curve` for both splits of the source impedance (line: the larger value, band: between them), with the limits you give, today's I_CE and the planned values ([Network expansion](../methods/equivalent-source.md#network-expansion)) |
 
 All of them accept `width` (`"full"`, `"half"` or a width in cm) and a height in cm (`height_cm` or
 `height_per_panel_cm`). The figures of a single measurement accept an evaluation result or a loaded result file.

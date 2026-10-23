@@ -41,7 +41,7 @@ campaigns folder; in a folder without one (a new, empty work folder) the layout 
 line such as
 
 ```text
-groundfault 3.3.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
+groundfault 3.4.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
 ```
 
 One copy of the measurement notebook is enough for all recordings of a campaign: for the next recording change

@@ -503,3 +503,98 @@ print("I_RES(2.5 Ω) = %.3f A, behind a line of zero length %.3f A, rest %.3f A"
 ```text
 I_RES(2.5 Ω) = 45.587 A, behind a line of zero length 45.587 A, rest 0.012 A
 ```
+
+## Network expansion
+
+Network planning asks whether further cables can be connected at the substation: up to which capacitive earth-fault
+current I_C does the residual current keep the limits? Further cables raise the earth capacitance and the operating
+capacitance of the network, and the coils are retuned to the same detuning, I_L,new = I_L·I_C,new/I_C. The equivalent
+sources describe the fault loop at every order as an active two-terminal network – the source voltage U_q and the
+source impedance Z_q = (Z_0 + Z_1 + Z_2)/3 with Z_2 = Z_1 ([fault loop](../forecast/model.md#fault-loop-per-order)).
+The expansion changes its parts
+([`network_expansion`](../reference/equivalent_source.md#groundfault.equivalent_source.network_expansion);
+ΔI_C = I_C,new − I_C, ΔI_L likewise, d_a the damping I_w/I_C of the new cables):
+
+* **Zero sequence** – the added earth admittance with its losses and the retuned coils lie in parallel with Z_0:
+
+  \[
+  \frac{1}{\underline{Z}_{0,\text{new}}} = \frac{1}{\underline{Z}_0}
+    + \frac{j\,m\,\Delta I_C + d_a\,\Delta I_C - j\,\Delta I_L/m}{3\,U_\text{LE}}
+  \]
+
+* **Positive and negative sequence** – the operating capacitance of the new cables, C_1 = c·C_E (`c1_ratio`, 1 for
+  cables with a screen per core), lies in parallel with the busbar and shifts its parallel resonance to lower orders:
+
+  \[
+  \frac{1}{\underline{Z}_{1,\text{new}}} = \frac{1}{\underline{Z}_1} + \frac{j\,m\,c\,\Delta I_C + d_a\,\Delta I_C}{3\,U_\text{LE}}
+  \]
+
+* **Source** – the harmonic voltage of the busbar comes from sources outside the new cables (HV network, loads) and
+  acts on the busbar impedance, \( \underline{U}_{q,\text{new}} = \underline{U}_q\,\underline{Z}_{1,\text{new}}/\underline{Z}_1 \)
+  – for a source behind the upstream impedance (U = E·Z_1/Z_up) and for a current source of the MV network
+  (U = Z_1·I) alike. At the orders of the zero sequence the source arises in the fault, U_s = Z_0·I_Nh/3 with the
+  nonlinear current I_Nh of the coils; it grows with Z_0 and, taken proportional to the current of the coils, with
+  I_L,new/I_L (`zero_sequence="network"`: without that factor).
+* **Fundamental** – the active current grows with the damping of the new cables, the detuning current with I_C:
+  I_w,new = I_w + d_a·ΔI_C, I_v,new = I_v·I_C,new/I_C.
+
+The changes are added to the measured Z_q – I_C,new = I_C returns the series unchanged. Orders outside the model (the
+remainder, even orders without a fit) keep their measured content, and new harmonic sources that come with the cables
+(converters, for instance) are not included.
+
+**Split of the source impedance.** The equivalent sources give Z_q, not its split into Z_0 and Z_1, and the two change
+differently. `split` takes it in one of two ways:
+
+| `split` | Z_0 | Z_1 |
+|---|---|---|
+| `"sources"` (default) | from network data ([`zero_sequence_impedance`](../reference/formulas.md#groundfault.formulas.zero_sequence_impedance)): 1/(j·(m/X_C0 − 1/(m·X_L0))) + d·X_C0 with X_C0 = 3·U_LE/I_C, X_L0 = 3·U_LE/I_L | (3·Z_q − Z_0)/2 |
+| `"busbar"` | from the busbar voltages of the tests ([`busbar_impedances`](../reference/equivalent_source.md#groundfault.equivalent_source.busbar_impedances), the [B method](../forecast/model.md#calibration-with-a-staged-fault-test)): 3·p_0·ΔU_0/I, median of the tests; at the orders of the zero sequence 3·Z_q − 2·Z_1 | 3·p_s·ΔU_s/I in the sequence that is not the natural one of the order (positive at the 5th, negative at the 7th) |
+
+At the orders of the zero sequence the source that arises in the fault changes ΔU_0 as well; the equivalent sources
+separate it, so Z_0 = 3·Z_q − 2·Z_1 there. `Z0` and `Z1` give the split per order instead. The two ways rest on
+different data – the network data on I_C, I_L and the damping, the busbar split on small voltage changes at the
+harmonic frequencies –; where the data are consistent they lie close, and their difference shows how well the split is
+known. The [report](../user-guide/document.md) computes both and takes the larger residual current.
+
+**Validation.** `tests/test_forecast_physics.py` checks the conversion against the nodal calculation of a synthetic
+20-kV network – three phases per order, the upstream impedance, earth capacitances with losses, loads, a coil with a
+nonlinear current that arises with the fault, harmonic sources behind the upstream impedance and in the MV network –
+before and after an expansion (earth and operating capacitance +30 %, the coil retuned): with the busbar split the
+currents of the expanded network are reproduced exactly (to 10⁻⁸), with the split from network data within 2 % at
+the orders 5 to 13 and 7 % high at the 3rd (the reference network has the damping as a conductance, the network data
+as the series resistance d·X_C0).
+
+**Over I_C.** [`expansion_curve`](../reference/equivalent_source.md#groundfault.equivalent_source.expansion_curve)
+gives the residual current at Z_E over I_C – with the scaling and the margins of `ires_at_impedance` –, and
+[`expansion_limit`](../reference/equivalent_source.md#groundfault.equivalent_source.expansion_limit) the I_C at which
+it reaches a limit you define. With the demo series of this page:
+
+```python
+import numpy as np
+
+print(es.busbar_impedances(series)[["order", "Z0", "Z1", "Z0_from", "Z1_from"]].round(2).to_string(index=False))
+for split in ("sources", "busbar"):
+    kw = dict(I_L=620.0, damping=0.033, split=split)           # coils today, damping I_w/I_C
+    curve = es.expansion_curve(series, 2.5, 600.0, [600.0, 700.0, 800.0, 900.0], **kw)
+    reach = es.expansion_limit(es.expansion_curve(series, 2.5, 600.0, np.linspace(600.0, 2400.0, 181), **kw), 60.0,
+                               column="IRES_A")
+    print("%-7s" % split, " | ".join("%.0f A: %.1f A" % (r.I_C_A, r.IRES_A) for r in curve.itertuples()),
+          "| 60 A at I_C ≈ %.0f A" % reach["I_C_A"])
+```
+
+```text
+ order           Z0          Z1           Z0_from Z1_from
+     3 10.87- 5.63j  0.02-0.01j equivalent_source pos/neg
+     5 13.50- 7.50j  0.00+0.00j            busbar     pos
+     7 21.01-10.50j  0.02-0.01j            busbar     neg
+    11  7.50- 6.59j  0.01-0.03j            busbar     pos
+    13 15.03- 8.39j -0.04-0.05j            busbar     neg
+sources 600 A: 45.6 A | 700 A: 50.0 A | 800 A: 54.3 A | 900 A: 58.6 A | 60 A at I_C ≈ 931 A
+busbar  600 A: 45.6 A | 700 A: 52.3 A | 800 A: 59.5 A | 900 A: 66.8 A | 60 A at I_C ≈ 807 A
+```
+
+The demo network is a signal model rather than a network: its harmonic sources are stiff (Z_1 ≈ 0 – the busbar
+voltages do not change with the fault) and its source impedance lies in the zero sequence with a large resistance.
+The busbar split sees exactly that, the split from network data assumes a cable network with
+Z_0 ≈ −j·X_C0/m; so the two differ here by 8 A at 900 A. The 13th order has a slightly negative real part of Z_1 –
+noise around zero; `NetworkExpansion.hints` names such an order, whose change is uncertain.
