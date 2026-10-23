@@ -107,7 +107,9 @@ with a factor of its own, makes a shorter measurement invalid.
 Intervals with an earth fault or a voltage dip of one phase are not undisturbed operation: an interval whose smallest
 line-to-earth fundamental voltage is below `fault_threshold` (default 0.8) times the largest is left out of the
 quantiles, with a hint (`fault_threshold=None` keeps all). The unbalance of a resonant-earthed network in operation
-is a few per cent.
+is a few per cent. With shorter values in the export (e.g. 30 s) the criterion is applied to them as well: an earth
+fault of a few seconds lowers the 10-min value of the faulted phase by only about 1 %, but it distorts the 10-min
+harmonic values – the 10-min interval that contains such a value is left out, and a hint names the short values.
 
 ```python
 rule = {360.0: 1.0, 20.0: 1.5}                # invented rule {minimum days: factor} – define your own
@@ -156,6 +158,90 @@ except ValueError as e:
 False nan | Measurement with 14.0 days of gapless values is shorter than the shortest duration of the rule (20 days) – not valid for the assessment: no factor, no scaling with this measurement.
 The PQ measurement is not valid for the assessment (14.0 days of gapless values, shortest duration of the rule 20 days) – no scaling and no forecast voltages from it.
 ```
+
+How well a measurement of a few weeks determines the quantile shows the **bootstrap over days**:
+`a.quantile_bootstrap(n=200, block_days=1.0, seed=0)` draws whole days (blocks of `block_days`, so that the daily
+pattern stays inside a block) with replacement until the length of the measurement is reached and takes the quantile
+of every sample – one row per sample, one column per order and `THD_LL_pct`:
+
+```python
+b = a.quantile_bootstrap(n=200, block_days=1.0, seed=0)          # 200 samples of whole days
+print(b[[5, 7]].quantile([0.05, 0.5, 0.95]).round(1).to_string())
+print("quantile of the measurement: 5th order %.1f V, 7th order %.1f V" % (a.u95()[5], a.u95()[7]))
+```
+
+```text
+          5      7
+0.05  284.5  142.2
+0.50  290.6  145.3
+0.95  295.7  147.8
+quantile of the measurement: 5th order 290.6 V, 7th order 145.3 V
+```
+
+The spread is the uncertainty of the quantile from the limited sample – not a substitute for the factor by the duration,
+which covers the seasons and network states the measurement did not see. The [Word report](document.md) shows it in its
+table of uncertainties.
+
+What a shorter measurement would have needed shows the **sub-window analysis**: `a.window_factors(days=7)` takes every
+window of seven days (a new start every day) and divides the quantile of the whole measurement by the quantile of the
+window – the factor that window alone would have needed to reach the quantile of the measurement (largest phase per
+interval, as in `assess`; windows with more than 10 % missing intervals are left out):
+
+```python
+w = a.window_factors(days=7)                                    # every 7-day window, a new start every day
+print(w.head(3)[["start", "n_intervals", 5, 7]].to_string(index=False, float_format="%.3f"))
+print(w[[5, 7]].quantile([0.5, 0.95]).to_string(float_format="%.3f"))
+```
+
+```text
+              start  n_intervals     5     7
+2025-12-15 00:10:00         1008 0.989 0.989
+2025-12-16 00:10:00         1008 1.026 1.026
+2025-12-17 00:10:00         1008 0.993 0.993
+         5     7
+0.50 0.999 0.999
+0.95 1.034 1.034
+```
+
+With a measurement over a year this is a way to derive the factor of your rule from your own data:
+`window_factors(days=30)` and the 95 % quantile of its ratios give the factor that brings a one-month measurement to
+the yearly quantile with 95 % probability – seasons included. With a measurement of a few weeks the ratios show only
+the part of the factor that comes from the variation between days and weeks.
+
+### Several measuring periods
+
+Exports of the same busbar from different seasons are read together (`pq.read([…])`): the quantile is taken over all
+of them, the rule of the factor counts the longest **gapless** stretch – a measurement in three periods of 37, 28 and
+17 days gets the factor of 37 days. The stretches between gaps of at least a day (`PERIOD_GAP_DAYS`) are the measuring
+periods: `a.coverage["periods"]` lists them, `a.periods()` gives the quantile per period with the definition of
+`assess`, and a hint of `assess` names the quantile of the dominant order per period:
+
+```python
+a = pq.assess(pq.read(["spring.csv", "summer.csv", "autumn.csv"], timezone="Europe/Berlin"), factors=rule)
+p = a.periods()                                               # one row per period: start, end, days, n_intervals, …
+print(p[["start", "days", 5, 7, "THD_LL_pct"]].round(2).to_string(index=False))
+print((p.attrs["whole"][5] / p[5]).round(3).tolist())         # the factor each period alone would need (5th order)
+```
+
+The spread between the periods shows how much the season matters at this busbar; `window_factors` takes its windows
+only within the periods (`min_share`), so with several seasons it gives the factor of a shorter measurement against
+the quantile over all of them. The [Word report](document.md) names the periods, the quantile of the dominant order
+per period against the assessment voltage, and in its table of uncertainties I_RES(Z_E) scaled with each period
+alone.
+
+To keep the measurement of the scaling (e.g. one month with the factor of your rule) and use further exports of the
+same busbar **only to check that factor**, assess them separately – the scaling does not change:
+
+```python
+check = pq.assess(pq.read(["spring.csv", "summer.csv", "autumn.csv"]), factor=1.0)   # only for the check
+w = check.window_factors(days=28)                        # every 28-day window within the periods
+need = w[[5, 7, 11, 13]].quantile(0.95)                  # factor a 28-day measurement needs against all periods
+p = check.periods()[[5, 7, 11, 13]]
+print(need.round(3).to_dict(), (p.max() / p.min()).round(3).to_dict())   # … and the highest against the lowest period
+```
+
+If the factor of your rule is at least `need` (and covers the spread of the periods), the further measurements confirm
+it; `check.quantile_bootstrap()` adds the spread from the limited sample.
 
 ## The tests in the distribution
 
@@ -269,6 +355,25 @@ IRMS_forecast           97.45    A
     13 650.26  pos_neg  4.36      25.00  33.02    1.98 own voltage        8.64
 ```
 
+A recording evaluated before – or with another PQ measurement – is scaled again without a new evaluation by
+`evaluation.rescale_harmonics(result, u95=…, u95_reference=…, thd95_percent=…, safety_factor=…)`: the same rules per
+order with the currents and levels stored in the result (the table `harmonic_scaling`, else the harmonics and voltages
+of the result file) and the margins of the evaluation; with the quantiles and the factor of the evaluation it gives the
+stored values. The [Word report](document.md) scales every test of a campaign this way with the PQ measurement of the
+campaign:
+
+```python
+from groundfault import evaluation
+
+s2 = evaluation.rescale_harmonics(res, u95=a.u95(), u95_reference="seq", thd95_percent=a.thd95(), safety_factor=2.0)
+print("I_H,scaled = %.2f A, I_RES = %.2f A with the factor 2.0 (evaluated with %.1f: %.2f A)"
+      % (s2["IH_scaled"], s2["IRES_scaled"], a.factor, res.values["IRES_scaled"]))
+```
+
+```text
+I_H,scaled = 122.67 A, I_RES = 126.78 A with the factor 2.0 (evaluated with 1.5: 97.45 A)
+```
+
 ### The campaign: residual current at the earthing impedance
 
 `a.scaling(thd_measured_percent=…)` gives the keyword arguments of
@@ -335,8 +440,10 @@ per order assumes that all orders reach their quantile at the same time;
 every 10-min value instead; its quantile is smaller when the orders do not rise together (in the demo they do, so both
 agree).
 
-The campaign notebook shows the result per order, the quantile of the time series and the result with the THD factor
-side by side ([The campaign notebook](notebooks.md#the-campaign-notebook)).
+`a.scaling_methods(series, Z_E, IG=…, uncertainty_I=…, uncertainty_U=…)` puts the methods side by side – without
+scaling, the quantile per order (the result), the quantile of the time series and, with a THD of the tests, the THD
+factor – with I_H, I_RES and the assessment value with the margins; the campaign notebook and the
+[Word report](document.md) show this table ([The campaign notebook](notebooks.md#the-campaign-notebook)).
 
 ### The forecast
 
@@ -353,7 +460,8 @@ such order of the model.
 
 * **Duration and season** – a measurement over a few weeks does not contain the whole year (holidays, the seasons of
   PV infeed and load); this is what the factor on the quantile is for. It counts the gapless values: export the whole
-  period without gaps, or several exports that join without a gap.
+  period without gaps, or several exports that join without a gap. Exports of further seasons do not lengthen the
+  gapless stretch, but the quantile then covers them and `periods()` shows their spread.
 * **The same network** – the PQ measurement and the tests must see the same network and switching state (busbar,
   transformer, network section); the comparison of the tests with the PQ measurement (above) checks this assumption.
 * **Even harmonics** – in the fault current they are unusual: a hint names them, and they are never scaled.

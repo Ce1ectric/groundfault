@@ -41,7 +41,7 @@ python -c "import groundfault; print(groundfault.__version__)"
 ```
 
 ```text
-3.2.0
+3.3.0
 ```
 
 ## Optional extras
@@ -52,7 +52,7 @@ Further features need optional dependencies, grouped as extras in `pyproject.tom
 | Extra | Installs | Needed for |
 |---|---|---|
 | `interactive` | plotly, ipywidgets, jinja2 | interactive figures (`groundfault.interactive`), the [signal explorer](../user-guide/explorer.md) in the notebook (controls: ipywidgets, formatted tables: jinja2) and as an HTML file (Plotly) |
-| `export` | openpyxl, python-docx | the Excel workbook and the Word file of the exported tables (`report.export_tables`); without them only CSV and Markdown are written, with a warning |
+| `export` | openpyxl, python-docx | the Excel workbook and the Word file of the exported tables (`report.export_tables`; without them only CSV and Markdown are written, with a warning) and the [Word report of a campaign](../user-guide/document.md) (`groundfault.document`) |
 | `all` | `interactive` + `export` | everything the package can do – the usual choice for scripts |
 | `notebook` | `interactive` + `export`, JupyterLab, ipykernel | working with the [notebooks](../user-guide/notebooks.md) |
 | `dev` | `interactive` + `export`, pytest, ruff, nbformat, nbclient, ipykernel | development: running the tests, linting, regenerating the notebooks (`tools/make_notebooks.py`) |

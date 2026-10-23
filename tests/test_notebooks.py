@@ -81,7 +81,7 @@ def test_no_limits_or_safety_factors_in_the_notebooks(generator, lang, example):
     """The notebooks contain no limits, U_Tp, F, reference current, uncertainty margins, safety factors or typical
     range of r – one configuration cell names them, not set, and the evaluation passes them on."""
     for make, extra in ((generator.measurement_notebook, {"UNCERTAINTY_U": 0.0}),
-                        (generator.campaign_notebook, {"LOO_LIMIT_PCT": None, "LOO_LIMIT_A": None})):
+                        (generator.campaign_notebook, {"LOO_LIMIT_PCT": None, "LOO_LIMIT_A": None, "UNCERTAINTY_U": 0.0})):
         nb = make(lang, example)
         cells = _code(nb)
         config = [c for c in cells if "LIMITS            =" in c]
@@ -101,7 +101,9 @@ def test_no_limits_or_safety_factors_in_the_notebooks(generator, lang, example):
     assert "reference_current_A=REFERENCE_CURRENT" in measurement and "r_typical=R_TYPICAL" in measurement
     campaign = "\n".join(_code(generator.campaign_notebook(lang, example)))
     assert "U_Tp=U_TP, F=F_FACTOR" in campaign and "uncertainty_I=UNCERTAINTY_I" in campaign
+    assert campaign.count("uncertainty_U=UNCERTAINTY_U") == 4     # demo evaluation, I_RES at Z_E, methods, report
     assert "MAIN.loo_table(LOO_LIMIT_PCT, LOO_LIMIT_A)" in campaign
+    assert "monte_carlo(MAIN, Z_E, n=2000, IG=IG_CHOICE)" in campaign  # the band with the fundamental of the result
 
 
 @pytest.mark.parametrize("lang", ["en", "de"])
@@ -510,5 +512,10 @@ def test_campaign_notebook_with_the_pq_measurement(generator, tmp_path, monkeypa
             _run_cells(section4, namespace)
         assert not namespace["PQ"].valid and namespace["U95"] is None and namespace["SCALING"] is None
         assert namespace["PQ_SCALING"] is None
+        # section 8: the Word report of the demo campaign in <report>, with the placeholders of the photos on site
+        if namespace["document"].docx_available():
+            path = namespace["REPORT_FILE"]
+            assert path is not None and path.exists() and path.parent.name == "report"
+            assert len(namespace["REPORT_OUT"]["placeholders"]) == 4     # three photos and the recommendation
     finally:
         i18n.set_language("de")                                                # the language of the test suite

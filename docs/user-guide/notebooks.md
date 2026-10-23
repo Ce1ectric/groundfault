@@ -41,7 +41,7 @@ campaigns folder; in a folder without one (a new, empty work folder) the layout 
 line such as
 
 ```text
-groundfault 3.2.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
+groundfault 3.3.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
 ```
 
 One copy of the measurement notebook is enough for all recordings of a campaign: for the next recording change
@@ -132,6 +132,7 @@ U_Tp and F come from the block above.
 |---|---|---|
 | `T_win` | `0.200` | window length in s; the hop equals the window length. Change only for good reasons |
 | `harmonics` | `(1, 3, 5, 7)` | orders of the assessment quantities; the result file stores the orders 1 to 25 regardless (for the equivalent-source method) |
+| `dc` | `"highpass"` in the notebook (package default `"median"`) | removal of the DC component: a zero-phase high-pass (`dc_cutoff_hz=5.0`) on every interval before the windows – also a decaying offset of a clamp disappears; `"median"` per window as before. The harmonics are the same with both |
 | `u_thd95_percent` | `None` | 95 % quantile of the line-to-line THD of a power-quality measurement in %; adds the rows scaled to it to the assessment quantities (needs the voltages before or after the fault). With `PQ_FILES` it comes from the measurement together with the quantiles per order `pq_u95` ([Power-quality measurement](#power-quality-measurement)) |
 | `correct_polarity` | `True` | if the active component Iw is negative (reversed clamp), rotate the current phasors by 180°. Set `False` only if the hint “Polarity decision uncertain” appears and the polarity of the clamp is known for sure |
 | `exclude_disturbances` | `True` | leave disturbed states inside `STEADY_STATE` – an active residual current increase, a network change – out of the max window, the statistics and the checks ([Disturbed states](evaluation.md#disturbed-states)); `False` only reports them |
@@ -213,6 +214,7 @@ The campaign notebook works only with the **result files** of the measurement no
 | 5 · Stations | look at the stations per frequency and at the comparison with groundmeas |
 | 6 · Export the report tables and figures | find the exported files |
 | 7 · groundmeas | read the dry run; enter all measurements on request |
+| 8 · Report (Word) | open the report in `report/`, update its fields, insert the photos on site and the recommendation ([Word report of a campaign](document.md)) |
 
 The evaluation steps are described in [Campaign evaluation](campaign.md).
 
@@ -285,13 +287,15 @@ defaults leave them unset, and the parts that need them are skipped with a note 
 | `U_TP`, `F_FACTOR` | `None` | permissible touch voltage U_Tp in V and the factor F: the permissible residual current F·U_Tp/(r·R_E,max) of the resistive approach and the relevance of the reduction factor (there `None` = the values stored in the result file) |
 | `REFERENCE_CURRENT` | `None` | reference current of the reduction factor in A; `None` = the largest limit stored in the result file |
 | `UNCERTAINTY_I` | `0.0` | measurement-uncertainty margin m_I on I_RES at Z_E; the value with the margin is printed only if one is set |
+| `UNCERTAINTY_U` | `0.0` | margin m_U of the voltages: an order scaled with a measured voltage level of the tests takes k_m/(1 − m_U) – as `UNCERTAINTY_U` of the measurement notebook |
 | `LOO_LIMIT_PCT` | `None` | permissible deviation in % of the leave-one-out check (every test from the model of the other tests, `loo_table`); `None` = the deviations are shown without assessment |
 | `LOO_LIMIT_A` | `None` | permissible deviation in A of the same check – for the small currents of the higher orders, where a few tenths of an ampere are many per cent; a value within one of the two limits passes |
 | `PQ_SAFETY_FACTOR` | `1.0` | factor on the 95 % quantiles `U95`/`THD95_PERCENT`; `1.0` = no factor |
 | `PQ_FACTORS` | `None` | factor on the quantile by the duration of the power-quality measurement, `{minimum days: factor}`; `None` = `PQ_SAFETY_FACTOR` |
 | `R_TYPICAL` | `None` | range `(low, high)` of the reduction factor at 50 Hz that you expect; `None` = no classification |
 
-With `DEMO = True` the evaluation of the demo recordings uses `LIMITS`, `U_TP`, `F_FACTOR` and `UNCERTAINTY_I` as well.
+With `DEMO = True` the evaluation of the demo recordings uses `LIMITS`, `U_TP`, `F_FACTOR`, `UNCERTAINTY_I` and
+`UNCERTAINTY_U` as well.
 
 **groundmeas** – `GROUNDMEAS_DB`, `GROUNDMEAS_EXPORT`, `GROUNDMEAS_UNCERTAIN` and `GROUNDMEAS_UNITS` as in the
 measurement notebook; location, description and time stamp per measurement are fields of `MEASUREMENTS`.
@@ -310,6 +314,16 @@ note that names it.
 | `I_res_max` | `None` | permissible residual current in A; `None` = F·U_Tp/(r·R_E,max) from `F_FACTOR` and `U_TP` |
 
 `EXPORT_FORMATS` – file formats of the figures, as in the measurement notebook.
+
+**Report (section 8)** – [Word report of a campaign](document.md)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `REPORT` | `dict(network="", authors=[], places={})` | title page and texts – the keys of `ReportInfo` (network area, authors, display names of the measuring points, recorder, transducers, accuracy of the measuring chain, limit of the network, recommendation …); `None` = no report |
+| `PHOTOS` | `{}` | photos on site in the media folder: `{"setup_impedance": …, "recorder": …, "station": …}`; a missing one is a placeholder |
+| `REPORT_TEMPLATE` | `None` | Word file of your organisation (styles, headers, footers, logo) |
+| `REPORT_STYLES` | `None` | style names of the template for title, subtitle, table … |
+| `REPORT_PDF` | `False` | also write a PDF with LibreOffice |
 
 ## Power-quality measurement
 

@@ -57,7 +57,8 @@ from .comtrade import Recording
 from .channels import RoleAssignment, canonical_role, detect_roles
 from .symmetrical import fortescue, line_to_line
 
-__all__ = ["Settings", "Intervals", "Result", "evaluate", "load_blocks", "ResultFile", "load_result"]
+__all__ = ["Settings", "Intervals", "Result", "evaluate", "load_blocks", "ResultFile", "load_result",
+           "rescale_harmonics"]
 
 Interval = Tuple[float, float]
 
@@ -259,18 +260,20 @@ i18n.register({
                                        "de": "{lf:.2f} A (I_RES dadurch +{share:.1f} %)"},
     "evaluation.low_frequency_comment": {
         "en": "decaying DC component/drift in the max window – not part of the steady-state fault current; start "
-              "the steady-state interval later (without this component: I_RES ≈ {without:.2f} A)",
+              "the steady-state interval later or remove it with dc=\"highpass\" (without this component: "
+              "I_RES ≈ {without:.2f} A)",
         "de": "abklingender Gleichanteil/Drift im Max-Fenster – gehört nicht zum stationären Fehlerstrom; "
-              "stationären Bereich später beginnen (ohne diesen Anteil: I_RES ≈ {without:.2f} A)"},
+              "stationären Bereich später beginnen oder mit dc=\"highpass\" entfernen (ohne diesen Anteil: "
+              "I_RES ≈ {without:.2f} A)"},
     "evaluation.low_frequency_ok": {"en": "no significant DC component/drift",
                                     "de": "kein nennenswerter Gleichanteil/Drift"},
     "evaluation.low_frequency_hint": {
         "en": "Low-frequency component (decaying DC component/drift) of {lf:.2f} A in the max window at {t:.2f} s "
               "increases I_RES by {share:.1f} % (without it ≈ {without:.2f} A) – start the steady-state interval "
-              "later (DC component decayed?).",
+              "later (DC component decayed?) or remove it with the high-pass (Settings(dc=\"highpass\")).",
         "de": "Niederfrequenter Anteil (abklingender Gleichanteil/Drift) von {lf:.2f} A im Max-Fenster bei "
               "{t:.2f} s erhöht I_RES um {share:.1f} % (ohne ihn ≈ {without:.2f} A) – stationären Bereich später "
-              "beginnen (Gleichanteil abgeklungen?)."},
+              "beginnen (Gleichanteil abgeklungen?) oder mit dem Hochpass entfernen (Settings(dc=\"highpass\"))."},
     "evaluation.check_polarity": {"en": "Polarity of the fault current", "de": "Polarität Fehlerstrom"},
     "evaluation.value_margin": {"en": " (margin {margin:.1f}° to the ±90° limit)",
                                 "de": " (Reserve {margin:.1f}° zur ±90°-Grenze)"},
@@ -292,8 +295,8 @@ i18n.register({
     "evaluation.check_pre_fault": {"en": "Pre-fault {channel} ≈ 0", "de": "Vorfehler {channel} ≈ 0"},
     "evaluation.value_amps": {"en": "{value:.2f} A", "de": "{value:.2f} A"},
     "evaluation.pre_fault_comment": {
-        "en": "operation without earth fault: current nearly 0 A (check DC offset/clamps)",
-        "de": "erdschlussfreier Betrieb: Strom nahezu 0 A (DC-Offset/Zangen prüfen)"},
+        "en": "expected ≈ 0 A without an earth fault; a larger value points to a DC offset or the clamp",
+        "de": "im erdschlussfreien Betrieb erwartet ≈ 0 A; ein größerer Wert deutet auf DC-Offset oder Zange"},
     "evaluation.check_transformer": {"en": "Transformer zero-sequence current ↔ coil current/3",
                                      "de": "Trafo-Nullstrom ↔ Spulenstrom/3"},
     "evaluation.value_transformer": {"en": "3·I0 = {i0:.1f} A, ΣI_coil = {i_coil:.1f} A",
@@ -343,6 +346,10 @@ i18n.register({
     "evaluation.uncertainty_invalid": {
         "en": "{name} must be a relative margin 0 ≤ m < 1 (0 = no margin) – got {value!r}.",
         "de": "{name} muss ein relativer Zuschlag 0 ≤ m < 1 sein (0 = kein Zuschlag) – erhalten: {value!r}."},
+    "evaluation.cutoff_invalid": {
+        "en": "dc_cutoff_hz must be a frequency > 0 and at most {fmax:g} Hz (a quarter of f_nominal) – got {value!r}.",
+        "de": "dc_cutoff_hz muss eine Frequenz > 0 und höchstens {fmax:g} Hz (ein Viertel von f_nominal) sein – "
+              "erhalten: {value!r}."},
     "evaluation.factor_invalid": {
         "en": "{name} must be a factor > 0 (1 = no factor) – got {value!r}.",
         "de": "{name} muss ein Faktor > 0 sein (1 = kein Faktor) – erhalten: {value!r}."},
@@ -398,7 +405,14 @@ class Settings:
     window : str
         Window function of the DFT: ``"hann"`` (symmetric, default), ``"hann_periodic"`` or ``"rectangular"``.
     dc : str
-        Removal of the DC component per window: ``"median"`` (default), ``"mean"`` or ``"none"``.
+        Removal of the DC component: per window ``"median"`` (default), ``"mean"`` or ``"none"``; or ``"highpass"`` –
+        a zero-phase Butterworth high-pass ([`groundfault.dsp.highpass`][groundfault.dsp.highpass]) on every interval
+        before the windows (removes also a slowly decaying offset, e.g. of a current clamp), then the median per
+        window. For the harmonics both give the same result; the high-pass changes only the low-frequency part and with
+        it the RMS value of windows with a drifting offset.
+    dc_cutoff_hz : float
+        Cut-off frequency of the high-pass in Hz (``dc="highpass"``; default 5 Hz, at most a quarter of
+        ``f_nominal``).
     harmonics : tuple of int
         Orders of the fault current in the table ``assessment_quantities`` (the fundamental is always included).
     export_orders : tuple of int
@@ -493,7 +507,8 @@ class Settings:
     T_win: float = 0.200                       # window length [s]
     T_hop: Optional[float] = None              # hop [s]; None = T_win (no overlap, default)
     window: str = "hann"                      # window function of the DFT
-    dc: str = "median"                         # DC removal per window
+    dc: str = "median"                         # DC removal: per window, or "highpass" on the intervals
+    dc_cutoff_hz: float = 5.0                  # cut-off frequency of the high-pass (dc="highpass")
     harmonics: Tuple[int, ...] = (1, 3, 5, 7)            # assessed orders of the fault current
     export_orders: Tuple[int, ...] = tuple(range(1, 26))  # phasors in the result file (1…25, equivalent sources)
     voltage_harmonics: Tuple[int, ...] = tuple(range(1, 26, 2))   # voltage levels pre/post: odd orders up to 25
@@ -555,7 +570,9 @@ def _check_settings(e: Settings) -> None:
     """Check the options of the settings (also before an evaluation, after a later change of an attribute): the text
     options, the user-defined limits, the uncertainty margins and the factor on the 95 % quantile."""
     check_option("window", str(e.window).lower(), dsp.WINDOWS, aliases=dsp._WINDOW_ALIASES)
-    check_option("dc", e.dc, dsp.DC_METHODS, aliases=(None,))
+    check_option("dc", e.dc, dsp.DC_FILTERS, aliases=(None,))
+    if not _positive(e.dc_cutoff_hz) or float(e.dc_cutoff_hz) > 0.25 * float(e.f_nominal):
+        raise ValueError(tr("evaluation.cutoff_invalid", value=e.dc_cutoff_hz, fmax=0.25 * float(e.f_nominal)))
     check_option("f1_method", e.f1_method, dsp.F1_METHODS)
     check_option("thd_reference", e.thd_reference, _THD_REFERENCES)
     check_option("pq_u95_reference", e.pq_u95_reference, _U95_REFERENCES)
@@ -763,7 +780,7 @@ def _analyse(name: str, i0: int, block: np.ndarray, rec: Recording, roles: RoleA
     rms = np.empty((len(starts), k))
     for j in range(k):
         seg = dsp.window_view(block[:, j], nwin, nhop)
-        Xj, rj = dsp.dft_phasors(seg, fs, freqs, e.window, e.dc)
+        Xj, rj = dsp.dft_phasors(seg, fs, freqs, e.window, "median" if e.dc == "highpass" else e.dc)
         X[:, j, :] = Xj; rms[:, j] = rj
     nanf = ~np.isfinite(rms).all(axis=1)
     t_mid = (i0 + starts + nwin / 2.0) / fs
@@ -1019,6 +1036,8 @@ def evaluate(rec: Recording, intervals: Intervals, settings: Optional[Settings] 
     shift_ = _shift(rec, roles, alignment)
     bl = load_blocks(rec, {"steady_state": intervals.steady_state, "pre_fault": intervals.pre_fault,
                             "post_fault": intervals.post_fault}, shift_)
+    if e.dc == "highpass":                 # high-pass on every interval (mirror padding), then the median per window
+        bl = {k: (i0, dsp.highpass(x, rec.fs, e.dc_cutoff_hz, axis=0)) for k, (i0, x) in bl.items()}
     st = _analyse("steady_state", *bl["steady_state"], rec, roles, e)
     vf = _analyse("pre_fault", *bl["pre_fault"], rec, roles, e) if "pre_fault" in bl else None
     nf = _analyse("post_fault", *bl["post_fault"], rec, roles, e) if "post_fault" in bl else None
@@ -1440,6 +1459,148 @@ def _harmonic_scaling(res: Result) -> None:
     res.tables["assessment_quantities"] = pd.concat([df, pd.DataFrame(rows_new)], ignore_index=True)
 
 
+def rescale_harmonics(result, u95: Optional[Mapping[int, float]] = None, u95_reference: str = "seq",
+                      thd95_percent: Optional[float] = None, safety_factor: float = 1.0,
+                      min_level_V: Optional[float] = None, uncertainty_I: Optional[float] = None,
+                      uncertainty_U: Optional[float] = None, thd_reference: Optional[str] = None) -> dict:
+    """Scale the harmonic currents of an evaluated recording to other power-quality quantiles.
+
+    The same rules per order as the evaluation with ``Settings.pq_u95`` (see
+    [`groundfault.formulas.order_scaling`][groundfault.formulas.order_scaling]), applied to the currents and voltage
+    levels stored in a result – e.g. to scale every test of a campaign with the PQ measurement and the factor of the
+    campaign, whatever the single evaluation used. Nothing in ``result`` is changed.
+
+    Parameters
+    ----------
+    result : Result or ResultFile
+        Evaluated recording with the fault current, its harmonics and the voltages before/after the fault.
+    u95 : mapping of int to float, optional
+        Quantile of the voltage per order in V (e.g. [`groundfault.pq.PQAssessment.u95`][groundfault.pq.PQAssessment.u95]).
+    u95_reference : {"seq", "LL"}
+        ``"LL"``: the quantiles are line-to-line values (divided by √3).
+    thd95_percent : float, optional
+        Quantile of the THD in % (line-to-line) – the flat factor for the orders without their own value.
+    safety_factor : float
+        Factor k_s on the quantiles.
+    min_level_V : float, optional
+        Smallest usable level of an order in V (default: the setting stored in the result, else 1 V).
+    uncertainty_I, uncertainty_U : float, optional
+        Margins m_I and m_U of the assessment values (default: the settings stored in the result).
+    thd_reference : {"pre_fault", "post_fault", "mean"}, optional
+        Interval(s) of the voltage levels and of the measured THD (default: the setting stored in the result).
+
+    Returns
+    -------
+    dict
+        ``table`` (per order: ``order``, ``f_Hz``, ``category``, ``I_A``, ``U_level_V``, ``U95_V``, ``factor``,
+        ``rule``, ``I_scaled_A``), ``IG``, ``IH``, ``IH_scaled``, ``IH_scaled_assessed``, ``IRES_scaled``
+        (I_RMS = √(I_G² + I_H,scaled²)), ``IRES_scaled_assessed``, ``IH_zero``, ``IH_even``, ``IH_other``,
+        ``f_thd`` (THD factor or NaN), ``UTHD_meas`` and ``without`` (orders of the positive or negative sequence
+        without their own value).
+
+    Notes
+    -----
+    With the table ``harmonic_scaling`` of a scaled evaluation the currents and levels of all its orders are used, so
+    that the result with the same quantiles and factor equals the stored one. Otherwise the currents are the harmonics
+    of the main channel of the fault current (in a result file: the exported orders; the rest of the harmonic content
+    stays as measured) and the levels the natural sequence of each order before/after the fault.
+    """
+    meas = getattr(result, "measurement", None) or {}
+    stored = meas.get("settings", {}) if isinstance(meas, dict) else {}
+    e = getattr(result, "settings", None)
+
+    def setting(name, default):
+        if e is not None and hasattr(e, name):
+            return getattr(e, name)
+        return stored.get(name, default)
+
+    mI = float(setting("uncertainty_I", 0.0) if uncertainty_I is None else uncertainty_I)
+    mU = float(setting("uncertainty_U", 0.0) if uncertainty_U is None else uncertainty_U)
+    min_level = float(setting("pq_min_level_V", 1.0) if min_level_V is None else min_level_V)
+    reference = thd_reference or setting("thd_reference", "mean") or "mean"
+    check_option("thd_reference", reference, _THD_REFERENCES)
+    check_option("u95_reference", u95_reference, _U95_REFERENCES)
+    choice = {"pre_fault": ["pre_fault"], "post_fault": ["post_fault"], "mean": ["pre_fault", "post_fault"]}[reference]
+    sf = float(safety_factor)
+    values = result.values
+    ig, ih = float(values.get("IG", np.nan)), float(values.get("IH_total", np.nan))
+    f_nominal = float(setting("f_nominal", 50.0))
+    # ---- measured THD of the test (largest loop, mean over the reference intervals)
+    u_meas = float(values.get("UTHD_meas", np.nan))
+    tag = result.tables.get("voltage_metrics")
+    if tag is not None and not tag.empty:
+        rows = tag[tag["interval"].isin(choice)]
+        if len(rows):
+            u_meas = float(np.nanmean(rows[["UTHD12_pct", "UTHD23_pct", "UTHD31_pct"]].max(axis=1)))
+    f_thd = sf * float(thd95_percent) / u_meas if (thd95_percent is not None and np.isfinite(u_meas)
+                                                    and u_meas > 0) else None
+    # ---- currents and levels per order
+    v = values.get("voltage") or {}
+    v_orders = [int(o) for o in v.get("orders", [])]
+
+    def level(m: int) -> float:
+        if m not in v_orders:
+            return float("nan")
+        key = "U_" + {1: "pos", 2: "neg", 0: "zero"}[m % 3]
+        vals = [float(v[b][key][v_orders.index(m)]) for b in choice if isinstance(v.get(b), dict) and key in v[b]]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    base = result.tables.get("harmonic_scaling")
+    if base is not None and not base.empty and {"order", "I_A", "U_level_V"} <= set(base.columns):
+        items = [(int(r["order"]), float(r["I_A"]), float(r["U_level_V"]), float(r.get("f_Hz", np.nan)))
+                 for _, r in base.iterrows()]
+    else:
+        ph = values.get("I_phasors")
+        if ph:
+            mags = {int(m): float(abs(x)) for m, x in ph.items()}
+        else:
+            h = result.tables.get("harmonics")
+            mags = {}
+            if h is not None and not h.empty:
+                channel = values.get("main_channel_i_res")
+                sub = h[(h["role"] == "i_res") & ((h["channel"] == channel) if channel else True)]
+                if channel is None and len(sub):
+                    sub = sub[sub["channel"] == sub["channel"].iloc[0]]
+                mags = {int(r["order"]): float(r["magnitude"]) for _, r in sub.iterrows()}
+        items = [(m, mags[m], level(m), m * f_nominal) for m in sorted(mags) if m >= 2]
+    u95_ = {}
+    for key_, val in (u95 or {}).items():
+        try:
+            u95_[int(key_)] = float(val) if val is not None else float("nan")
+        except (TypeError, ValueError):
+            continue
+    ll = u95_reference == "LL"
+    table, s_known, s2, s2a, without = [], 0.0, 0.0, 0.0, []
+    for m, i_m, lv, f in items:
+        u = u95_.get(m)
+        k, rule = fml.order_scaling(m, u, lv, f_thd=f_thd, safety_factor=sf, from_ll=ll, min_level=min_level)
+        ka = k / (1.0 - mU) if rule in ("own voltage", "THD") else 1.0
+        if fml.harmonic_category(m) == "pos_neg" and rule in ("THD", "no information"):
+            without.append(m)
+        table.append(dict(order=m, f_Hz=f if np.isfinite(f) else m * f_nominal, category=fml.harmonic_category(m),
+                          I_A=i_m, U_level_V=lv, U95_V=u if u is not None else float("nan"), factor=k, rule=rule,
+                          I_scaled_A=k * i_m))
+        s_known += i_m ** 2
+        s2 += (k * i_m) ** 2
+        s2a += (ka * i_m) ** 2
+    tab = pd.DataFrame(table, columns=["order", "f_Hz", "category", "I_A", "U_level_V", "U95_V", "factor", "rule",
+                                       "I_scaled_A"])
+    i_other = math.sqrt(max(ih ** 2 - s_known, 0.0)) if np.isfinite(ih) else float("nan")
+    ih_s = math.sqrt(s2 + i_other ** 2)
+    ih_s_assessed = (1.0 + mI) * math.sqrt(s2a + i_other ** 2)
+
+    def quad(cat):
+        return float(math.sqrt(float((tab.loc[tab["category"] == cat, "I_A"] ** 2).sum())))
+
+    return dict(table=tab, IG=ig, IH=ih, IH_scaled=ih_s, IH_scaled_assessed=ih_s_assessed,
+                IRES_scaled=float(fml.rms_current_forecast(ig, ih_s)),
+                IRES_scaled_assessed=float(fml.rms_current_forecast(fml.current_with_uncertainty(ig, mI),
+                                                                    ih_s_assessed)),
+                IH_zero=quad("zero"), IH_even=quad("even"), IH_other=i_other,
+                f_thd=f_thd if f_thd is not None else float("nan"), UTHD_meas=u_meas, without=without,
+                safety_factor=sf, uncertainty_I=mI, uncertainty_U=mU)
+
+
 def _station(res: Result) -> None:
     """Station quantities in the max window: earth potential rise and touch voltage per order, r·Z_E, ratio F,
     extrapolation to the residual-current limits and shield/PEN currents."""
@@ -1650,13 +1811,19 @@ def _plausibility(res: Result, rec: Recording, bl) -> None:
     # low-frequency component in the max window (decaying DC component after fault inception – e.g. from the coil
     # current with a time constant L/R in the range of seconds – or drift of an integrator/clamp): the median
     # removal only removes a constant offset; the remainder increases the true RMS value without belonging to the
-    # steady-state residual current. Moving average over one period = components < f1/2.
+    # steady-state residual current. Moving average over one period = components < f1/2. With the high-pass the
+    # window as evaluated (filtered) is checked.
     if ires_k is not None:
         nwin = int(round(e.T_win * rec.fs))
         i0 = int(round((float(st.t_mid[wi]) - e.T_win / 2.0) * rec.fs))
         irms = float(st.rms[wi, ires_k.index])
-        if 0 <= i0 and i0 + nwin <= rec.n and irms > 0:
+        i0b, blk = bl["steady_state"]
+        x = None
+        if e.dc == "highpass" and 0 <= i0 - i0b and i0 - i0b + nwin <= blk.shape[0]:
+            x = np.asarray(blk[i0 - i0b:i0 - i0b + nwin, ires_k.index], dtype=np.float64)
+        elif 0 <= i0 and i0 + nwin <= rec.n:
             x = rec.read(i0, i0 + nwin, [ires_k.index])[:, 0].astype(np.float64)
+        if x is not None and irms > 0 and np.isfinite(x).all():
             x = x - np.median(x)
             nper = max(1, int(round(rec.fs / float(st.f1["f1_used"]))))
             if x.size > 2 * nper:

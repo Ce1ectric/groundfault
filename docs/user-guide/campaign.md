@@ -202,7 +202,7 @@ default: their current arises only during the earth fault, and the tiny pre-faul
 | `source_table()` | per order: `Uq_V`, `Uq_angle_deg`, `Rq_Ohm`, `Xq_Ohm`, `Zq_Ohm`, `I_short_circuit_A`, `residual_pct`, `condition_number`, `dZq_rel_per_1pct`, `Rq_fixed`, `normalization`, `level_reference_V`, the Thevenin check `Uq_ref_faulted_phase`/`Uq_angle_ref_faulted_phase_deg` and per estimator `Zq_<method>`, `Uq_<method>_V` |
 | `pairwise_table()` | the exact solution of every pair of measurements (`Rq_Ohm`, `Xq_Ohm`, `Uq_V`, `assessment` `ok` or `R_q < 0`) – consistency of the model assumption |
 | `forecast_table()` | per order and measurement: model current against the (normalised) measured current, `deviation_pct`, power in the additional impedance |
-| `loo_table(limit_pct=None, limit_A=None)` | leave-one-out check: every measurement forecast with the model of the other measurements (same rule; `I_from_others_A`, `deviation_pct`, `deviation_A`; with your permissible deviation in % and/or A also `within_limit`); large deviations show a change of the network between the tests |
+| `loo_table(limit_pct=None, limit_A=None)` | leave-one-out check: every measurement forecast with the model of the other measurements (same rule; `I_from_others_A`, `deviation_pct`, `deviation_A`; with your permissible deviation in % and/or A also `within_limit`, the limits in `attrs`); large deviations show a change of the network between the tests |
 | `jackknife_table(Z_E)` | current at Z_E per order with one measurement left out at a time (`min_A`, `max_A`, `span_pct`; needs three measurements, with the measured source two) |
 | `check_table()` | residual current of the model at the tested impedances against the measured true RMS value (`deviation_pct`, `IH_rest_A`, `I_low_frequency_A`) |
 | `single_test_table()` | source impedance of every single test with the measured source voltage, Z_q,k = U_q/I_k − Z_k (`Rq_Ohm`, `Xq_Ohm`, `Zq_Ohm`, `Zq_angle_deg`, deviation from the median of the tests `Zq_deviation_pct`, `Zq_angle_deviation_deg`) – the change of the network between the tests |
@@ -249,8 +249,10 @@ Monte Carlo I_RES(2.5 Ω): P5 45.33 A, P50 45.58 A, P95 45.81 A
 `monte_carlo(series, Z_E, n=2000, sigma_magnitude=0.01, sigma_phase_deg=0.5, sigma_Z=0.02, sigma_level=0.0,
 model_error=True)` repeats the fit with random errors of the currents (1 %, 0.5°), the additional impedances (2 %) and
 – with `model_error` – the residual of each order; it returns the quantiles P5/P50/P95 of I_RES and I_H (`mc["IRES"]`,
-`mc["IH"]`) and the spread of Z_q per order (`mc["Zq"]`: `Rq_P5`, `Rq_P95`, `Xq_P5`, `Xq_P95`). The campaign
-notebook keeps the result as `MC` and draws this spread in the figure of the source impedances.
+`mc["IH"]`), the fundamental used (`mc["IG"]`, from `IG` as in `ires_at_impedance`) and the spread of Z_q per order
+(`mc["Zq"]`: `Rq_P5`, `Rq_P95`, `Xq_P5`, `Xq_P95`). The campaign notebook computes it with `IG_CHOICE`, keeps the
+result as `MC` and draws this spread in the figure of the source impedances. The quantiles of I_H do not depend on
+I_G: with another fundamental I_RES,p = √(I_G² + I_H,p²) per quantile p.
 
 | Hint | Meaning – what to do |
 |---|---|
@@ -357,8 +359,11 @@ I_G = 32.0 A | I_H = 32.5 A (rest 0.012 A) | I_RES = 45.59 A | with uncertainty 
 ```
 
 The result contains `Z_E`, `IG`, `IH`, `IRES`, `parts` (current per order), `factors`, `IH_rest`, `IH_scaled`,
-`IRES_scaled`, `IRES_assessed` and `IRES_scaled_assessed` (× (1 + m_I) with the measurement-uncertainty margin
-`uncertainty_I` of the user – default 0, no margin; the notebook passes `UNCERTAINTY_I`), `interpolation` (`True` if
+`IRES_scaled`, `IRES_assessed` (× (1 + m_I) with the measurement-uncertainty margin `uncertainty_I` of the user –
+default 0, no margin), `IH_scaled_assessed` and `IRES_scaled_assessed` (every current × (1 + m_I); an order scaled
+with a measured voltage level of the tests, rule `own voltage` or `THD`, with k_m/(1 − m_U) and the voltage margin
+`uncertainty_U` – as in the scaling of a single test; the notebook passes `UNCERTAINTY_I` and `UNCERTAINTY_U`),
+`interpolation` (`True` if
 |Z_E| lies within the range of the tested additional impedances – outside, the value is an extrapolation) and `hints`.
 In the notebook `Z_E` sets the earthing impedance – a value of your network, not set in the templates (the notebook
 then skips the values at Z_E with a note) –; the figure shows I_RES over Z_E up to `Z_E_MAX`, with lines at the limits

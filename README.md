@@ -54,7 +54,11 @@ and the two compared quantities r·Z_E and Z_E (bottom)](docs/assets/station_red
   an RMS value compared with the earthing measurements in a [groundmeas](https://github.com/Ce1ectric/groundmeas)
   SQLite database; evaluated tests can be entered in groundmeas.
 - **Report output** – figures in their final size for an A4 report (PDF/SVG/PNG) and tables as CSV, Markdown, Excel
-  and Word.
+  and Word; the **Word report of a campaign** in English or German – title page, key results, chapters on set-up,
+  results and assessment (equivalent sources, touch voltage, uncertainties) and appendices with the plausibility
+  checks, every number from the result files, placeholders for the photos on site, set as a scientific report
+  (justified text, footnotes for sources and side remarks, Word equations), optionally in the template of your
+  organisation.
 - **Signal explorer** – all channels of a recording with RMS values, harmonics and THD on hover, in the notebook and
   as a single HTML file that opens in any browser.
 - **English and German** – output language and campaign folder layout; the files of the in-house predecessor
@@ -89,7 +93,7 @@ Use a virtual environment for either way. The optional features are grouped as e
 | Extra | Installs | Needed for |
 |---|---|---|
 | `interactive` | plotly, ipywidgets, jinja2 | interactive figures and the signal explorer |
-| `export` | openpyxl, python-docx | the Excel and Word files of the exported tables |
+| `export` | openpyxl, python-docx | the Excel and Word files of the exported tables, the Word report of a campaign |
 | `all` | `interactive` + `export` | everything the package can do – the usual choice for scripts |
 | `notebook` | `interactive` + `export`, JupyterLab, ipykernel | working with the notebooks |
 | `dev` | `interactive` + `export`, pytest, ruff, nbformat, nbclient, ipykernel | tests, linting, regenerating the notebooks |
@@ -152,7 +156,8 @@ jupyter lab
 ```
 
 Run `evaluate_measurement.ipynb` and then `evaluate_campaign.ipynb` with *Run → Run All Cells*: the first creates the
-demo campaign in the folder and evaluates one recording, the second evaluates the whole campaign;
+demo campaign in the folder and evaluates one recording, the second evaluates the whole campaign and writes its Word
+report (section 8, in the report folder of the campaign);
 `forecast/forecast_without_fault.ipynb` evaluates a demo measuring day at the transformer and compares the estimates
 without an earth fault, `forecast/network_model_forecast.ipynb` builds the network model of the demo substation and
 forecasts its harmonic residual current. How to work with
@@ -197,7 +202,7 @@ GitHub offers them as APA and BibTeX under *Cite this repository*:
 @software{Ehlert_groundfault_2026,
   author  = {Ehlert, Christian},
   title   = {{groundfault}},
-  version = {3.2.0},
+  version = {3.3.0},
   month   = oct,
   year    = {2026},
   url     = {https://github.com/Ce1ectric/groundfault},

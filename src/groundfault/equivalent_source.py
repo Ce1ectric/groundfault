@@ -1281,8 +1281,8 @@ class SourceSeries:
         (median, or the test with the smallest additional impedance among them), the fitted source is fitted again
         with the same estimator – and gives the current at the additional impedance of the left-out measurement, in the
         frame of the normalized currents as in ``forecast_table`` (i.e. with the source level of that measurement).
-        Large deviations show that the network changed between the tests: a model from these tests is then less
-        reliable than their spread within the tested range suggests.
+        Large deviations show that the network or the sources changed between the tests: a model from these tests is
+        then less reliable than their spread within the tested range suggests.
 
         Parameters
         ----------
@@ -1299,7 +1299,8 @@ class SourceSeries:
             ``order``, ``measurement``, ``Z_Ohm`` (text), ``I_measured_A``, ``I_from_others_A``, ``deviation_pct``,
             ``deviation_A`` (model of the others against the measurement; NaN with fewer than two measurements for the
             measured source, or fewer than two different additional impedances among the others for the fitted source)
-            and, with ``limit_pct`` or ``limit_A``, ``within_limit``.
+            and, with ``limit_pct`` or ``limit_A``, ``within_limit``; ``attrs["limit_pct"]`` and ``attrs["limit_A"]``
+            hold the limits.
 
         Raises
         ------
@@ -1341,6 +1342,8 @@ class SourceSeries:
                 ok = ok or (limit_pct is not None and np.isfinite(dp) and abs(dp) <= float(limit_pct))
                 within.append(bool(ok))
             out["within_limit"] = within
+        out.attrs["limit_pct"] = None if limit_pct is None else float(limit_pct)
+        out.attrs["limit_A"] = None if limit_A is None else float(limit_A)
         return out
 
     @property
@@ -1933,13 +1936,25 @@ def _rest_largest(terms: Sequence[dict], u95: Optional[Mapping[int, float]], ll:
     return best
 
 
+def _check_margins(uncertainty_I: float, uncertainty_U: float) -> None:
+    """Margins m_I and m_U must be relative values 0 ≤ m < 1."""
+    for name, value in (("uncertainty_I", uncertainty_I), ("uncertainty_U", uncertainty_U)):
+        try:
+            ok = not isinstance(value, bool) and 0.0 <= float(value) < 1.0
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise ValueError(tr("evaluation.uncertainty_invalid", name=name, value=value))
+
+
 def _ires(series: SourceSeries, Z_E: complex, IG: Union[str, float], u95: Optional[Mapping[int, float]],
           u95_reference: str, thd95_percent: Optional[float], thd_measured_percent: Optional[float],
           safety_factor: float, rest: bool, uncertainty_I: float, terms: Optional[List[dict]] = None,
-          table: bool = True, thd_text: Optional[str] = None) -> Dict[str, object]:
+          table: bool = True, thd_text: Optional[str] = None, uncertainty_U: float = 0.0) -> Dict[str, object]:
     """Residual current at Z_E with the scaling rules (see ires_at_impedance); ``terms`` = precomputed
     ``_rest_terms`` (time series), ``table`` = build the table and the hints, ``thd_text`` = text of the THD
     fallback in the hint (time series: a factor per time step)."""
+    _check_margins(uncertainty_I, uncertainty_U)
     ig = _ig_choice(series, IG)
     k, rules, f_thd, ll, scaled = _scaling(series, u95, u95_reference, thd95_percent, thd_measured_percent,
                                            safety_factor)
@@ -1958,11 +1973,21 @@ def _ires(series: SourceSeries, Z_E: complex, IG: Union[str, float], u95: Option
     IHs = math.sqrt(sum(v * v for v in parts_s.values()) + r_s * r_s)
     IRES = math.sqrt(ig ** 2 + IH ** 2)
     IRESs = math.sqrt(ig ** 2 + IHs ** 2)
+    # assessment values as in groundfault.evaluation.rescale_harmonics: every current with (1 + m_I); an order scaled
+    # with a measured voltage level (own voltage, THD) also with 1/(1 − m_U) – the level of the tests may be m_U high
+    ku = 1.0 / (1.0 - float(uncertainty_U))
+    kua = lambda rule: ku if rule in (_RULE_OWN, _RULE_THD) else 1.0
+    s2a = sum((v * kua(rules[m])) ** 2 for m, v in parts_s.items())
+    if scaled and best is not None:
+        s2a += sum((kk * i * kua(rule)) ** 2 for _, i, _, kk, rule in best["rows"]) + best["other"] ** 2
+    else:
+        s2a += r_s ** 2
+    mi = 1.0 + float(uncertainty_I)
     zmin, zmax = series.Z_range
     out = dict(Z_E=Z_E, IG=ig, IH=IH, IRES=IRES, parts=parts, factors=k, rules=rules, IH_rest=r, IH_rest_scaled=r_s,
-               IH_scaled=IHs, IRES_scaled=IRESs,
-               IRES_assessed=IRES * (1 + uncertainty_I), IRES_scaled_assessed=IRESs * (1 + uncertainty_I),
-               interpolation=bool(zmin - 1e-9 <= abs(Z_E) <= zmax + 1e-9))
+               IH_scaled=IHs, IRES_scaled=IRESs, IRES_assessed=IRES * mi, IH_scaled_assessed=mi * math.sqrt(s2a),
+               IRES_scaled_assessed=mi * math.sqrt(ig ** 2 + s2a), uncertainty_I=float(uncertainty_I),
+               uncertainty_U=float(uncertainty_U), interpolation=bool(zmin - 1e-9 <= abs(Z_E) <= zmax + 1e-9))
     if not table:
         return out
     # ---- the result per order: the orders of the model at Z_E and the remainder of the test with the largest one
@@ -2016,7 +2041,7 @@ def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] 
                       u95: Optional[Mapping[int, float]] = None, u95_reference: str = "seq",
                       thd95_percent: Optional[float] = None, thd_measured_percent: Optional[float] = None,
                       safety_factor: float = 1.0, rest: bool = True,
-                      uncertainty_I: float = 0.0) -> Dict[str, object]:
+                      uncertainty_I: float = 0.0, uncertainty_U: float = 0.0) -> Dict[str, object]:
     """Residual earth-fault current at the earthing impedance Z_E from the equivalent sources.
 
     I_RES(Z_E) = √(I_G² + Σ_n |k_n·U_q,n/(Z_q,n + Z_E)|² + I_rest²)
@@ -2062,13 +2087,18 @@ def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] 
     uncertainty_I : float, optional
         Measurement-uncertainty margin m_I of currents for the assessment values ``IRES_assessed`` =
         I_RES·(1 + m_I), defined by the user; default 0 (no margin).
+    uncertainty_U : float, optional
+        Measurement-uncertainty margin m_U of voltages, defined by the user: in the scaled assessment values an order
+        scaled with a measured voltage level of the tests (own voltage, THD) takes the factor k_m/(1 − m_U) – as in
+        [`groundfault.evaluation.rescale_harmonics`][groundfault.evaluation.rescale_harmonics]; default 0.
 
     Returns
     -------
     dict
         ``Z_E``, ``IG``, ``IH``, ``IRES``, ``parts`` ({order: current in A}, unscaled), ``factors`` ({order: scaling
         factor}), ``rules`` ({order: rule}), ``IH_rest``, ``IH_rest_scaled``, ``IH_scaled``, ``IRES_scaled``,
-        ``IRES_assessed``, ``IRES_scaled_assessed``, ``IH_zero``, ``IH_even`` and ``IH_other`` (not scaled parts of
+        ``IRES_assessed`` = I_RES·(1 + m_I), ``IH_scaled_assessed`` and ``IRES_scaled_assessed`` (with m_I and m_U),
+        ``uncertainty_I``, ``uncertainty_U``, ``IH_zero``, ``IH_even`` and ``IH_other`` (not scaled parts of
         the scaled result), ``rest_test`` (test of the remainder), ``table`` (the result per order: ``order``,
         ``f_Hz``, ``category``, ``part`` = ``"model"``/``"remainder"``, ``test``, ``I_A``, ``U_level_V``, ``U95_V``,
         ``factor``, ``rule`` = ``"own voltage"``/``"THD"``/``"as measured"``/``"no information"``, ``I_scaled_A``),
@@ -2077,17 +2107,17 @@ def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] 
     Raises
     ------
     ValueError
-        If ``thd95_percent`` is given without a positive ``thd_measured_percent``, or for an unknown ``IG`` or
-        ``u95_reference``.
+        If ``thd95_percent`` is given without a positive ``thd_measured_percent``, for an unknown ``IG`` or
+        ``u95_reference``, or for a margin outside 0 ≤ m < 1.
     """
     return _ires(series, Z_E, IG, u95, u95_reference, thd95_percent, thd_measured_percent, safety_factor, rest,
-                 uncertainty_I)
+                 uncertainty_I, uncertainty_U=uncertainty_U)
 
 
 def ires_over_time(series: SourceSeries, Z_E: complex, voltages: pd.DataFrame, IG: Union[str, float] = "max",
                    u95_reference: str = "seq", thd_percent: Optional[pd.Series] = None,
                    thd_measured_percent: Optional[float] = None, safety_factor: float = 1.0, rest: bool = True,
-                   uncertainty_I: float = 0.0) -> pd.DataFrame:
+                   uncertainty_I: float = 0.0, uncertainty_U: float = 0.0) -> pd.DataFrame:
     """Residual current at Z_E for every time step of a series of harmonic voltages (e.g. the 10-min values of a
     power-quality measurement).
 
@@ -2106,7 +2136,7 @@ def ires_over_time(series: SourceSeries, Z_E: complex, voltages: pd.DataFrame, I
     voltages : pandas.DataFrame
         One row per time step, one column per order (int) – harmonic voltage in V with the reference
         ``u95_reference`` (e.g. the largest phase per interval, line-to-earth).
-    IG, u95_reference, safety_factor, rest, uncertainty_I
+    IG, u95_reference, safety_factor, rest, uncertainty_I, uncertainty_U
         As in [`ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance].
     thd_percent : pandas.Series, optional
         THD per time step in % (same index) for the flat factor of the orders without their own voltage.
@@ -2153,7 +2183,8 @@ def ires_over_time(series: SourceSeries, Z_E: complex, voltages: pd.DataFrame, I
         kw = dict(thd95_percent=float(thd[i]), thd_measured_percent=thd_measured_percent) \
             if thd is not None and np.isfinite(thd[i]) else dict(thd95_percent=None, thd_measured_percent=None)
         r = _ires(series, Z_E, IG, u, u95_reference, kw["thd95_percent"], kw["thd_measured_percent"], safety_factor,
-                  rest, uncertainty_I, terms=terms, table=first, thd_text=tr("equivalent_source.scaling_thd_per_step"))
+                  rest, uncertainty_I, terms=terms, table=first, thd_text=tr("equivalent_source.scaling_thd_per_step"),
+                  uncertainty_U=uncertainty_U)
         if first:                                  # the hints of the first time step (the rules are the same)
             hints.extend(h for h in r["hints"] if h not in hints)
             first = False
@@ -2254,8 +2285,11 @@ def monte_carlo(series: SourceSeries, Z_E: complex, n: int = 2000, sigma_magnitu
     Returns
     -------
     dict
-        ``IRES`` and ``IH``: quantiles {5: P5, 50: P50, 95: P95} in A; ``n``; ``Zq``: spread of Z_q per order
-        ({order: {``Rq_P5``, ``Rq_P95``, ``Xq_P5``, ``Xq_P95``}}); ``ires_sample``: all simulated values of I_RES.
+        ``IRES`` and ``IH``: quantiles {5: P5, 50: P50, 95: P95} in A; ``n``; ``IG``: the fundamental in A (I_RES of
+        another I_G: √(I_G² + I_H,p²) per quantile p – the same order); ``Zq``: spread of Z_q per order
+        ({order: {``Rq_P5``, ``Rq_P95``, ``Xq_P5``, ``Xq_P95``}}); ``ires_sample``: all simulated values of I_RES;
+        ``settings``: the errors of the runs (``sigma_magnitude``, ``sigma_phase_deg``, ``sigma_Z``, ``sigma_level``,
+        ``model_error``).
     """
     rng = np.random.default_rng(seed)
     ig = _ig_choice(series, IG)
@@ -2289,8 +2323,10 @@ def monte_carlo(series: SourceSeries, Z_E: complex, n: int = 2000, sigma_magnitu
         ih[r] = math.sqrt(s)
         ires[r] = math.sqrt(ig ** 2 + s)
     q = lambda v: {p: float(np.percentile(v, p)) for p in (5, 50, 95)}
-    return dict(IRES=q(ires), IH=q(ih), n=n,
+    return dict(IRES=q(ires), IH=q(ih), n=n, IG=ig,
                 Zq={m: dict(Rq_P5=float(np.percentile(v.real, 5)), Rq_P95=float(np.percentile(v.real, 95)),
                             Xq_P5=float(np.percentile(v.imag, 5)), Xq_P95=float(np.percentile(v.imag, 95)))
                     for m, v in zq.items()},
-                ires_sample=ires)
+                ires_sample=ires,
+                settings=dict(sigma_magnitude=float(sigma_magnitude), sigma_phase_deg=float(sigma_phase_deg),
+                              sigma_Z=float(sigma_Z), sigma_level=float(sigma_level), model_error=bool(model_error)))

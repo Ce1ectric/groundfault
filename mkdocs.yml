@@ -94,6 +94,7 @@ nav:
       - Signal explorer: user-guide/explorer.md
       - Corrections of the measuring chain: user-guide/corrections.md
       - Reports and exports: user-guide/report.md
+      - Word report of a campaign: user-guide/document.md
       - Language and folder layout: user-guide/language.md
       - Troubleshooting: user-guide/troubleshooting.md
   - Methods:
@@ -131,6 +132,7 @@ nav:
       - rms: reference/rms.md
       - diagnostics: reference/diagnostics.md
       - report: reference/report.md
+      - document: reference/document.md
       - interactive: reference/interactive.md
       - explorer: reference/explorer.md
       - corrections: reference/corrections.md

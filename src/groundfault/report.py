@@ -64,7 +64,7 @@ __all__ = ["ReportStyle", "STYLE", "set_style", "used_font", "activate_style", "
            "COLOR_TYPICAL",
            "instantaneous", "rms_trend", "harmonics_trend", "spectrum", "spectrum_comparison",
            "voltage_spectrum", "phasor_diagram", "source_fit", "source_plane", "ires_over_ze",
-           "pq_series", "pq_duration", "pq_profile",
+           "pq_series", "pq_duration", "pq_profile", "touch_voltage_cases",
            "v_curve", "station_voltages", "station_frequency", "station_background", "station_colors", "probe_label",
            "earthing_comparison", "reduction_factor", "typical_band", "lv_network", "transformer_power",
            "transformer_impedance", "number",
@@ -128,10 +128,15 @@ i18n.register({
     # ---- axis labels, legend entries and annotations
     "report.rms": {"en": "RMS value", "de": "Effektivwert"},
     "report.rms_short": {"en": "RMS", "de": "Eff."},
+    "report.touch_voltage_axis": {"en": "$U_\\mathrm{{T}}$ in V", "de": "$U_\\mathrm{{T}}$ in V"},
+    "report.permissible_touch_voltage": {"en": "permissible touch voltage $U_\\mathrm{{Tp}}$ = {value} V",
+                                         "de": "zulässige Berührungsspannung $U_\\mathrm{{Tp}}$ = {value} V"},
     "report.harmonic": {"en": "H{order} ({f} Hz)", "de": "{order}. Harm. ({f} Hz)"},
     "report.order_axis": {"en": "Order {symbol}", "de": "Ordnung {symbol}"},
     "report.measured_range": {"en": "measured range", "de": "Messbereich"},
     "report.scaled": {"en": "{symbol} scaled", "de": "{symbol} skaliert"},
+    "report.assessed_curve": {"en": "$I_\\mathrm{{RES,ass}}$ (with margins)",
+                              "de": "$I_\\mathrm{{RES,Bew}}$ (mit Zuschlägen)"},
     "report.source_measured": {"en": "measured source", "de": "gemessene Quelle"},
     "report.source_fitted": {"en": "fitted source", "de": "geschätzte Quelle"},
     "report.with_source": {"en": "{symbol} ({source})", "de": "{symbol} ({source})"},
@@ -599,12 +604,23 @@ def _source_label(series) -> str:
 
 
 def _legend(ax, n: int, **kw):
-    """Legend from two data series on – default: above the axes, right-aligned (covers nothing)."""
+    """Legend from two data series on – default: above the axes, right-aligned (covers nothing); with long labels
+    fewer columns, so that it stays within the figure."""
     if n >= 2:
-        if "loc" not in kw and "bbox_to_anchor" not in kw:
+        above = "loc" not in kw and "bbox_to_anchor" not in kw
+        if above:
             kw.update(loc="lower right", bbox_to_anchor=(1.0, 1.0), borderaxespad=0.15)
         kw.setdefault("ncol", min(n, 5))
-        ax.legend(**kw)
+        leg = ax.legend(**kw)
+        if above:
+            try:
+                renderer = ax.figure.canvas.get_renderer()
+                width = 0.98 * ax.figure.bbox.width
+                while kw["ncol"] > 1 and leg.get_window_extent(renderer).width > width:
+                    kw["ncol"] -= 1
+                    leg = ax.legend(**kw)
+            except (AttributeError, TypeError, ValueError):     # a canvas without a renderer: as it is
+                pass
 
 
 def _group_colors(ks) -> List[str]:
@@ -649,7 +665,7 @@ def _groups(roles, channels: Optional[Sequence[int]]):
 
 
 def instantaneous(rec, roles, t0: float, duration: float = 0.08, channels: Optional[Sequence[int]] = None,
-                  width="full", height_per_panel_cm: float = 4.2, time_ms: bool = True):
+                  width="full", height_per_panel_cm: float = 4.2, time_ms: bool = True, remove_dc: bool = False):
     """Instantaneous values (waveforms) in the excerpt [t0, t0 + duration] – one panel per quantity.
 
     Parameters
@@ -670,12 +686,18 @@ def instantaneous(rec, roles, t0: float, duration: float = 0.08, channels: Optio
         Height per panel in cm.
     time_ms : bool
         Time axis in ms instead of s (relative to ``t0``).
+    remove_dc : bool
+        Show every channel without its DC component (the median of the excerpt is subtracted, as the evaluation
+        does per window).
 
     Returns
     -------
     matplotlib.figure.Figure
     """
     t, x = rec.read_time(t0, t0 + duration)
+    if remove_dc and len(x):
+        x = np.asarray(x, dtype=float)
+        x = x - np.nanmedian(x, axis=0, keepdims=True)
     groups = _groups(roles, channels)
     n = len(groups)
     fig, axes = figure(width, height_per_panel_cm * n + 0.6, nrows=n, sharex=True)
@@ -1210,7 +1232,9 @@ def source_plane(series, mc: Optional[dict] = None, width="half", height_cm: flo
 
 def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
                  IG: Union[str, float] = "max", scaling: Optional[dict] = None, width="full",
-                 height_cm: float = 7.0, parts: bool = True, comparison=None):
+                 height_cm: float = 7.0, parts: bool = True, comparison=None,
+                 limit_ranges: Optional[Mapping[float, float]] = None, Z_E: Optional[float] = None,
+                 margins: Optional[Mapping[str, float]] = None):
     """Residual current I_RES over the earthing impedance Z_E from the equivalent sources (equivalent-source
     method), with horizontal lines at the limits given by the user; optionally scaled to the 95 % quantile of the
     harmonic voltage.
@@ -1244,6 +1268,14 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
     comparison : SourceSeries, optional
         A second series of the same measurements (e.g. the fitted source when ``series`` is the measured one): its
         I_RES (and I_RES scaled) dashed, for comparison beyond the tested range.
+    limit_ranges : mapping of float to float, optional
+        Largest earthing impedance in Ω up to which a limit holds (``{limit: Z_E}``, e.g. a limit that needs all
+        earthing impedances below 1.7 Ω): a mark on its line there.
+    Z_E : float, optional
+        Earthing impedance of the assessment (vertical line, in the legend).
+    margins : mapping, optional
+        ``uncertainty_I`` and ``uncertainty_U`` → additional curve of the assessment value I_RES,ass (scaled, with the
+        margins).
 
     Returns
     -------
@@ -1252,6 +1284,9 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
     from .equivalent_source import ires_at_impedance
     zg = np.linspace(0, Z_E_max, 201)
     res = [ires_at_impedance(series, z, IG=IG, **(scaling or {})) for z in zg]
+    key_a = "IRES_scaled_assessed" if scaling else "IRES_assessed"
+    res_a = [ires_at_impedance(series, z, IG=IG, **(scaling or {}), **dict(margins))[key_a] for z in zg] \
+        if margins else []
     other = [ires_at_impedance(comparison, z, IG=IG, **(scaling or {})) for z in zg] if comparison is not None else []
     fig, axes = figure(width, height_cm); ax = axes[0, 0]
     zmin, zmax = series.Z_range
@@ -1260,8 +1295,8 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
     lab = (lambda s, x: tr("report.with_source", symbol=s, source=_source_label(x))) if other else (lambda s, x: s)
     with _rc():
         ax.axvspan(zmin, zmax, color="#eeeeee", lw=0, zorder=0)
-        ax.text(0.5 * (zmin + zmax), 0.98, tr("report.measured_range"), transform=ax.get_xaxis_transform(),
-                ha="center", va="top", fontsize=STYLE.font_size_small, color=GREY)
+        ax.text(zmin + 0.01 * Z_E_max, 0.98, tr("report.measured_range"), transform=ax.get_xaxis_transform(),
+                ha="left", va="top", fontsize=STYLE.font_size_small, color=GREY)
         ax.plot(zg, [r["IRES"] for r in res], color="#111111", lw=1.3, label=lab(sym, series)); n += 1
         if other:
             ax.plot(zg, [r["IRES"] for r in other], color="#111111", lw=1.0, ls="--", label=lab(sym, comparison)); n += 1
@@ -1271,6 +1306,9 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
             if other:
                 ax.plot(zg, [r["IRES_scaled"] for r in other], color=COLORS[7], lw=1.0, ls="--",
                         label=lab(tr("report.scaled", symbol=sym), comparison)); n += 1
+        if res_a:
+            ax.plot(zg, res_a, color=COLORS[7], lw=1.1, ls="-.",
+                    label=tr("report.assessed_curve")); n += 1
         if parts:
             ax.plot(zg, [r["IG"] for r in res], color=GREY, lw=0.8, ls="--", label=r"$I_\mathrm{G}$"); n += 1
             for i, m in enumerate(sorted(series.fits)):
@@ -1279,11 +1317,19 @@ def ires_over_ze(series, Z_E_max: float = 10.0, limits: Sequence[float] = (),
             if res and res[0].get("IH_rest", 0) > 0.05:
                 ax.plot(zg, [r["IH_rest"] for r in res], color=GREY, lw=0.8, ls=":",
                         label=tr("report.remainder_not_fitted")); n += 1
-        ymax = max(max(r["IRES_scaled"] if scaling else r["IRES"] for r in res), max(limits or [0])) * 1.08
+        ymax = max(max(r["IRES_scaled"] if scaling else r["IRES"] for r in res), max(res_a or [0]),
+                   max(limits or [0])) * 1.08
+        ranges = {float(k): float(v) for k, v in (limit_ranges or {}).items()}
         for g in limits:
             ax.axhline(g, color="#333333", lw=0.6, ls=":")
             ax.text(Z_E_max, g, "%s A " % _g(g), va="bottom", ha="right", fontsize=STYLE.font_size_small,
                     color="#333333")
+            zr = next((v for k, v in ranges.items() if abs(k - float(g)) < 1e-9), None)
+            if zr is not None and 0 < zr < Z_E_max:         # the largest earthing impedance of its condition
+                ax.plot([zr], [g], marker="|", ms=9, mew=1.3, color="#333333", ls="none")
+        if Z_E is not None and 0 < abs(complex(Z_E)) < Z_E_max:
+            ax.axvline(abs(complex(Z_E)), color=GREY, lw=0.8, ls="--",
+                       label=r"$Z_\mathrm{E}$ = %s Ω" % _g(abs(complex(Z_E)))); n += 1
         ax.set_xlim(0, Z_E_max); ax.set_ylim(0, ymax)
         ax.set_xlabel(r"$Z_\mathrm{E}$ in Ω"); ax.set_ylabel(r"$I$ in A")
         _legend(ax, n, ncol=4)
@@ -1327,8 +1373,13 @@ def pq_series(assessment, orders: Optional[Sequence[int]] = None, width="full", 
     fig, axes = figure(width, height_cm); ax = axes[0, 0]
     n = 0
     with _rc():
+        step = pd.Timedelta(seconds=float(assessment.data.interval_s))
         for i, m in enumerate(ords):
             s = assessment.largest(m)
+            if len(s) > 1:                                       # no line across a gap (e.g. between two periods)
+                gap = (s.index[1:] - s.index[:-1]) > 1.5 * step
+                if gap.any():
+                    s = pd.concat([s, pd.Series(np.nan, index=s.index[:-1][gap] + step)]).sort_index()
             t = s.index.tz_localize(None) if s.index.tz is not None else s.index      # wall-clock time of the clock
             color = COLORS[i % 8]
             ax.plot(t, s.to_numpy(), color=color, lw=0.6, label="%g Hz" % round(m * assessment.f1)); n += 1
@@ -1467,6 +1518,51 @@ def pq_profile(assessment, order: Optional[int] = None, width="full", height_cm:
         ax.set_ylabel(r"$U_{%d}$ in V" % m)
         _legend(ax, n, ncol=min(n, 4))
     return _finish(fig, axes)
+
+
+def touch_voltage_cases(cases: pd.DataFrame, U_Tp: Optional[float] = None, width="full", height_cm: float = 6.0):
+    """Bars of the touch voltage U_T of the assessment cases of a station, with the permissible touch voltage.
+
+    Parameters
+    ----------
+    cases : pandas.DataFrame
+        Table of [`groundfault.document.touch_voltage_cases`][groundfault.document.touch_voltage_cases] (columns
+        ``label`` and ``U_T_V``; rows without U_T are left out).
+    U_Tp : float, optional
+        Permissible touch voltage in V (a horizontal line; default: the column ``U_Tp_V`` if it has a value).
+    width : {"full", "half"} or float
+        Figure width (see [`figure`][groundfault.report.figure]).
+    height_cm : float
+        Figure height in cm.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    df = cases[np.isfinite(pd.to_numeric(cases["U_T_V"], errors="coerce"))]
+    if U_Tp is None and "U_Tp_V" in cases and pd.to_numeric(cases["U_Tp_V"], errors="coerce").notna().any():
+        U_Tp = float(pd.to_numeric(cases["U_Tp_V"], errors="coerce").dropna().iloc[0])
+    fig, axes = figure(width, height_cm)
+    ax = axes[0, 0]
+    with _rc():
+        x = np.arange(len(df))
+        v = pd.to_numeric(df["U_T_V"], errors="coerce").to_numpy(dtype=float)
+        ax.bar(x, v, width=0.6, color=[COLORS[i % 8] for i in range(len(df))], edgecolor="none")
+        for xi, vi in zip(x, v):
+            ax.annotate(number(vi, 2 if vi < 10 else 3), (xi, vi), xytext=(0, 2), textcoords="offset points",
+                        ha="center", va="bottom", fontsize=STYLE.font_size_small)
+        ymax = max(list(v) + [U_Tp or 0.0]) * 1.15 if len(v) else 1.0
+        if U_Tp is not None and np.isfinite(U_Tp):
+            ax.axhline(U_Tp, color="#c00000", lw=0.9, ls="--",
+                       label=tr("report.permissible_touch_voltage", value=number(U_Tp, 3)))
+            _legend(ax, 1)
+        ax.set_xticks(x)                                  # U_T → $U_\mathrm{T}$
+        ax.set_xticklabels([re.sub(r"(?<![A-Za-z0-9])([A-Za-z])_([A-Za-z0-9]+)", r"$\1_\\mathrm{\2}$", str(t))
+                            for t in df["label"]])
+        ax.set_ylabel(tr("report.touch_voltage_axis"))
+        ax.set_ylim(0, ymax or 1.0)
+        ax.grid(axis="x", visible=False)
+    return _finish(fig, axes, panel_letters=False)
 
 
 def v_curve(t, ires, result=None, i_coil=None, width="full", height_cm: float = 6.0, quantity: str = "I_RES"):

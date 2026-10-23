@@ -26,11 +26,17 @@ i18n.register({
                                "de": "Konsistenzprüfung braucht ≥ 2 Messungen"},
     "campaign.check_equal": {"en": "{quantity} equal in all measurements",
                              "de": "{quantity} gleich in allen Messungen"},
-    "campaign.value_span": {"en": "{low} … {high} (span {span:.1f} %)",
-                            "de": "{low} … {high} (Spanne {span:.1f} %)"},
-    "campaign.equal_comment": {
-        "en": "fundamental component hardly depends on Z_F; large span → network state/detuning changed",
-        "de": "Grundschwingung kaum abhängig von Z_F; große Spanne → Netzzustand/Verstimmung geändert"},
+    "campaign.value_span": {"en": "{low} … {high} {unit} (span {span:.1f} %)",
+                            "de": "{low} … {high} {unit} (Spanne {span:.1f} %)"},
+    "campaign.equal_ok_IG": {"en": "fundamental hardly depends on Z_F – as expected",
+                             "de": "Grundschwingung kaum abhängig von Z_F – wie erwartet"},
+    "campaign.equal_warning_IG": {"en": "large span of the fundamental → network state or detuning changed?",
+                                  "de": "große Spanne der Grundschwingung → Netzzustand oder Verstimmung geändert?"},
+    "campaign.equal_ok_UH1n": {"en": "displacement voltage hardly depends on Z_F – as expected",
+                               "de": "Verlagerungsspannung kaum abhängig von Z_F – wie erwartet"},
+    "campaign.equal_warning_UH1n": {"en": "large span of the displacement voltage → network state or detuning changed?",
+                                    "de": "große Spanne der Verlagerungsspannung → Netzzustand oder Verstimmung "
+                                          "geändert?"},
     "campaign.check_coil_in": {"en": "Coil current {channel} in {measurement}",
                                "de": "Spulenstrom {channel} in {measurement}"},
     "campaign.value_coil_median": {"en": "{value} A (median {median} A)", "de": "{value} A (Median {median} A)"},
@@ -171,14 +177,15 @@ def consistency(results: Mapping[str, object], tolerance: float = 0.10) -> pd.Da
     if len(names) < 2:
         return pd.DataFrame([dict(check=tr("campaign.check_count"), status="INFO", value=str(len(names)),
                                   comment=tr("campaign.count_comment"))])
-    for quantity, sym in (("IG", "I_G"), ("UH1n", "U0")):
+    for quantity, sym, unit in (("IG", "I_G", "A"), ("UH1n", "U0", "V")):
         v = np.array([results[n].values.get(quantity, np.nan) if quantity == "IG" else _assessment(results[n], quantity)
                       for n in names], float)
         if np.isfinite(v).sum() >= 2:
             sp = np.nanmax(v) / np.nanmin(v) - 1
-            p(tr("campaign.check_equal", quantity=sym), "OK" if sp < tolerance else "WARNING",
-              tr("campaign.value_span", low=_z(np.nanmin(v)), high=_z(np.nanmax(v)), span=100 * sp),
-              tr("campaign.equal_comment"))
+            ok = sp < tolerance
+            p(tr("campaign.check_equal", quantity=sym), "OK" if ok else "WARNING",
+              tr("campaign.value_span", low=_z(np.nanmin(v)), high=_z(np.nanmax(v)), unit=unit, span=100 * sp),
+              tr("campaign.equal_%s_%s" % ("ok" if ok else "warning", quantity)))
     # coil currents per channel
     channels: Dict[str, Dict[str, float]] = {}
     for n in names:

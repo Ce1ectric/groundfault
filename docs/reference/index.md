@@ -51,6 +51,7 @@ complex RMS phasors, English column names and language-neutral codes in all tabl
 | Module | Content |
 |---|---|
 | [report](report.md) | figures and tables for an A4 report (no titles, uniform font) |
+| [document](document.md) | Word report of a campaign: title page, key results, chapters and appendices from the results, placeholders for photos on site, your template (needs python-docx, extra `export`) |
 | [interactive](interactive.md) | interactive Plotly figures for the notebook |
 | [explorer](explorer.md) | signal explorer: all channels with RMS values and harmonics on hover (notebook and HTML file) |
 

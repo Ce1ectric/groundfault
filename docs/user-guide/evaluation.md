@@ -307,7 +307,8 @@ parameters are meant to be kept; the limits and margins at the end of the table 
 | `T_win` | `0.200` | window length in s |
 | `T_hop` | `None` | hop between two windows in s; `None` = `T_win` (no overlap) |
 | `window` | `"hann"` | window function of the DFT: `"hann"`, `"hann_periodic"` or `"rectangular"` |
-| `dc` | `"median"` | removal of the DC component per window: `"median"`, `"mean"` or `"none"` |
+| `dc` | `"median"` | removal of the DC component: per window `"median"`, `"mean"` or `"none"`; or `"highpass"` – a zero-phase Butterworth high-pass on every interval before the windows, then the median per window (removes also a slowly decaying offset of a clamp; the harmonics are the same, only the low-frequency part and with it the RMS value of windows with a drifting offset change) |
+| `dc_cutoff_hz` | `5.0` | cut-off frequency of the high-pass in Hz (`dc="highpass"`; at most a quarter of `f_nominal`) |
 | `harmonics` | `(1, 3, 5, 7)` | orders of the fault current in the table `assessment_quantities` (the fundamental is always included) |
 | `export_orders` | `1 … 25` | orders whose phasors are stored in the result file (input of the equivalent-source method) |
 | `voltage_harmonics` | odd orders up to 25 | orders of the voltage levels before and after the fault |
@@ -512,7 +513,7 @@ The fourth column, `comment`, explains each check. The status is `OK`, `NOTE`, `
 | RMS ↔ √ΣX² (orders 1…40) | deviation of 3 % or more (`WARNING`): interharmonics, noise or transients in the window | look at the window in the signal explorer |
 | Stationarity of I_H1 in the interval | the fundamental varies by 5 % or more in the undisturbed windows (`WARNING`); the comment names the cause: active component changes, reactive component changes (typically a coil adjustment – abrupt steps are already left out as disturbed states) or both | choose a narrower steady-state interval; with a coil adjustment Iv refers to the time of the max window |
 | Coil current balance ΔIv ↔ ΔΣI_coil | only if the coil currents change within the interval: Iv does not change by the same amount as the measured coil currents (slope outside 0.8…1.25 or R² < 0.8, `WARNING`) | a coil channel with a wrong ratio or a clamp around only one of several parallel feeders – correction in the corrections file |
-| Low-frequency component of I_RES (< f1/2) | a decaying DC component or drift raises I_RES by 1 % or more (`WARNING`); the value without it is given | start the steady-state interval later |
+| Low-frequency component of I_RES (< f1/2) | a decaying DC component or drift raises I_RES by 1 % or more (`WARNING`); the value without it is given | start the steady-state interval later, or remove it with `Settings(dc="highpass")` (the check then sees the filtered window) |
 | Polarity of the fault current | Iw was negative and the current phasors were rotated (`CORRECTED`), or the margin to the ±90° limit is below 10° (`UNCERTAIN`) | `CORRECTED`: usually a reversed clamp – fine; `UNCERTAIN`: check the clamp polarity, `correct_polarity=False` if it is known |
 | Fault-current CT … ↔ … | two fault-current channels differ by 5 % or more in RMS value or by 5° or more in angle (`WARNING`; a reversal by 180° is tolerated) | one CT saturated or scaled wrongly – choose the right main channel |
 | Faulted phase | the smallest line-to-earth voltage is 10 % or more of the largest (`WARNING`) | not a solid earth fault, or wrong voltage channels |

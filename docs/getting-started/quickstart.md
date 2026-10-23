@@ -335,13 +335,13 @@ To try them, put the example notebooks into an empty folder – copy them, or ge
 | Notebook | What happens (with `DEMO = True`) | Steps above |
 |---|---|---|
 | `evaluate_measurement.ipynb` | creates `campaigns/2026-01-15_Demo` and `demo_groundmeas.db` in the folder, opens `SUB_0_10_000kHz.cfg`, shows roles, diagnostics and RMS trend, evaluates the intervals entered in section 1, shows the signal explorer and exports result file, tables, figures and the explorer HTML | 1–3, 7, 8 |
-| `evaluate_campaign.ipynb` | evaluates the other demo recordings with their known intervals and the corrections of the campaign, then overview and consistency, equivalent-source method, I_RES at Z_E = 2.5 Ω (45.59 A, as above), the station with the earthing measurement and the reduction factor, report tables and figures, groundmeas dry run | 4–7 |
+| `evaluate_campaign.ipynb` | evaluates the other demo recordings with their known intervals and the corrections of the campaign, then overview and consistency, equivalent-source method, I_RES at Z_E = 2.5 Ω (45.59 A, as above), the station with the earthing measurement and the reduction factor, report tables and figures, groundmeas dry run, and the [Word report of the campaign](../user-guide/document.md) in `report/` (section 8) | 4–7 |
 | `forecast/network_model_forecast.ipynb` (optional) | adds a recording of the busbar voltages and coil currents as a recorded earth fault, calibrates the network model with the three substation tests from the register, checks it, updates it with the recorded earth fault and forecasts I_H and I_RES from demo harmonic voltages at the busbar and behind a demo feeder; saves the model file | – |
 
 The first cell prints the version, the work folder it found and the detected folder layout:
 
 ```text
-groundfault 3.2.0 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
+groundfault 3.3.0 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
 ```
 
 For your own campaigns use the reference copies in `notebooks/en/templates/` (placeholders instead of the demo

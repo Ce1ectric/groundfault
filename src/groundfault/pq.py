@@ -65,6 +65,7 @@ import io
 import math
 import os
 import re
+import warnings
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
@@ -76,7 +77,8 @@ from .i18n import tr
 from .legacy import check_option
 
 __all__ = ["PQData", "PQAssessment", "read", "read_winpq", "from_frame", "combine", "ten_minute_values",
-           "duration_factor", "assess", "pre_fault_levels", "PHASES_LE", "PHASES_LL", "ZERO_SEQUENCE"]
+           "duration_factor", "assess", "pre_fault_levels", "PHASES_LE", "PHASES_LL", "ZERO_SEQUENCE",
+           "PERIOD_GAP_DAYS"]
 
 PHASES_LE = ("L1", "L2", "L3")
 """Phase labels of line-to-earth voltages."""
@@ -84,6 +86,8 @@ PHASES_LL = ("L12", "L23", "L31")
 """Labels of the line-to-line voltages (loops)."""
 ZERO_SEQUENCE = "multiple of 3"
 """Orders of the zero sequence in a symmetrical network: the multiples of 3 (3, 6, 9, 15 …)."""
+PERIOD_GAP_DAYS = 1.0
+"""Smallest gap in days between two measuring periods of a PQ measurement (e.g. exports of different seasons)."""
 
 _HOW = ("rms", "mean")
 _LABELS = ("end", "start")
@@ -177,6 +181,22 @@ i18n.register({
     "pq.factor_invalid": {
         "en": "factor must be a number > 0 – got {value!r}.",
         "de": "factor muss eine Zahl > 0 sein – erhalten: {value!r}."},
+    "pq.bootstrap_n": {
+        "en": "n (number of samples) must be at least 1 – got {n!r}.",
+        "de": "n (Anzahl der Stichproben) muss mindestens 1 sein – erhalten: {n!r}."},
+    "pq.bootstrap_block": {
+        "en": "block_days must be > 0 – got {value!r}.",
+        "de": "block_days muss > 0 sein – erhalten: {value!r}."},
+    "pq.window_days": {
+        "en": "{name} must be a number of days > 0 – got {value!r}.",
+        "de": "{name} muss eine Anzahl Tage > 0 sein – erhalten: {value!r}."},
+    "pq.window_times": {
+        "en": "The sub-window analysis needs the 10-min values with their times.",
+        "de": "Die Teilfenster-Auswertung braucht die 10-min-Werte mit ihren Zeiten."},
+    "pq.method_none": {"en": "without scaling", "de": "ohne Skalierung"},
+    "pq.method_order": {"en": "quantile per order (result)", "de": "Quantil je Ordnung (Ergebnis)"},
+    "pq.method_time": {"en": "quantile {q:g} of the time series I_RES(t)", "de": "Quantil {q:g} der Zeitreihe I_RES(t)"},
+    "pq.method_thd": {"en": "THD factor (without values per order)", "de": "THD-Faktor (ohne Werte je Ordnung)"},
     "pq.factor_from_rule": {
         "en": "Measurement with {days:.1f} days of gapless values (≥ {minimum:g} days) → factor {factor:g} on the "
               "quantile.",
@@ -234,6 +254,20 @@ i18n.register({
         "de": "{n} 10-min-Intervalle mit unsymmetrischer Grundschwingung (kleinste Leiter-Erde-Spannung unter "
               "{limit:.0%} der größten: Erdschluss oder Spannungseinbruch, z. B. {first}) gehen nicht in die Quantile "
               "ein."},
+    "pq.faults_native": {
+        "en": "{n} of them only in the {interval:g}-s values of the export (a short earth fault or dip that the 10-min "
+              "value does not show: {times}).",
+        "de": "Davon {n} nur in den {interval:g}-s-Werten des Exports erkennbar (kurzer Erdschluss oder Einbruch, den "
+              "der 10-min-Wert nicht zeigt: {times})."},
+    "pq.segments": {
+        "en": "{n} measuring periods (gaps of ≥ {gap:g} d between them): {items}. Quantile of order {order} per "
+              "period {values} V (whole measurement {whole:.1f} V).",
+        "de": "{n} Messabschnitte (dazwischen Lücken ≥ {gap:g} d): {items}. Quantil der Ordnung {order} je Abschnitt "
+              "{values} V (ganze Messung {whole:.1f} V)."},
+    "pq.segment_item": {"en": "{start} … {end} ({days:.1f} days)", "de": "{start} … {end} ({days:.1f} Tage)"},
+    "pq.segment_gap": {
+        "en": "min_gap_days must be a number of days > 0 – got {value!r}.",
+        "de": "min_gap_days muss eine Anzahl Tage > 0 sein – erhalten: {value!r}."},
     "pq.phases_missing": {
         "en": "The PQ measurement has only the phases {phases} – the largest phase per interval is taken from them.",
         "de": "Die PQ-Messung hat nur die Leiter {phases} – der größte Leiter je Intervall wird daraus bestimmt."},
@@ -414,6 +448,31 @@ class PQData:
                     covered_days=float(len(uniq) * float(self.interval_s) / 86400.0),
                     gapless_days=float(size[j] * float(self.interval_s) / 86400.0),
                     gapless_start=uniq[first[j]] - step, gapless_end=uniq[last[j]])
+
+    def periods(self, min_gap_days: float = 1.0) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
+        """Measuring periods: the stretches between gaps of at least ``min_gap_days`` (e.g. several exports of one
+        instrument months apart); shorter gaps stay inside a period. Each period from the beginning of its first to the
+        end of its last interval.
+
+        Raises
+        ------
+        ValueError
+            For ``min_gap_days`` that is not a number > 0.
+        """
+        try:
+            g = float(min_gap_days)
+        except (TypeError, ValueError):
+            raise ValueError(tr("pq.segment_gap", value=min_gap_days)) from None
+        if not (math.isfinite(g) and g > 0) or isinstance(min_gap_days, bool):
+            raise ValueError(tr("pq.segment_gap", value=min_gap_days))
+        idx = self.harmonics.index
+        if len(idx) == 0:
+            return []
+        step = pd.Timedelta(seconds=float(self.interval_s))
+        uniq = idx.unique().sort_values()
+        cut = np.flatnonzero((uniq[1:] - uniq[:-1]) - step >= pd.Timedelta(days=g))
+        first, last = np.r_[0, cut + 1], np.r_[cut, len(uniq) - 1]
+        return [(uniq[a] - step, uniq[b]) for a, b in zip(first, last)]
 
     def select(self, start=None, end=None) -> "PQData":
         """The intervals with time stamps in ``[start, end]`` (either bound may be None; naive bounds are in the time
@@ -1325,7 +1384,283 @@ class PQAssessment:
         """10-min values of the largest phase of one order (V)."""
         return self.data.largest(order) * (self.factor if factored else 1.0)
 
+    def quantile_bootstrap(self, n: int = 200, block_days: float = 1.0, seed: int = 0,
+                           orders: Optional[Iterable[int]] = None) -> pd.DataFrame:
+        """Spread of the quantiles from the limited duration of the measurement (block bootstrap).
+
+        The measurement is cut into blocks of ``block_days`` (days by default, so that the daily pattern stays
+        inside a block); ``n`` times as many blocks as there are are drawn with replacement and the quantile of the
+        largest phase per interval is formed again for every order (and of the line-to-line THD) – with the same
+        definition as [`assess`][groundfault.pq.assess]. The spread of the samples shows how far another measurement
+        of the same length could lie from this one. The factor is not applied.
+
+        Parameters
+        ----------
+        n : int
+            Number of samples.
+        block_days : float
+            Length of a block in days.
+        seed : int
+            Seed of the random generator (reproducible samples).
+        orders : iterable of int, optional
+            Orders (default: all ≥ 2).
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per sample; columns: the orders (int, quantile in V) and ``"THD_LL_pct"`` (if the measurement
+            has a line-to-line THD).
+
+        Examples
+        --------
+        >>> import os, tempfile
+        >>> from groundfault import demo, pq
+        >>> path = os.path.join(tempfile.mkdtemp(), "pq.csv")
+        >>> _ = demo.make_pq_export(path, days=14)
+        >>> a = pq.assess(pq.read(path), factor=1.0)
+        >>> b = a.quantile_bootstrap(n=50)
+        >>> bool(0.9 < b[5].median() / a.u95()[5] < 1.1)
+        True
+        """
+        if n < 1:
+            raise ValueError(tr("pq.bootstrap_n", n=n))
+        if not (block_days > 0):
+            raise ValueError(tr("pq.bootstrap_block", value=block_days))
+        d10 = self.data
+        sel = [int(m) for m in (orders if orders is not None else d10.orders) if int(m) >= 2 and m in d10.orders]
+        cols = {m: d10.voltages(m).max(axis=1, skipna=True) for m in sel}
+        thd_ll = [p for p in PHASES_LL if p in d10.thd.columns and d10.thd[p].notna().any()] \
+            if d10.thd is not None and len(d10.thd) else []
+        if thd_ll:
+            cols["THD_LL_pct"] = d10.thd[thd_ll].max(axis=1)
+        frame = pd.DataFrame(cols)
+        if frame.empty:
+            return pd.DataFrame(columns=list(cols))
+        idx = frame.index
+        if isinstance(idx, pd.DatetimeIndex):
+            labels = np.floor((idx - idx[0]) / pd.Timedelta(days=float(block_days))).astype(int)
+        else:
+            labels = np.zeros(len(frame), dtype=int)
+        values = frame.to_numpy(dtype=float)
+        blocks = [values[labels == b] for b in np.unique(labels)]
+        rng = np.random.default_rng(seed)
+        q = float(self.quantile)
+        out = np.empty((int(n), values.shape[1]))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)       # an order without values in a sample → NaN
+            for i in range(int(n)):
+                pick = rng.integers(0, len(blocks), size=len(blocks))
+                out[i] = np.nanquantile(np.concatenate([blocks[j] for j in pick]), q, axis=0)
+        return pd.DataFrame(out, columns=list(frame.columns))
+
+    def periods(self, min_gap_days: Optional[float] = None, orders: Optional[Iterable[int]] = None) -> pd.DataFrame:
+        """Quantiles per measuring period – the stretches between gaps of at least ``min_gap_days``
+        ([`PQData.periods`][groundfault.pq.PQData.periods]), e.g. exports of different seasons – with the definition
+        of [`assess`][groundfault.pq.assess] (largest phase per interval, the quantile of the assessment). Their spread
+        shows how much the period of a measurement matters; the ratio of the whole measurement to a period is the
+        factor that period alone would need.
+
+        Parameters
+        ----------
+        min_gap_days : float, optional
+            Smallest gap between two periods in days (default ``PERIOD_GAP_DAYS`` = 1).
+        orders : iterable of int, optional
+            Orders (default: all ≥ 2).
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per period: ``start``, ``end``, ``days`` (covered by values), ``n_intervals``, the quantile per
+            order (int columns, V) and ``"THD_LL_pct"`` (with a line-to-line THD); ``attrs``: ``quantile`` and
+            ``whole`` (the quantiles of the whole measurement).
+
+        Examples
+        --------
+        >>> import datetime, os, tempfile
+        >>> from groundfault import demo, pq
+        >>> folder = tempfile.mkdtemp()
+        >>> a = demo.make_pq_export(os.path.join(folder, "a.csv"), days=7, start=datetime.datetime(2026, 3, 2))
+        >>> b = demo.make_pq_export(os.path.join(folder, "b.csv"), days=7, seed=2, start=datetime.datetime(2026, 6, 1))
+        >>> p = pq.assess(pq.read([a["path"], b["path"]]), factor=1.0).periods()
+        >>> len(p), [round(x, 1) for x in p["days"]]
+        (2, [7.0, 7.0])
+        """
+        d10 = self.data
+        gap = PERIOD_GAP_DAYS if min_gap_days is None else min_gap_days
+        sel = [int(m) for m in (orders if orders is not None else d10.orders) if int(m) >= 2 and m in d10.orders]
+        cols = {m: d10.voltages(m).max(axis=1, skipna=True) for m in sel}
+        thd_ll = [p for p in PHASES_LL if p in d10.thd.columns and d10.thd[p].notna().any()] \
+            if d10.thd is not None and len(d10.thd) else []
+        if thd_ll:
+            cols["THD_LL_pct"] = d10.thd[thd_ll].max(axis=1)
+        frame = pd.DataFrame(cols)
+        q = float(self.quantile)
+        rows = []
+        for start, end in d10.periods(gap):
+            w = frame[(frame.index > start) & (frame.index <= end)]
+            row = {"start": start, "end": end, "days": len(w) * float(d10.interval_s) / 86400.0,
+                   "n_intervals": int(len(w))}
+            row.update(w.quantile(q).to_dict())
+            rows.append(row)
+        out = pd.DataFrame(rows, columns=["start", "end", "days", "n_intervals"] + list(frame.columns))
+        out.attrs.update(quantile=q, whole={k: float(v) for k, v in frame.quantile(q).items()})
+        return out
+
+    def window_factors(self, days: float, step_days: float = 1.0, orders: Optional[Iterable[int]] = None,
+                       min_share: float = 0.9) -> pd.DataFrame:
+        """Factor a shorter measurement would need: the quantile of this measurement divided by the quantile of
+        every window of ``days`` within it (sub-window analysis).
+
+        For every window (a new start every ``step_days``) the quantile of the largest phase per interval is formed
+        for every order (and of the line-to-line THD) – the definition of [`assess`][groundfault.pq.assess] – and the
+        quantile of the whole measurement is divided by it. A ratio of 1.15 means: a measurement of only this window
+        times 1.15 would reach the quantile of the whole measurement. With a measurement over a year the quantile of
+        the ratios over all windows (e.g. their 95 % quantile for ``days=30``) is the factor on the quantile of a
+        one-month measurement, season included; with a shorter measurement the ratios show only the part from the
+        variation between days and weeks. The factor of this measurement is not applied.
+
+        Parameters
+        ----------
+        days : float
+            Length of a window in days.
+        step_days : float
+            Distance of the window starts in days.
+        orders : iterable of int, optional
+            Orders (default: all ≥ 2).
+        min_share : float
+            Smallest share of the intervals a window must contain (default 0.9; windows with larger gaps are left
+            out).
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per window: ``start``, ``end``, ``n_intervals`` and the ratio per order (int columns) and
+            ``"THD_LL_pct"`` (with a line-to-line THD); ``attrs``: ``days``, ``quantile`` and ``full`` (the quantiles
+            of the whole measurement). Empty if the measurement is shorter than one window.
+
+        Examples
+        --------
+        >>> import os, tempfile
+        >>> from groundfault import demo, pq
+        >>> path = os.path.join(tempfile.mkdtemp(), "pq.csv")
+        >>> _ = demo.make_pq_export(path, days=28)
+        >>> a = pq.assess(pq.read(path), factor=1.0)
+        >>> w = a.window_factors(days=7)
+        >>> len(w), bool(0.8 < w[5].quantile(0.95) < 1.5)
+        (22, True)
+        """
+        for name, value in (("days", days), ("step_days", step_days)):
+            try:
+                ok = not isinstance(value, bool) and float(value) > 0 and math.isfinite(float(value))
+            except (TypeError, ValueError):
+                ok = False
+            if not ok:
+                raise ValueError(tr("pq.window_days", name=name, value=value))
+        d10 = self.data
+        sel = [int(m) for m in (orders if orders is not None else d10.orders) if int(m) >= 2 and m in d10.orders]
+        cols = {m: d10.voltages(m).max(axis=1, skipna=True) for m in sel}
+        thd_ll = [p for p in PHASES_LL if p in d10.thd.columns and d10.thd[p].notna().any()] \
+            if d10.thd is not None and len(d10.thd) else []
+        if thd_ll:
+            cols["THD_LL_pct"] = d10.thd[thd_ll].max(axis=1)
+        frame = pd.DataFrame(cols)
+        if not isinstance(frame.index, pd.DatetimeIndex):
+            raise ValueError(tr("pq.window_times"))
+        q = float(self.quantile)
+        full = frame.quantile(q)
+        out_cols = ["start", "end", "n_intervals"] + list(frame.columns)
+        rows = []
+        if len(frame) > 1:
+            idx = frame.index
+            dt = pd.Series(idx[1:] - idx[:-1]).median()
+            length, step = pd.Timedelta(days=float(days)), pd.Timedelta(days=float(step_days))
+            expected = length / dt
+            s = idx[0]
+            while s + length <= idx[-1] + dt:
+                w = frame[(idx >= s) & (idx < s + length)]
+                if len(w) >= float(min_share) * expected:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", RuntimeWarning)
+                        ratio = full / w.quantile(q)
+                    row = {"start": s, "end": s + length, "n_intervals": int(len(w))}
+                    row.update(ratio.to_dict())
+                    rows.append(row)
+                s = s + step
+        out = pd.DataFrame(rows, columns=out_cols)
+        out.attrs.update(days=float(days), quantile=q, full={k: float(v) for k, v in full.items()})
+        return out
+
     # ------------------------------------------------------------------------------------ tables
+    def scaling_methods(self, series, Z_E: complex, IG: Union[str, float] = "max", uncertainty_I: float = 0.0,
+                        uncertainty_U: float = 0.0, scaling: Optional[Mapping[str, Any]] = None,
+                        thd_measured_percent: Optional[float] = None) -> pd.DataFrame:
+        """Residual current at Z_E with this measurement by the methods of the scaling – a comparison of methods.
+
+        * without scaling;
+        * the quantile per order – the result (``scaling``);
+        * the time series: the same rules for every 10-min value, of the residual current the quantile of this
+          assessment (with the factor in every step) – smaller when the orders do not reach their high values at the
+          same time;
+        * with a THD of the tests: one flat THD factor for every order of the positive or negative sequence – the rule
+          without values per order.
+
+        Parameters
+        ----------
+        series : groundfault.equivalent_source.SourceSeries
+            Equivalent sources (measured or fitted).
+        Z_E : complex
+            Earthing impedance in Ω.
+        IG, uncertainty_I, uncertainty_U
+            As in [`groundfault.equivalent_source.ires_at_impedance`][groundfault.equivalent_source.ires_at_impedance].
+        scaling : mapping, optional
+            Keyword arguments of the scaling (default: ``scaling(thd_measured_percent)``).
+        thd_measured_percent : float, optional
+            THD of the series of fault tests in % (for the default ``scaling`` and the THD method).
+
+        Returns
+        -------
+        pandas.DataFrame
+            ``method`` (text in the output language), ``IH_A``, ``IRES_A``, ``IRES_assessed_A`` (with the margins);
+            ``attrs["keys"]`` = ``none``, ``order``, ``time`` and ``thd``, ``attrs["hints"]`` (of the time series,
+            beyond those of the result per order).
+
+        Raises
+        ------
+        ValueError
+            If the measurement is not valid.
+        """
+        from . import equivalent_source as es
+        self._require_valid()
+        sc = dict(scaling) if scaling else self.scaling(thd_measured_percent)
+        kw = dict(IG=IG, uncertainty_I=uncertainty_I, uncertainty_U=uncertainty_U)
+        keys, rows = [], []
+        r0 = es.ires_at_impedance(series, Z_E, **kw)
+        keys.append("none")
+        rows.append((tr("pq.method_none"), r0["IH"], r0["IRES"], r0["IRES_assessed"]))
+        r1 = es.ires_at_impedance(series, Z_E, **kw, **sc)
+        keys.append("order")
+        rows.append((tr("pq.method_order"), r1["IH_scaled"], r1["IRES_scaled"], r1["IRES_scaled_assessed"]))
+        V = pd.DataFrame({m: self.data.largest(m) for m in self.data.orders if m >= 2})
+        loops = [c for c in PHASES_LL if c in self.data.thd.columns]
+        thd = self.data.thd[loops].max(axis=1) if loops and "thd_measured_percent" in sc else None
+        ts = es.ires_over_time(series, Z_E, V, u95_reference=sc.get("u95_reference", "seq"), thd_percent=thd,
+                               thd_measured_percent=sc.get("thd_measured_percent"),
+                               safety_factor=float(sc.get("safety_factor", self.factor)), **kw)
+        q = float(self.quantile)
+        keys.append("time")
+        rows.append((tr("pq.method_time", q=q), ts["IH"].quantile(q), ts["IRES"].quantile(q),
+                     ts["IRES_assessed"].quantile(q)))
+        if "thd_measured_percent" in sc and sc.get("thd95_percent") is not None:
+            r2 = es.ires_at_impedance(series, Z_E, **kw, thd95_percent=sc["thd95_percent"],
+                                      thd_measured_percent=sc["thd_measured_percent"],
+                                      safety_factor=float(sc.get("safety_factor", self.factor)))
+            keys.append("thd")
+            rows.append((tr("pq.method_thd"), r2["IH_scaled"], r2["IRES_scaled"], r2["IRES_scaled_assessed"]))
+        out = pd.DataFrame(rows, columns=["method", "IH_A", "IRES_A", "IRES_assessed_A"])
+        out.attrs["keys"] = keys
+        out.attrs["hints"] = [h for h in dict.fromkeys(ts.attrs.get("hints", [])) if h not in r1.get("hints", [])]
+        return out
+
     def table(self) -> pd.DataFrame:
         """Quantiles per order (copy of ``orders_table``)."""
         return self.orders_table.copy()
@@ -1520,6 +1855,19 @@ def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
     if len(d10.harmonics) == 0 or not d10.harmonics[[c for c in d10.harmonics.columns if c[0] >= 2]].notna().any().any():
         raise ValueError(tr("pq.no_intervals"))
     hints = list(d10.hints)
+    # an earth fault of a few seconds hardly changes the 10-min value of the fundamental, but it distorts the 10-min
+    # harmonic values: with shorter values in the export the criterion is applied to them as well
+    native_bad = pd.DatetimeIndex([])
+    if fault_threshold is not None and float(data.interval_s) < 60.0 * float(minutes) - 1e-6:
+        h1n = [(1, p) for p in PHASES_LE if (1, p) in data.harmonics.columns]
+        if len(h1n) >= 2 and isinstance(data.harmonics.index, pd.DatetimeIndex):
+            u1n = data.harmonics[h1n]
+            flag = (u1n.min(axis=1) / u1n.max(axis=1)) < float(fault_threshold)
+            if flag.any():
+                grouper = pd.Grouper(freq="%gmin" % minutes, closed="right", label="right")
+                per10 = flag.groupby(grouper).any()
+                native_bad = per10.index[per10.to_numpy()]
+                native_times = list(flag.index[flag.to_numpy()])
     cov = d10.coverage(max_gap)
     if cov["gaps"]:
         longest = max(cov["gaps"], key=lambda g: g[1] - g[0])
@@ -1532,10 +1880,17 @@ def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
         if len(h1) >= 2:
             u1 = d10.harmonics[h1]
             ratio = u1.min(axis=1) / u1.max(axis=1)
-            bad = (ratio < float(fault_threshold)).to_numpy()
+            bad10 = (ratio < float(fault_threshold)).to_numpy()
+            only_native = d10.harmonics.index.isin(native_bad) & ~bad10
+            bad = bad10 | only_native
             if bad.any():
                 hints.append(tr("pq.faults_excluded", n=int(bad.sum()), limit=float(fault_threshold),
                                 first=d10.harmonics.index[bad][0]))
+                if only_native.any():
+                    shown = [t for t in native_times if t.ceil("%gmin" % minutes) in
+                             set(d10.harmonics.index[only_native])]
+                    hints.append(tr("pq.faults_native", n=int(only_native.sum()), interval=float(data.interval_s),
+                                    times=", ".join(str(t) for t in shown[:5]) + (" …" if len(shown) > 5 else "")))
                 keep = d10.harmonics.index[~bad]
                 sel = lambda df: df.reindex(keep) if df is not None and len(df) else df
                 d10 = replace(d10, harmonics=d10.harmonics.loc[keep], thd=sel(d10.thd), rms=sel(d10.rms),
@@ -1547,6 +1902,7 @@ def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
     if days < cov["span_days"] - 1e-9:
         hints.append(tr("pq.gapless_less", gapless=days, span=cov["span_days"], start=cov["gapless_start"],
                         end=cov["gapless_end"]))
+    cov["periods"] = d10.periods(PERIOD_GAP_DAYS)
     valid = True
     rule = None
     if factors is not None:
@@ -1618,6 +1974,12 @@ def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
         share = table.set_index("order").loc[dom, "share_of_UH_pct"]
         if np.isfinite(share):
             hints.append(tr("pq.dominant", order=dom, f=dom * f1, share=share))
+        if len(cov["periods"]) >= 2:
+            per = a.periods()
+            items = "; ".join(tr("pq.segment_item", start=r.start, end=r.end, days=r.days) for r in per.itertuples())
+            hints.append(tr("pq.segments", n=len(per), gap=PERIOD_GAP_DAYS, items=items, order=dom,
+                            values=" / ".join(i18n.format_number(v, 1, "decimals") for v in per[dom]),
+                            whole=a.u95()[dom]))
     return a
 
 

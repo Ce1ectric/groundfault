@@ -666,3 +666,94 @@ def test_export_of_the_tables_with_a_time_zone(tmp_path, export_10min):
     assert "campaign_tables.xlsx" in names and "campaign_pq_summary.xlsx" in names
     text = (tmp_path / "campaign_pq_summary.csv").read_text(encoding="utf-8-sig")
     assert "2025-12-15 00:00:00+01:00" in text
+
+
+def test_window_factors_of_shorter_windows(export_10min):
+    """Sub-window analysis: one row per complete window, the ratio quantile(all)/quantile(window) per order and of
+    the THD; a window as long as the measurement gives 1; windows with a gap are left out; invalid lengths refused."""
+    a = pq.assess(pq.read(export_10min["path"]), factor=1.0)
+    w = a.window_factors(days=7)
+    span = a.data.span_days
+    assert len(w) == int(np.floor(span - 7 + 1e-9)) + 1
+    assert list(w.columns[:3]) == ["start", "end", "n_intervals"] and 5 in w.columns and "THD_LL_pct" in w.columns
+    assert ((w["end"] - w["start"]) == pd.Timedelta(days=7)).all()
+    assert w.attrs["days"] == 7.0 and w.attrs["full"][5] == pytest.approx(a.u95()[5])
+    r = w[5]
+    assert bool((r > 0.5).all() and (r < 2.0).all())
+    one = a.window_factors(days=span, step_days=1.0)
+    assert len(one) == 1 and one[5].iloc[0] == pytest.approx(1.0)
+    assert a.window_factors(days=span + 1).empty
+    gap = pq.assess(a.data.select(end=a.data.start + pd.Timedelta(days=10)), factor=1.0)
+    assert len(gap.window_factors(days=7, step_days=0.5)) == 7
+    for bad in (0, -1.0, float("nan"), "x"):
+        with pytest.raises(ValueError):
+            a.window_factors(days=bad)
+    with pytest.raises(ValueError):
+        a.window_factors(days=7, step_days=0)
+
+
+def test_short_earth_fault_in_the_values_of_the_export_is_left_out():
+    """An earth fault of 30 s hardly changes the 10-min value of the fundamental (one phase 1 % lower) but it
+    distorts the 10-min harmonic value: with 30-s values in the export the criterion of the fundamental is applied to
+    them as well – the 10-min interval that contains the fault is left out, with a hint naming the 30-s value."""
+    idx = pd.date_range("2026-01-05 00:00:30", periods=6 * 20, freq="30s")        # one hour, end-labelled stamps
+    df = _frame(idx)
+    t = idx[45]                                                                    # in the 10-min interval 00:30
+    df.loc[t, "H1_L3"] = 2000.0
+    df.loc[t, ["H1_L1", "H1_L2"]] = 19900.0
+    df.loc[t, ["H5_L1", "H5_L2", "H5_L3"]] = 3000.0
+    d = pq.from_frame(df, interval_s=30.0)
+    ten = pq.ten_minute_values(d).harmonics
+    u1 = ten[[(1, p) for p in ("L1", "L2", "L3")]]
+    assert (u1.min(axis=1) / u1.max(axis=1)).min() > 0.8                          # the 10-min value does not show it
+    a = pq.assess(d)
+    assert a.coverage["n_excluded"] == 1 and pd.Timestamp("2026-01-05 00:30") not in a.data.harmonics.index
+    assert a.table().set_index("order").loc[5, "U_max_V"] < 300
+    assert any("30-s-Werten" in h and str(t) in h for h in a.hints)
+    keep = pq.assess(d, fault_threshold=None)
+    assert keep.coverage["n_excluded"] == 0 and keep.table().set_index("order").loc[5, "U_max_V"] > 600
+    ten_min = pq.assess(pq.from_frame(ten), fault_threshold=0.8)                  # 10-min values only: not visible
+    assert ten_min.coverage["n_excluded"] == 0
+
+
+def test_measuring_periods_with_their_quantiles(tmp_path):
+    """Three exports weeks apart are three measuring periods: per period the quantile with the definition of the
+    assessment (largest phase per interval), the whole measurement over all of them, a hint with the quantile of the
+    dominant order per period; a gap shorter than a day stays inside a period."""
+    starts = [pd.Timestamp("2026-03-02 00:10"), pd.Timestamp("2026-06-01 00:10"), pd.Timestamp("2026-09-07 00:10")]
+    levels = [200.0, 250.0, 300.0]
+    parts = [pq.from_frame(_frame(pd.date_range(s, periods=7 * 144, freq="10min"), h5=v))
+             for s, v in zip(starts, levels)]
+    a = pq.assess(pq.combine(parts), factors={30.0: 1.2, 5.0: 1.5})
+    p = a.periods()
+    assert len(p) == 3 and list(p["days"].round(6)) == [7.0, 7.0, 7.0] and list(p["n_intervals"]) == [1008] * 3
+    assert list(p[5]) == pytest.approx([v * 1.1 for v in levels])                 # largest phase: L3 × 1.1
+    assert p.attrs["whole"][5] == pytest.approx(a.u95()[5]) and p.attrs["quantile"] == 0.95
+    assert p["start"].iloc[1] == pd.Timestamp("2026-06-01 00:00") and p["end"].iloc[0] == starts[0] + pd.Timedelta(days=7) - pd.Timedelta(minutes=10)
+    assert len(a.coverage["periods"]) == 3 and a.factor == 1.5                     # 7 days gapless: the rule ≥ 5 days
+    hint = next(h for h in a.hints if "Messabschnitte" in h)
+    assert hint.startswith("3 Messabschnitte") and "220,0 / 275,0 / 330,0 V" in hint
+    # a gap of 12 h does not split, one of 1 day does
+    idx = pd.date_range("2026-01-05 00:10", periods=10 * 144, freq="10min")
+    short = idx.delete(range(3 * 144, 3 * 144 + 72))
+    assert len(pq.from_frame(_frame(short)).periods()) == 1
+    long_ = idx.delete(range(3 * 144, 4 * 144 + 1))
+    assert len(pq.from_frame(_frame(long_)).periods()) == 2
+    assert len(pq.from_frame(_frame(long_)).periods(min_gap_days=2.0)) == 1
+    one = pq.assess(pq.from_frame(_frame(idx)), factor=1.0)
+    assert len(one.periods()) == 1 and not any("Messabschnitte" in h for h in one.hints)
+    for bad in (0, -1.0, float("nan"), "x", True):
+        with pytest.raises(ValueError):
+            pq.from_frame(_frame(idx)).periods(min_gap_days=bad)
+
+
+def test_series_figure_has_no_line_across_a_gap():
+    import matplotlib.pyplot as plt
+    from groundfault import report
+    first = pd.date_range("2026-01-05 00:10", periods=144, freq="10min")
+    second = pd.date_range("2026-03-02 00:10", periods=144, freq="10min")
+    a = pq.assess(pq.from_frame(_frame(first.append(second))), factor=1.0)
+    fig = report.pq_series(a, orders=[5])
+    y = fig.axes[0].lines[0].get_ydata()
+    assert np.isnan(np.asarray(y, float)).sum() == 1 and len(y) == 289
+    plt.close(fig)

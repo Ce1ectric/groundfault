@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Signal processing of the recordings: windows, DC removal, RMS values, phasors, mains frequency, decimation.
+"""Signal processing of the recordings: windows, DC removal (per window or a high-pass), RMS values, phasors, mains
+frequency, decimation.
 
 All phasors are **complex RMS phasors** in cosine convention::
 
@@ -46,10 +47,10 @@ filter, the Goertzel algorithm and the zero-crossing frequency estimate use SciP
 are used."""
 
 __all__ = [
-    "hann", "window_function", "coherent_gain", "remove_dc", "true_rms",
+    "hann", "window_function", "coherent_gain", "remove_dc", "highpass", "true_rms",
     "window_grid", "window_view", "dft_phasors", "window_phasors", "goertzel",
     "goertzel_phasor", "f1_phase_method", "f1_regression", "f1_spectral", "f1_zero_crossing", "estimate_f1",
-    "decimate", "thd", "HAS_SCIPY", "WINDOWS", "DC_METHODS", "F1_METHODS",
+    "decimate", "thd", "HAS_SCIPY", "WINDOWS", "DC_METHODS", "DC_FILTERS", "F1_METHODS",
 ]
 
 WINDOWS = ("hann", "hann_periodic", "rectangular")
@@ -57,11 +58,22 @@ WINDOWS = ("hann", "hann_periodic", "rectangular")
 ``"none"`` (rectangular)."""
 _WINDOW_ALIASES = ("hanning", "hann_p", "rect", "none")
 DC_METHODS = ("median", "mean", "none")
-"""Methods of the DC removal (``remove_dc``); None counts as ``"none"``."""
+"""Methods of the DC removal per window (``remove_dc``); None counts as ``"none"``."""
+DC_FILTERS = DC_METHODS + ("highpass",)
+"""DC removal of an evaluation (``Settings.dc``): a method per window, or ``"highpass"`` – the zero-phase high-pass
+[`highpass`][groundfault.dsp.highpass] on every interval before the windows, then the median per window."""
+HIGHPASS_ORDER = 4
+"""Order of the Butterworth high-pass of [`highpass`][groundfault.dsp.highpass] (applied forwards and backwards)."""
 F1_METHODS = ("phase", "spectral")
 """Methods of the mains-frequency estimation (``estimate_f1``)."""
 
 i18n.register({
+    "dsp.highpass_cutoff": {
+        "en": "Cut-off frequency of the high-pass must lie between 0 and half the sampling rate ({fs} Hz): {value}",
+        "de": "Grenzfrequenz des Hochpasses muss zwischen 0 und der halben Abtastrate ({fs} Hz) liegen: {value}"},
+    "dsp.highpass_scipy": {
+        "en": "The high-pass needs SciPy (pip install scipy).",
+        "de": "Der Hochpass braucht SciPy (pip install scipy)."},
     "dsp.window_too_short": {
         "en": "Window too short (N_win={nwin})",
         "de": "Fenster zu kurz (N_win={nwin})"},
@@ -162,6 +174,75 @@ def remove_dc(x: np.ndarray, method: str = "median", axis: int = -1) -> np.ndarr
     if method == "mean":
         return x - np.mean(x, axis=axis, keepdims=True)
     return x
+
+
+def highpass(x: np.ndarray, fs: float, cutoff_hz: float = 5.0, order: int = HIGHPASS_ORDER,
+             axis: int = 0) -> np.ndarray:
+    """Remove the DC component and slow drifts with a zero-phase Butterworth high-pass.
+
+    The filter runs forwards and backwards (``scipy.signal.sosfiltfilt``): no phase shift, the magnitude response is
+    the square of the Butterworth response – at 50 Hz with the default 5 Hz and order 4 below 10⁻⁸. The signal is
+    extended at both ends by its mirror image (up to 3/``cutoff_hz`` long): a constant or slowly decaying offset gives
+    no step at the ends, and no sample outside the signal (e.g. a fault inception just after an interval) acts on it;
+    the first and last 0.2 s of the signal keep a small error of the RMS value (about 0.1 %, the harmonics stay
+    unchanged). NaN values are bridged by linear interpolation for the filter and stay NaN.
+
+    Parameters
+    ----------
+    x : array_like
+        Signal (several channels along the other axes).
+    fs : float
+        Sampling rate in Hz.
+    cutoff_hz : float, optional
+        Cut-off frequency (−3 dB of one pass) in Hz.
+    order : int, optional
+        Order of the Butterworth filter of one pass.
+    axis : int, optional
+        Time axis.
+
+    Returns
+    -------
+    numpy.ndarray
+        The filtered signal (same shape).
+
+    Raises
+    ------
+    ValueError
+        For a cut-off frequency outside 0 < f < fs/2.
+    ImportError
+        Without SciPy.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> fs = 10000.0
+    >>> t = np.arange(0, 2.0, 1 / fs)
+    >>> x = 10 * np.sqrt(2) * np.sin(2 * np.pi * 50 * t) + 30 * np.exp(-t / 0.8)     # 10 A at 50 Hz + decaying DC
+    >>> y = highpass(x, fs)
+    >>> bool(abs(np.median(y[5000:15000])) < 0.05), round(float(np.sqrt(np.mean(y[5000:15000] ** 2))), 3)
+    (True, 10.0)
+    """
+    fc = float(cutoff_hz)
+    if not (math.isfinite(fc) and 0.0 < fc < 0.5 * float(fs)):
+        raise ValueError(tr("dsp.highpass_cutoff", fs=0.5 * float(fs), value=cutoff_hz))
+    if _sps is None:  # pragma: no cover
+        raise ImportError(tr("dsp.highpass_scipy"))
+    a = np.asarray(x, dtype=np.float64)
+    if a.shape[axis] < 2:
+        return a.copy()
+    sos = _sps.butter(int(order), fc, btype="highpass", fs=float(fs), output="sos")
+    m = np.moveaxis(a, axis, 0).copy()
+    flat = m.reshape(m.shape[0], -1)
+    nan = ~np.isfinite(flat)
+    n = flat.shape[0]
+    idx = np.arange(n)
+    for j in np.nonzero(nan.any(axis=0))[0]:            # bridge NaN for the filter (linear), restored below
+        ok = ~nan[:, j]
+        flat[:, j] = np.interp(idx, idx[ok], flat[ok, j]) if ok.any() else 0.0
+    padlen = int(min(n - 1, round(3.0 * float(fs) / fc)))
+    out = _sps.sosfiltfilt(sos, flat, axis=0, padtype="even", padlen=padlen)
+    out[nan] = np.nan
+    return np.moveaxis(out.reshape(m.shape), 0, axis)
 
 
 def true_rms(x0: np.ndarray, axis: int = -1) -> np.ndarray:

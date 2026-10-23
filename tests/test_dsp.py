@@ -184,3 +184,26 @@ def test_message_catalog_complete():
     """Every message of the signal processing exists in English and German."""
     for lang in ("en", "de"):
         assert [m for m in i18n.missing_keys(lang) if m.startswith("dsp.")] == []
+
+
+def test_highpass_removes_offset_and_drift_keeps_the_harmonics():
+    """Zero-phase high-pass: a decaying offset and a constant clamp offset vanish, the 50 Hz and 250 Hz phasors stay
+    (magnitude and phase), NaN stays NaN, several channels at once; a cut-off outside 0 … fs/2 is refused."""
+    fs = 10000.0
+    t = np.arange(0, 3.0, 1 / fs)
+    ac = 30 * np.sqrt(2) * np.cos(2 * np.pi * 50 * t + 0.4) + 4 * np.sqrt(2) * np.cos(2 * np.pi * 250 * t)
+    x = np.column_stack([ac - 26.0 * np.exp(-t / 2.0), ac + 7.0])
+    x[100:110, 1] = np.nan
+    y = dsp.highpass(x, fs, 5.0, axis=0)
+    assert y.shape == x.shape and np.isnan(y[100:110, 1]).all() and np.isfinite(y[:, 0]).all()
+    sl = slice(int(1.0 * fs), int(1.2 * fs))
+    for j in range(2):
+        X, rms = dsp.window_phasors(y[sl, j], fs, [50.0, 250.0], "hann", "none")
+        ref, _ = dsp.window_phasors(ac[sl], fs, [50.0, 250.0], "hann", "none")
+        assert abs(np.median(y[sl, j])) < 0.05
+        assert np.allclose(np.abs(X), np.abs(ref), rtol=1e-4) and np.allclose(np.angle(X), np.angle(ref), atol=1e-4)
+        assert rms == pytest.approx(math.hypot(30.0, 4.0), rel=1e-3)
+    for bad in (0.0, -1.0, 6000.0, float("nan")):
+        with pytest.raises(ValueError):
+            dsp.highpass(x, fs, bad)
+    assert "highpass" in dsp.DC_FILTERS and "highpass" not in dsp.DC_METHODS

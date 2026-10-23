@@ -1,0 +1,3 @@
+# `groundfault.document`
+
+::: groundfault.document

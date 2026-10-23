@@ -4,6 +4,135 @@ All notable changes to groundfault are documented in this file. The format is ba
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and groundfault adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-10-23
+
+A minor version with a new module for the Word report of a campaign (`groundfault.document`, optional with the extra
+`export`) and the building blocks it uses. The assessment values of the equivalent sources can take the voltage margin
+m_U as the scaling of a single test does (new argument `uncertainty_U`, default 0 – the results of 3.2 are unchanged).
+
+### Added
+
+- **Word report of a campaign** (`groundfault.document`, needs python-docx): `campaign_report(results, …)` writes the
+  report from the result files and the objects of the campaign evaluation – every number computed, the formulas with
+  the values inserted.
+  - Title page, key results against the limits of the user (the decisive value marked), contents, *1 Set-up and
+    procedure* (tests with place, additional impedance, fault inception and duration from the recordings, measured
+    quantities and transducers, corrections of the measuring chain), *2 Results* (measurement uncertainty, processing,
+    waveforms, the spectrum with all orders above a threshold grouped by sequence, split of the fundamental and coil
+    currents, earth potential rise per station with the earthing measurement, reduction factor and LV network, the
+    power-quality measurement and the voltages of the tests), *3 Assessment* (processing of the residual current in
+    three steps, equivalent-source method and what it means for the forecast, touch voltage per station, uncertainties,
+    summary) and the appendices *data of the recordings*, *plausibility checks* and *symbols*. Sections without data
+    are left out or say so.
+  - `ReportInfo`: title page and texts (network, places, authors, recorder, transducers – without them the table of
+    measured quantities has no column for them –, own names of measured quantities `quantity_labels`, accuracy of the
+    measuring chain, the display of the coil controller `coil_controller` – coil currents, detuning, active current;
+    its I_CE, given or I_L/(1 + v), is compared with the measured values –, limit of the network, decisive value
+    `assessment` = `"Z_E"`, `"busbar"` or `"auto"`, where Z_E comes from `Z_E_basis`, reference frequency and flat
+    reduction factor of the touch voltage, `station_detail="compact"` for a station shown for information,
+    recommendation). Names of the network, places, persons and the organisation appear only as given.
+  - **Limits with their conditions** (`limit_cases`): every limit is assessed at the largest earthing impedance of its
+    case – I_RES,ass(Z_E) from the equivalent sources against the limit and U_E = r·I_RES,ass·Z_E against F·U_Tp – in
+    a table, the key results and the summary; the figure of I_RES over Z_E marks on the line of a limit the Z_E of
+    its condition and adds the assessment value.
+  - **Context** where a reader would ask: the factors of the scaling classified by the percentile of the tests and the
+    median of the dominant order on the weekday of the tests and over the week; a station with a larger harmonic
+    current than the busbar test explained by its larger voltage before the fault (active two-terminal network,
+    current per volt); much larger even orders of one test and their decay in the steady state; a change of the
+    reactive current between the tests at an equal active current – with the coil current balance of the single
+    evaluations (ΔIv/ΔΣI_L ≈ 1) attributed to an adjustment of the coils during the fault; the orders that change by
+    more than 20 % over the windows of the steady state (table of uncertainties); the step from the measured to the
+    scaled residual current at Z_E. The waveforms are drawn without the DC component, as evaluated (`report.instantaneous(…, remove_dc=True)`).
+  - **Word equations**: the displayed formulas are Office Math objects (editable in the equation editor of Word) –
+    indices, exponents, roots, sums, delimiters, functions; words between them stay normal text (`equations=False`:
+    text). `document.omml` converts a formula of the report mark-up.
+  - **Layout of a scientific report**, also on top of a template: the body text justified in a style of its own
+    (`styles["body"]`, default “Body Text”, created if the template has none – with 6 pt between the paragraphs if
+    the template sets no spacing), widow and orphan control, automatic hyphenation and the language of the report
+    (de-DE/en-GB) for spelling and hyphenation; lists indented (bullet or number at 0.63 cm, text at 1.27 cm) with
+    the list styles of the template or a numbering of their own (`styles["list_paragraph"]`), every numbered list
+    starting at 1; captions centred in the size of the body text; a blank line between a displayed formula, a figure
+    or a table and the text. **Footnotes**: sources and side remarks of the texts are footnotes (formats and
+    standards, the software, the source of the accuracies, the earthing measurement, the errors of the Monte Carlo
+    simulation, the leave-one-out, where Z_E comes from); the mark-up `[^text of the note^]` makes a footnote in
+    every text of the report, also in the texts of `ReportInfo`.
+  - Placeholders for the photos on site (framed, with caption) and for the recommendation (highlighted); photos from
+    the media folder of the campaign (`photos`). English or German (`language`). The template of an organisation
+    (`template`: styles, headers, footers, logo; `styles` maps the style names; `make_template` turns an earlier report
+    into a template). Numbered headings, captions and contents as Word fields, updated when Word opens the file;
+    `to_pdf` with LibreOffice. A report that was edited since it was written (saved in Word) is not overwritten but
+    kept as `<name>_<date>_<time>.docx`.
+  - The raw recordings of the campaign folder are evaluated again for waveforms, trends, fault inception and
+    clearance and as a check of the result files. Every test is scaled with the PQ measurement of the campaign
+    (consistent within the report, whatever the single evaluation used). `touch_voltage_cases`: the touch voltage of a
+    station by four approaches – the limit current with r = 1 and with a flat r, per frequency with r·Z_E of the test
+    and the assessment current per order, the measured earth potential rise and its extrapolation to the limit current
+    – and the measured touch voltage of a probe. The table of uncertainties: measuring chain, steady state of the
+    fault, differences between the tests, model of the equivalent sources (Monte Carlo, leave-one-out), sample of the
+    PQ measurement (bootstrap over days), method of the scaling, range of the equivalent sources. The plausibility
+    appendix adds the checks of the report: I_w² + I_v² = I_G², I_RES² = I_G² + I_H² + I_lf², the same PQ settings and
+    margins in the single evaluations and the report, the reproduction from the raw data, the equivalent sources at the
+    impedances of the tests, their residual and leave-one-out per order, a touch-voltage probe above the earth
+    potential rise and the validity of the PQ measurement.
+  - The key results give the section of every value. The symbols keep the residual current with the scaled harmonic
+    content (I_RES,max) apart from the assessment value with the margins (I_RES,ass – of a test or at Z_E); the
+    voltages of the scaling (quantile of the largest phase, sequence component of the test, source voltage) are
+    defined where they are used. The station sections name the probe and the method (direct, fault-related, probe
+    maximum) of every value and list the notes of the earthing comparison.
+- Campaign notebook: section 8 *Report (Word)* with `REPORT`, `PHOTOS`, `REPORT_TEMPLATE`, `REPORT_STYLES` and
+  `REPORT_PDF`; `UNCERTAINTY_U` (margin of the voltages for I_RES at Z_E, as in the measurement notebook).
+- `evaluation.rescale_harmonics`: the harmonic currents of an evaluated recording scaled to other PQ quantiles and
+  another factor without a new evaluation (the same rules per order; with the settings of the evaluation it gives the
+  stored values).
+- `PQAssessment.quantile_bootstrap`: the spread of the quantiles from the limited duration of the measurement (block
+  bootstrap over days). `PQAssessment.window_factors`: the factor every shorter window of a measurement would have
+  needed to reach its quantile (sub-window analysis) – with a measurement over a year a way to derive the factor of a
+  rule {minimum days: factor} from own data. `PQAssessment.scaling_methods`: I_RES at Z_E without scaling, per order, as the quantile of
+  the time series and with the THD factor side by side, with the margins.
+- `equivalent_source.ires_at_impedance` and `ires_over_time`: `uncertainty_U` – in the scaled assessment values an
+  order scaled with a measured voltage takes k_m/(1 − m_U), as in the scaling of a single test – and
+  `IH_scaled_assessed`; margins outside 0 ≤ m < 1 raise a ValueError. `monte_carlo` returns the fundamental it used
+  (`IG`) and its errors (`settings`), `loo_table` keeps its limits in `attrs`.
+- Figure `report.touch_voltage_cases` (bars of the approaches with U_Tp).
+- **High-pass against the DC component** (`Settings(dc="highpass")`, cut-off `dc_cutoff_hz`, default 5 Hz;
+  `dsp.highpass`): a zero-phase Butterworth high-pass on every interval before the windows, then the median per
+  window – removes also a slowly decaying offset (clamps); the harmonics are the same as with the median per window.
+  The check of the low-frequency part then sees the filtered window. The default stays the median per window; the
+  measurement notebooks set `dc="highpass"` in `SETTINGS`.
+- **Measuring periods of a PQ measurement** (`PQData.periods`, `PQAssessment.periods`, `PERIOD_GAP_DAYS`): exports of
+  different seasons are periods between gaps of at least a day; per period the quantile with the definition of
+  `assess`, a hint with the quantile of the dominant order per period. The Word report names the periods, compares the
+  assessment voltage with the highest period and shows I_RES(Z_E) scaled with each period alone in its table of
+  uncertainties; the key results give the covered days and the number of periods.
+- Documentation: the page *Word report of a campaign* of the user guide (step by step from the result files to the
+  report, its layout) and its API reference; the bootstrap, the
+  rescaling, the measuring periods and how to check the factor of a rule with further measurements of the same busbar
+  in *Power-quality measurements*.
+
+### Changed
+
+- Campaign notebook: the comparison of the scaling methods uses `PQAssessment.scaling_methods` with `UNCERTAINTY_I`
+  and `UNCERTAINTY_U`; the demo evaluation passes `UNCERTAINTY_U` as well.
+- `campaign.consistency`: the span of I_G and U0 with its unit; the comment states the outcome (as expected, or what a
+  large span points to) and is specific to I_G and U0.
+- Plausibility check of the pre-fault current: the comment says what is expected and what a larger value points to
+  (before it read like a statement about the measured value); the report shows comments of earlier result files in
+  this wording.
+- Leave-one-out (notebook and `loo_table`): a large deviation is a hint that the network or the sources changed between
+  the tests (before: “the network changed”).
+- Report figures: a legend above the axes takes fewer columns when its labels would not fit into the figure.
+- `report.ires_over_ze`: `limit_ranges` (a mark on a limit line at the largest earthing impedance of its
+  condition), `Z_E` (vertical line) and `margins` (curve of the assessment value).
+- `pq.assess`: with shorter values in the export (e.g. 30 s) the criterion of an earth fault or dip
+  (`fault_threshold`) is applied to them as well – an earth fault of a few seconds hardly changes the 10-min value of
+  the fundamental but distorts the 10-min harmonic values; the interval that contains it is left out (hint).
+- `report.pq_series`: no line across a gap of the measurement (e.g. between two periods).
+
+### Fixed
+
+- Campaign notebook: the Monte Carlo band of I_RES at Z_E is computed with `IG_CHOICE` – before always with the
+  largest measured fundamental, so that with `IG_CHOICE = "median"` the band could lie above the value printed at Z_E.
+
 ## [3.2.0] - 2026-10-21
 
 A minor version with a new module for power-quality measurements and corrected rules for the scaling to a

@@ -34,7 +34,7 @@ There are two ways of working, and they give the same results:
      overview and consistency → equivalent-source method → residual current at Z_E
      → resistive approach → stations → report tables and figures              ──→  groundmeas entries
             │
-  4  report (Word/PDF) with the exported figures and tables
+  4  report (Word/PDF): written by the campaign notebook, photos and recommendation added in Word
 ```
 
 | Step | What you do | Where | Page |
@@ -49,6 +49,7 @@ There are two ways of working, and they give the same results:
 | 8 | Optional checks: network frequency, RMS values of the recorder, resonance curve | section 6 | [Notebooks](notebooks.md) |
 | 9 | Export the result file, tables, figures and the explorer; enter the test in groundmeas | section 7 | [Reports and exports](report.md), [Earthing measurements](earthing.md) |
 | 10 | Campaign: overview, consistency, equivalent sources, residual current at Z_E, report tables | campaign notebook | [Campaign evaluation](campaign.md) |
+| 11 | Word report of the campaign; insert the photos on site and the recommendation | campaign notebook, section 8 | [Word report of a campaign](document.md) |
 
 Steps 3 to 9 are repeated for every recording. The campaign notebook does not read the raw data again; it works with
 the result files of step 9.
@@ -71,6 +72,7 @@ the result files of step 9.
   file.
 * [Corrections of the measuring chain](corrections.md) – the corrections file and its Python interface.
 * [Reports and exports](report.md) – figures, tables and interactive figures.
+* [Word report of a campaign](document.md) – structure, configuration, templates, photos and what the numbers are.
 * [Language and folder layout](language.md) – English and German output, folder layouts, files of the predecessor
   tool.
 * [Troubleshooting](troubleshooting.md) – messages and what to do.

@@ -443,3 +443,29 @@ def test_alignment_keys_and_roles(demo_series, tmp_path):
     shifted = _shift(st, roles, dict(dt_s=0.01, roles=["i_schirm", "i_pen_v"]))
     assert shifted == _shift(st, roles, dict(dt_s=0.01, roles=["i_shield", "i_pen"])) == {roles.index("i_shield"): 100,
                                                                                           roles.index("i_pen"): 100}
+
+
+def test_highpass_removes_the_decaying_dc_component(tmp_path):
+    """Settings(dc="highpass"): an interval that starts early no longer puts the decaying DC component into I_RES
+    (median per window: +4 %), the check of the low-frequency part sees the filtered window; in a later interval both
+    methods agree; the result file records the method."""
+    w = demo.make_substation_recording(str(tmp_path / "dc.cfg"), 0.0, duration=8.0, active_step=None,
+                                       dc_offset=(150.0, 0.3))
+    rec = open_recording(str(tmp_path / "dc.cfg"))
+    early = Intervals((2.1, 5.8), (0.2, 1.8), (7.0, 7.8))
+    med, hp = evaluate(rec, early), evaluate(rec, early, Settings(dc="highpass"))
+    assert med.values["IRES"] > 1.03 * w["IRES"]
+    assert hp.values["IRES"] == pytest.approx(w["IRES"], rel=3e-3)
+    pr = hp.table("plausibility").set_index("check")
+    assert pr.at["Niederfrequenter Anteil I_RES (< f1/2)", "status"] == "OK"
+    assert hp.result_set["measurement"]["dc_method"] == "highpass"
+    assert hp.result_set["measurement"]["settings"]["dc_cutoff_hz"] == 5.0
+    late = Intervals((4.2, 5.8), (0.2, 1.8), (7.0, 7.8))
+    a, b = evaluate(rec, late), evaluate(rec, late, Settings(dc="highpass"))
+    assert b.values["IRES"] == pytest.approx(a.values["IRES"], rel=1e-3)
+    assert b.values["IG"] == pytest.approx(a.values["IG"], rel=1e-4)
+    for bad in (0.0, 20.0, -5.0):
+        with pytest.raises(ValueError):
+            evaluate(rec, late, Settings(dc="highpass", dc_cutoff_hz=bad))
+    with pytest.raises(ValueError):
+        evaluate(rec, late, Settings(dc="hochpass"))

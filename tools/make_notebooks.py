@@ -89,8 +89,9 @@ except ImportError:            ''' + t("# not installed: use the source folder o
 import numpy as np
 import pandas as pd
 from IPython.display import Markdown, display
-from groundfault import (campaign, corrections, demo, diagnostics, disturbances, earthing, equivalent_source,
-                         explorer, i18n, interactive, layout, legacy, pq, register, report, rms, sites, transformer)
+from groundfault import (campaign, corrections, demo, diagnostics, disturbances, document, earthing,
+                         equivalent_source, explorer, i18n, interactive, layout, legacy, pq, register, report, rms, sites,
+                         transformer)
 
 i18n.set_language(LANGUAGE)
 ''' + t("# work folder = this folder or the first folder above it with a campaigns folder (\"campaigns\" or\n"
@@ -260,6 +261,7 @@ PQ_QUANTILE       = 0.95    # quantile of the 10-min values
 SETTINGS = gf.Settings(
     T_win=0.200,                 # window length in s (step = window length)
     harmonics=(1, 3, 5, 7),      # orders of the assessment quantities
+    dc="highpass",               # DC component: zero-phase high-pass (dc_cutoff_hz=5.0) before the windows, or "median" per window
     uncertainty_I=UNCERTAINTY_I,  # increases currents
     uncertainty_U=UNCERTAINTY_U,  # decreases voltages
     u_thd95_percent=None,        # 95 % quantile of the THD (line-to-line) of a PQ measurement in % (None = no scaling; with PQ_FILES from the measurement)
@@ -329,6 +331,7 @@ PQ_QUANTILE       = 0.95    # Quantil der 10-min-Werte
 SETTINGS = gf.Settings(
     T_win=0.200,                 # Fensterlänge in s (Schrittweite = Fensterlänge)
     harmonics=(1, 3, 5, 7),      # Ordnungen der Bewertungsgrößen
+    dc="highpass",               # Gleichanteil: phasenfreier Hochpass (dc_cutoff_hz=5.0) vor den Fenstern, oder "median" je Fenster
     uncertainty_I=UNCERTAINTY_I,  # vergrößert die Ströme
     uncertainty_U=UNCERTAINTY_U,  # verkleinert die Spannungen
     u_thd95_percent=None,        # 95-%-Quantil des THD (L-L) einer PQ-Messung in % (None = keine Skalierung; mit PQ_FILES aus der Messung)
@@ -1004,6 +1007,12 @@ MEASUREMENTS = [
                                         "# Demo-Wert: Erdungsimpedanz in Ω, an der I_RES berechnet wird")
         pq_files = t('''["raw/PQ/SUB_PQ_export.csv"]   # demo: PQ export of the demo busbar (written with the demo campaign)''',
                      '''["1_Rohdaten/PQ/UW_PQ_Export.csv"]   # Demo: PQ-Export der Demo-Sammelschiene (mit der Demo-Kampagne angelegt)''')
+        report = t('''dict(network="20 kV network of the demo substation",   # demo: invented names
+              authors=["Demo author"],
+              places={"SUB": "Demo substation", "Station_Elm_Road": "Station Elm Road"})''',
+                   '''dict(network="20-kV-Netz des Demo-Umspannwerks",       # Demo: erfundene Namen
+              authors=["Demo-Bearbeitung"],
+              places={"UW": "Demo-Umspannwerk", "Station_Elm_Road": "Station Elm Road"})''')
     else:
         conf = t('''CAMPAIGN = "YYYY-MM-DD_Place"
 DEMO     = False
@@ -1030,6 +1039,32 @@ MEASUREMENTS = [
                                         "# Erdungsimpedanz in Ω, an der I_RES berechnet wird – Wert des eigenen Netzes (None = nicht gesetzt)")
         pq_files = t('''None               # export(s) of a PQ instrument at the busbar, e.g. ["…/Export.csv"] (relative to the campaign folder or absolute)''',
                      '''None               # Export(e) eines PQ-Messgeräts an der Sammelschiene, z. B. ["…/Export.csv"] (relativ zum Kampagnenordner oder absolut)''')
+        report = t('''dict(network="",     # line under the title, e.g. "20 kV network of substation …"
+              authors=[],     # names on the title page
+              places={})      # name of every site in the text, e.g. {"SUB": "Substation …", "<station folder>": "…"}''',
+                   '''dict(network="",     # Zeile unter dem Titel, z. B. "20-kV-Netzbereich UW …"
+              authors=[],     # Namen auf der Titelseite
+              places={})      # Name jedes Messorts im Text, z. B. {"UW": "Umspannwerk …", "<Stationsordner>": "…"}''')
+    report_conf_en = '''
+
+# ---------------------------------------------------------------- report (Word, section 8)
+# Title page and texts (keys of groundfault.document.ReportInfo; None = no report). Names of the network, places and
+# persons appear only as you give them here; limits, U_Tp, F and margins are those of this configuration.
+REPORT = ''' + report + '''
+PHOTOS = {}                        # photos on site in <media>: {"setup_impedance": …, "recorder": …, "station": …} (missing: placeholder)
+REPORT_TEMPLATE = None             # Word file of your organisation (styles, header and footer, logo), e.g. made with document.make_template
+REPORT_STYLES = None               # style names of the template, e.g. {"title": "…", "subtitle": "…", "table": "…"}
+REPORT_PDF = False                 # also write a PDF with LibreOffice (if installed)'''
+    report_conf_de = '''
+
+# ---------------------------------------------------------------- Bericht (Word, Abschnitt 8)
+# Titelseite und Texte (Schlüssel von groundfault.document.ReportInfo; None = kein Bericht). Namen von Netz, Orten und
+# Personen erscheinen nur so, wie sie hier stehen; Grenzwerte, U_Tp, F und Zuschläge sind die dieser Konfiguration.
+REPORT = ''' + report + '''
+PHOTOS = {}                        # Fotos vor Ort in <Medien>: {"setup_impedance": …, "recorder": …, "station": …} (fehlt: Platzhalter)
+REPORT_TEMPLATE = None             # Word-Datei der eigenen Organisation (Formatvorlagen, Kopf-/Fußzeile, Logo), z. B. mit document.make_template
+REPORT_STYLES = None               # Namen der Formatvorlagen der Vorlage, z. B. {"title": "…", "subtitle": "…", "table": "…"}
+REPORT_PDF = False                 # zusätzlich ein PDF mit LibreOffice schreiben (falls installiert)'''
     conf += t('''
 # optional per measurement: location="…" (exact location name in groundmeas, otherwise from the sites file or the
 # site), description="…" (text before the automatic groundmeas description), timestamp="YYYY-MM-DD hh:mm:ss" (UTC,
@@ -1060,6 +1095,7 @@ data are not read again. Reference copy: `templates/evaluate_campaign_DEFAULT.ip
    currents – current into the **LV network** and Z_E,LV with the parallel check.
 5. **Report tables** and **figures** – export to `<results>/campaign` and `<figures>/campaign`.
 6. **groundmeas** – enter all measurements of the campaign as staged fault tests (dry run, then on request).
+7. **Report** as a Word file (`REPORT`) with placeholders for the photos on site – in `<report>`.
 ''', '''
 # Messkampagne auswerten – Übersicht, Ersatzquellenverfahren, Berichtstabellen
 
@@ -1081,6 +1117,7 @@ die Rohdaten werden nicht erneut gelesen. Ausgangsfassung: `Vorlagen/Kampagne_au
    Strom ins **Ortsnetz** und Z_E,Ortsnetz mit Parallelschaltungsprüfung.
 5. **Berichtstabellen** und **Abbildungen** – Export nach `2_Auswertung/Kampagne` und `3_Abbildungen/Kampagne`.
 6. **groundmeas** – alle Messungen der Kampagne als Erdschlussmessungen eintragen (Trockenlauf, dann auf Wunsch).
+7. **Bericht** als Word-Datei (`REPORT`) mit Platzhaltern für die Fotos vor Ort – in `4_Bericht`.
 ''')),
         code(setup(lang)),
         md(t("## 1 · Configuration", "## 1 · Konfiguration")),
@@ -1118,6 +1155,7 @@ U_TP              = None    # permissible touch voltage U_Tp in V (resistive app
 F_FACTOR          = None    # factor F of the permissible earth potential rise F·U_Tp (as U_TP)
 REFERENCE_CURRENT = None    # reference current in A for the reduction factor (None = largest limit of the result file)
 UNCERTAINTY_I     = 0.0     # measurement-uncertainty margin m_I of currents for I_RES at Z_E: I·(1 + m_I) (0.0 = none)
+UNCERTAINTY_U     = 0.0     # … m_U of voltages: an order scaled with a measured voltage takes k_m/(1 − m_U) (0.0 = none)
 LOO_LIMIT_PCT     = None    # leave-one-out check: permissible deviation in % of every test from the model of the others (None = without assessment)
 LOO_LIMIT_A       = None    # … and in A, for the small currents of the higher orders (within one of the two = passed; None = not used)
 PQ_SAFETY_FACTOR  = 1.0     # factor on the 95 % quantiles of the PQ measurement (1.0 = none)
@@ -1137,7 +1175,7 @@ RESISTIVE = dict(U_thd95_V=None,   # harmonic voltage (95 %) in V (None = skip)
                  r=1.0,            # reduction factor; r < 1: r·R_E acts in the fault circuit
                  I_res_max=None)   # permissible residual current in A (None = F_FACTOR·U_TP/(r·R_E_max))
 
-EXPORT_FORMATS = ("pdf", "svg", "png")''', '''
+EXPORT_FORMATS = ("pdf", "svg", "png")''' + report_conf_en, '''
 
 # ---------------------------------------------------------------- Ersatzquellenverfahren
 ORDERS        = "auto"             # "auto" = ungerade Ordnungen mit ≥ 0,5 A in ≥ 2 Messungen, sonst z. B. [3, 5, 7, 11, 13]
@@ -1171,6 +1209,7 @@ U_TP              = None    # zulässige Berührungsspannung U_Tp in V (resistiv
 F_FACTOR          = None    # Faktor F der zulässigen Erdungsspannung F·U_Tp (wie U_TP)
 REFERENCE_CURRENT = None    # Bezugsstrom in A für den Reduktionsfaktor (None = größter Grenzwert der Ergebnisdatei)
 UNCERTAINTY_I     = 0.0     # Messunsicherheitszuschlag m_I der Ströme für I_RES an Z_E: I·(1 + m_I) (0.0 = keiner)
+UNCERTAINTY_U     = 0.0     # … m_U der Spannungen: eine mit gemessener Spannung skalierte Ordnung erhält k_m/(1 − m_U) (0.0 = keiner)
 LOO_LIMIT_PCT     = None    # Leave-one-out-Prüfung: zulässige Abweichung in % jedes Versuchs vom Modell der übrigen (None = ohne Bewertung)
 LOO_LIMIT_A       = None    # … und in A, für die kleinen Ströme der höheren Ordnungen (innerhalb einer der beiden = erfüllt; None = nicht genutzt)
 PQ_SAFETY_FACTOR  = 1.0     # Faktor auf die 95-%-Quantile der PQ-Messung (1.0 = keiner)
@@ -1190,7 +1229,7 @@ RESISTIVE = dict(U_thd95_V=None,   # Oberschwingungsspannung 95 % in V (None = �
                  r=1.0,            # Reduktionsfaktor; r < 1: im Fehlerkreis wirkt r·R_E
                  I_res_max=None)   # zulässiger Erdschlussreststrom in A (None = F_FACTOR·U_TP/(r·R_E_max))
 
-EXPORT_FORMATS = ("pdf", "svg", "png")''')),
+EXPORT_FORMATS = ("pdf", "svg", "png")''' + report_conf_de)),
         md(t("## 2 · Load the results – overview and consistency", "## 2 · Ergebnisse laden – Übersicht und Konsistenz")),
         code('''CAMPAIGN_FOLDER = WORK_FOLDER / LAYOUT.campaigns / CAMPAIGN
 for m in MEASUREMENTS:                 ''' + t("# known keys only (a misspelt or former key would be ignored)",
@@ -1222,7 +1261,8 @@ if DEMO:                               ''' + t("# demo: create the campaign and 
             roles_ = gf.detect_roles(rec_.channel_names, rec_.units, CORR.role_overrides(rec_), CORR.main_channel(rec_),
                                      CORR.distances(rec_))
             r_ = gf.evaluate(rec_, gf.Intervals(*(tuple(b[k]) for k in ("steady_state", "pre_fault", "post_fault"))),
-                             gf.Settings(uncertainty_I=UNCERTAINTY_I, ires_limits=LIMITS, u_tp=U_TP, f_factor=F_FACTOR),
+                             gf.Settings(uncertainty_I=UNCERTAINTY_I, uncertainty_U=UNCERTAINTY_U, ires_limits=LIMITS,
+                                         u_tp=U_TP, f_factor=F_FACTOR),
                              roles=roles_, z_fault_ohm=m["Z"])
             r_.save_json(LAYOUT.result_path(CAMPAIGN_FOLDER, m["measurement"]))
 RESULTS = {}
@@ -1349,14 +1389,14 @@ else:
                                                "**Ergebnis ({}): Modell gegen Messung je Versuch, Jackknife an Z_E**") + '''",
                                       SOURCE_TEXT[MAIN.settings["source"]])))
     show(MAIN.forecast_table())
-    display(Markdown("''' + t("**Leave-one-out: every test from the model of the other tests** (a large deviation: the network changed between the tests)",
-                              "**Leave-one-out: jeder Versuch aus dem Modell der übrigen** (große Abweichung: das Netz hat sich zwischen den Versuchen geändert)") + '''"))
+    display(Markdown("''' + t("**Leave-one-out: every test from the model of the other tests** (a large deviation: the network or the sources changed between the tests)",
+                              "**Leave-one-out: jeder Versuch aus dem Modell der übrigen** (große Abweichung: Netz oder Quellen haben sich zwischen den Versuchen geändert)") + '''"))
     LOO = MAIN.loo_table(LOO_LIMIT_PCT, LOO_LIMIT_A)
     show(LOO)
     BAD = LOO["within_limit"].eq(False) if "within_limit" in LOO else LOO["order"].isna()   ''' + t("# None: not determinable", "# None: nicht bestimmbar") + '''
     if BAD.any():
-        print(i18n.format_text("''' + t("⚠ Leave-one-out: {} of {} values outside the permissible deviation ({}) – the network changed between the tests",
-                                         "⚠ Leave-one-out: {} von {} Werten außerhalb der zulässigen Abweichung ({}) – das Netz hat sich zwischen den Versuchen geändert") + '''",
+        print(i18n.format_text("''' + t("⚠ Leave-one-out: {} of {} values outside the permissible deviation ({}) – a hint that the network or the sources changed between the tests",
+                                         "⚠ Leave-one-out: {} von {} Werten außerhalb der zulässigen Abweichung ({}) – ein Hinweis auf eine Änderung von Netz oder Quellen zwischen den Versuchen") + '''",
                                int(BAD.sum()), int(LOO["within_limit"].notna().sum()),
                                " / ".join(i18n.format_text(f, v) for f, v in (("±{:g} %", LOO_LIMIT_PCT), ("±{:g} A", LOO_LIMIT_A)) if v is not None)))
     if Z_E is not None:
@@ -1368,7 +1408,7 @@ else:
         print("''' + t("ℹ Jackknife and Monte Carlo at Z_E skipped – Z_E is not set (section 1).",
                        "ℹ Jackknife und Monte Carlo an Z_E übersprungen – Z_E ist nicht gesetzt (Abschnitt 1).") + '''")
     else:
-        MC = equivalent_source.monte_carlo(MAIN, Z_E, n=2000)
+        MC = equivalent_source.monte_carlo(MAIN, Z_E, n=2000, IG=IG_CHOICE)
         print(i18n.format_text("''' + t("Monte Carlo (1 %/0.5° current, 2 % Z, model residual): I_RES(Z_E = {:g} Ω) P5 … P95 = {:.1f} … {:.1f} A (median {:.1f} A)",
                                          "Monte Carlo (1 %/0,5° Strom, 2 % Z, Modellresiduum): I_RES(Z_E = {:g} Ω) P5 … P95 = {:.1f} … {:.1f} A (Median {:.1f} A)") + '''",
                                Z_E, MC["IRES"][5], MC["IRES"][95], MC["IRES"][50]))
@@ -1466,8 +1506,9 @@ if MAIN is not None:
         print("''' + t("ℹ Residual current at Z_E skipped – Z_E is not set (section 1); the figure shows I_RES over Z_E.",
                        "ℹ Reststrom an Z_E übersprungen – Z_E ist nicht gesetzt (Abschnitt 1); das Diagramm zeigt I_RES über Z_E.") + '''")
     else:
-        r = equivalent_source.ires_at_impedance(MAIN, Z_E, IG=IG_CHOICE, uncertainty_I=UNCERTAINTY_I, **(SCALING or {}))
-        margin = UNCERTAINTY_I > 0             ''' + t("# the value with the margin only if you set one", "# den Wert mit Zuschlag nur, wenn einer gesetzt ist") + '''
+        r = equivalent_source.ires_at_impedance(MAIN, Z_E, IG=IG_CHOICE, uncertainty_I=UNCERTAINTY_I,
+                                                uncertainty_U=UNCERTAINTY_U, **(SCALING or {}))
+        margin = UNCERTAINTY_I > 0 or UNCERTAINTY_U > 0   ''' + t("# the value with the margin only if you set one", "# den Wert mit Zuschlag nur, wenn einer gesetzt ist") + '''
         print(i18n.format_text("{}: I_G = {:.2f} A | I_H(Z_E) = {:.2f} A (''' + t("rest", "davon Rest") + ''' {:.2f} A) | I_RES(Z_E = {:g} Ω) = {:.2f} A",
                                SOURCE_TEXT[MAIN.settings["source"]], r["IG"], r["IH"], r["IH_rest"], Z_E, r["IRES"])
               + (i18n.format_text(" | ''' + t("with the measurement-uncertainty margin", "mit Messunsicherheitszuschlag") + ''': {:.2f} A", r["IRES_assessed"]) if margin else ""))
@@ -1534,36 +1575,16 @@ Ordnung.
 '''))),
         keyed("pq-comparison", code('''PQ_SCALING = None
 if PQ is not None and PQ.valid and MAIN is not None and Z_E is not None and SCALING:
-    kw = dict(IG=IG_CHOICE, uncertainty_I=UNCERTAINTY_I)
-    rows = []
-    r0 = equivalent_source.ires_at_impedance(MAIN, Z_E, **kw)
-    rows.append(("''' + t("without scaling", "ohne Skalierung") + '''", r0["IH"], r0["IRES"], r0["IRES_assessed"]))
-    r1 = equivalent_source.ires_at_impedance(MAIN, Z_E, **kw, **SCALING)
-    rows.append(("''' + t("quantile per order (result)", "Quantil je Ordnung (Ergebnis)") + '''", r1["IH_scaled"], r1["IRES_scaled"],
-                 r1["IRES_scaled_assessed"]))
-    V = pd.DataFrame({m: PQ.largest(m) for m in PQ.data.orders if m >= 2})   ''' + t("# every order of the PQ measurement (model and remainder)",
-                                                                              "# jede Ordnung der PQ-Messung (Modell und Rest)") + '''
-    loops = [c for c in pq.PHASES_LL if c in PQ.data.thd.columns]
-    ts = equivalent_source.ires_over_time(MAIN, Z_E, V, u95_reference=SCALING.get("u95_reference", "seq"),
-                                          thd_percent=PQ.data.thd[loops].max(axis=1) if loops and "thd_measured_percent" in SCALING else None,
-                                          thd_measured_percent=SCALING.get("thd_measured_percent"), safety_factor=PQ.factor, **kw)
-    rows.append((i18n.format_text("''' + t("quantile {:g} of the time series I_RES(t)", "Quantil {:g} der Zeitreihe I_RES(t)") + '''", PQ_QUANTILE),
-                 ts["IH"].quantile(PQ_QUANTILE), ts["IRES"].quantile(PQ_QUANTILE), ts["IRES_assessed"].quantile(PQ_QUANTILE)))
-    if "thd_measured_percent" in SCALING:
-        r2 = equivalent_source.ires_at_impedance(MAIN, Z_E, **kw, thd95_percent=PQ.thd95(),
-                                                 thd_measured_percent=SCALING["thd_measured_percent"], safety_factor=PQ.factor)
-        rows.append(("''' + t("THD factor (without values per order)", "THD-Faktor (ohne Werte je Ordnung)") + '''", r2["IH_scaled"], r2["IRES_scaled"],
-                     r2["IRES_scaled_assessed"]))
-    PQ_SCALING = pd.DataFrame(rows, columns=["method", "IH_A", "IRES_A", "IRES_assessed_A"])
-    display(Markdown(i18n.format_text("''' + t("**Residual current at Z_E = {:g} Ω with the PQ measurement** (quantile {:g}, factor {:g}; assessed = with UNCERTAINTY_I)",
-                                               "**Erdschlussreststrom an Z_E = {:g} Ω mit der PQ-Messung** (Quantil {:g}, Faktor {:g}; Bewertung = mit UNCERTAINTY_I)") + '''",
+    PQ_SCALING = PQ.scaling_methods(MAIN, Z_E, IG=IG_CHOICE, uncertainty_I=UNCERTAINTY_I, uncertainty_U=UNCERTAINTY_U,
+                                    scaling=SCALING)
+    display(Markdown(i18n.format_text("''' + t("**Residual current at Z_E = {:g} Ω with the PQ measurement** (quantile {:g}, factor {:g}; assessed = with UNCERTAINTY_I and UNCERTAINTY_U)",
+                                               "**Erdschlussreststrom an Z_E = {:g} Ω mit der PQ-Messung** (Quantil {:g}, Faktor {:g}; Bewertung = mit UNCERTAINTY_I und UNCERTAINTY_U)") + '''",
                                       Z_E, PQ_QUANTILE, PQ.factor)))
     show(PQ_SCALING)
-    for h in ts.attrs.get("hints", []):
-        if h not in r1["hints"]:
-            print("ℹ", h)
+    for h in PQ_SCALING.attrs.get("hints", []):
+        print("ℹ", h)
     for limit in LIMITS:
-        over = [r[0] for r in rows if r[3] > limit]
+        over = PQ_SCALING.loc[PQ_SCALING["IRES_assessed_A"] > limit, "method"]
         print(i18n.format_text("I_RES ''' + t("above", "über") + ''' {:g} A: ", limit) + (", ".join(over) or "–"))
 elif PQ is not None and not PQ.valid:
     print("''' + t("ℹ No PQ scaling at Z_E – the PQ measurement is not valid for the assessment (section 4, PQ).",
@@ -1795,6 +1816,54 @@ if PLANS:
     elif any(p["writable"] for p in PLANS.values()):
         print("''' + t("Dry run – enter with GROUNDMEAS_EXPORT = True (values per measurement: earthing.plan_items(PLANS[name])).",
                        "Trockenlauf – eintragen mit GROUNDMEAS_EXPORT = True (Werte je Messung: earthing.plan_items(PLANS[name])).") + '''")'''),
+        keyed("report-text", md(t('''
+## 8 · Report (Word)
+
+The report of the campaign as a Word file in `<report>`: title page, key results, contents, chapters 1 to 3 (setup
+and procedure; results; assessment with the equivalent sources, the touch voltage at the stations, the uncertainties
+and the summary) and appendices (data of the recordings, plausibility checks, symbols). Every number comes from the
+objects of this notebook and the result files, waveforms and fault times from the raw recordings. Photos on site
+(`PHOTOS`, file names in the media folder) are inserted, missing ones are framed placeholders; the recommendation stays
+a highlighted placeholder until `REPORT["recommendation"]` gives it. With `REPORT_TEMPLATE` the report takes the
+styles, header, footer and logo of your organisation. Open the file in Word and update the fields (contents, numbers of
+figures and tables). Running this section again replaces an unchanged report; one saved in Word since is kept as
+`<name>_<date>_<time>.docx`.
+''', '''
+## 8 · Bericht (Word)
+
+Der Bericht der Kampagne als Word-Datei in `4_Bericht`: Titelseite, Kurzfassung, Inhalt, Kapitel 1 bis 3 (Aufbau und
+Durchführung; Ergebnisse; Bewertung mit den Ersatzquellen, der Berührungsspannung an den Stationen, den Unsicherheiten
+und der Zusammenfassung) und Anhänge (Messdaten, Plausibilitätsprüfung, Formelzeichen). Jede Zahl stammt aus den
+Objekten dieses Notebooks und den Ergebnisdateien, Verläufe und Fehlerzeitpunkte aus den Rohdaten. Fotos vor Ort
+(`PHOTOS`, Dateinamen im Medienordner) werden eingesetzt, fehlende sind gerahmte Platzhalter; die Empfehlung bleibt ein
+markierter Platzhalter, bis `REPORT["recommendation"]` sie angibt. Mit `REPORT_TEMPLATE` übernimmt der Bericht
+Formatvorlagen, Kopf- und Fußzeile und Logo der eigenen Organisation. Die Datei in Word öffnen und die Felder
+aktualisieren (Inhaltsverzeichnis, Nummern der Abbildungen und Tabellen). Erneutes Ausführen ersetzt einen unveränderten
+Bericht; ein seitdem in Word gespeicherter bleibt als `<Name>_<Datum>_<Uhrzeit>.docx` erhalten.
+'''))),
+        keyed("report", code('''REPORT_FILE = None
+if REPORT is None:
+    print("''' + t("ℹ No report – REPORT is None (section 1).", "ℹ Kein Bericht – REPORT ist None (Abschnitt 1).") + '''")
+elif not document.docx_available():
+    print("''' + t("ℹ No report – python-docx is missing: pip install 'groundfault[export]'",
+                   "ℹ Kein Bericht – python-docx fehlt: pip install 'groundfault[export]'") + '''")
+elif not RESULTS:
+    print("''' + t("ℹ No report – no results (section 2).", "ℹ Kein Bericht – keine Ergebnisse (Abschnitt 2).") + '''")
+else:
+    REPORT_OUT = document.campaign_report(
+        RESULTS, info=REPORT, measurements=MEASUREMENTS, campaign_folder=str(CAMPAIGN_FOLDER), series=MAIN,
+        comparison=OTHER, monte_carlo=MC, loo=LOO if MAIN is not None else None, Z_E=Z_E, IG=IG_CHOICE, limits=LIMITS,
+        u_tp=U_TP, f_factor=F_FACTOR, uncertainty_I=UNCERTAINTY_I, uncertainty_U=UNCERTAINTY_U, scaling=SCALING, pq=PQ,
+        pq_levels=PQ_LEVELS, pq_comparison=PQ_COMPARISON, earthing=COMPARISONS, reduction=REDUCTION, photos=PHOTOS,
+        template=REPORT_TEMPLATE, styles=REPORT_STYLES, language=LANGUAGE, pdf=REPORT_PDF)
+    REPORT_FILE = Path(REPORT_OUT["path"])
+    print("''' + t("✓ report", "✓ Bericht") + ''': %s%s" % (REPORT_FILE.relative_to(WORK_FOLDER), " + PDF" if REPORT_OUT["pdf"] else ""))
+    print(i18n.format_text("''' + t("  assessment with {} · {} figures", "  Bewertung mit {} · {} Abbildungen") + '''", REPORT_OUT["basis"],
+                           len(REPORT_OUT["figures"])))
+    for p_ in REPORT_OUT["placeholders"]:     ''' + t("# still to fill in Word", "# noch in Word zu füllen") + '''
+        print("  [ ]", p_)
+    for h in REPORT_OUT["hints"]:
+        print("ℹ", h)''')),
     ]
     # the campaign notebook needs json for the demo cell
     cells[1] = code(setup(lang).replace("import sys\n", "import json\nimport sys\n", 1))
