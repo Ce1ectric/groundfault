@@ -87,8 +87,8 @@ print(res.table("assessment_quantities")[["quantity", "measured_value", "assessm
 
 ```text
 Measurement: SUB_0_10_000kHz  (SUB_0_10_000kHz.cfg)
-Max window: 4.300 s  | f1 = 50.0200 Hz (phase)
-IRES = 56.53 A | IG = 32.01 A | Iw = 20.00 A | Iv = 25.00 A | IH = 46.59 A
+Max window: 4.100 s  | f1 = 50.0200 Hz (phase)
+IRES = 56.53 A | IG = 32.02 A | Iw = 20.00 A | Iv = 25.00 A | IH = 46.58 A
   quantity  measured_value  assessment unit
 0     IRES           56.53       56.53    A
 1       Iw           20.00       20.00    A

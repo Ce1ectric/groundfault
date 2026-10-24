@@ -548,31 +548,31 @@ print(g.table()[["order", "Z_line_Ohm", "Zq_ZF_Ohm", "I_forecast_A"]].round(2).t
 
 ```text
  order       kind  Zq_Ohm  Zq_angle_deg  Us_V
-     3 two_source    6.15        -13.92  0.15
-     5  pre_fault    5.15        -29.05  0.00
-     7  pre_fault    7.84        -26.50  0.00
-    11  pre_fault    3.34        -41.43  0.00
-    13  pre_fault    5.72        -29.32  0.00
+     3 two_source    6.17        -13.99  0.09
+     5  pre_fault    5.15        -29.04  0.00
+     7  pre_fault    7.83        -26.61  0.00
+    11  pre_fault    3.33        -41.07  0.00
+    13  pre_fault    5.72        -29.33  0.00
  order       kind   U_V  I_forecast_A
-     3 two_source  30.0          4.90
-     5  pre_fault 250.0         48.56
-     7  pre_fault 130.0         16.58
-    11  pre_fault  40.0         11.97
+     3 two_source  30.0          4.88
+     5  pre_fault 250.0         48.57
+     7  pre_fault 130.0         16.60
+    11  pre_fault  40.0         12.01
     13  pre_fault  30.0          5.24
 I_rest              NaN          0.01
-   I_H              NaN         53.18
+   I_H              NaN         53.19
    I_1              NaN         32.02
- I_RES              NaN         62.07
+ I_RES              NaN         62.09
  order  Z_line_Ohm  Zq_ZF_Ohm  I_forecast_A
-     3        2.67       7.05          4.28
+     3        2.67       7.05          4.27
      5        4.25       5.74         43.57
-     7        5.87       8.34         15.59
-    11        9.15       7.72          5.18
+     7        5.87       8.32         15.63
+    11        9.15       7.75          5.16
     13       10.79       9.95          3.02
 I_rest         NaN        NaN          0.01
    I_H         NaN        NaN         46.86
    I_1         NaN        NaN         32.02
- I_RES         NaN        NaN         56.75
+ I_RES         NaN        NaN         56.76
 ```
 
 The demo network has the source impedances 6.18 Ω ∠−14.0°, 5.15 Ω ∠−29.1°, 7.83 Ω ∠−26.6°, 3.33 Ω ∠−41.3° and

@@ -261,7 +261,7 @@ PQ_QUANTILE       = 0.95    # quantile of the 10-min values
 SETTINGS = gf.Settings(
     T_win=0.200,                 # window length in s (step = window length)
     harmonics=(1, 3, 5, 7),      # orders of the assessment quantities
-    dc="highpass",               # DC component: zero-phase high-pass (dc_cutoff_hz=5.0) before the windows, or "median" per window
+    dc="highpass",               # DC component: zero-phase high-pass (dc_cutoff_hz=5.0), then the mean per window (default) | "median": per window only
     uncertainty_I=UNCERTAINTY_I,  # increases currents
     uncertainty_U=UNCERTAINTY_U,  # decreases voltages
     u_thd95_percent=None,        # 95 % quantile of the THD (line-to-line) of a PQ measurement in % (None = no scaling; with PQ_FILES from the measurement)
@@ -331,7 +331,7 @@ PQ_QUANTILE       = 0.95    # Quantil der 10-min-Werte
 SETTINGS = gf.Settings(
     T_win=0.200,                 # Fensterlänge in s (Schrittweite = Fensterlänge)
     harmonics=(1, 3, 5, 7),      # Ordnungen der Bewertungsgrößen
-    dc="highpass",               # Gleichanteil: phasenfreier Hochpass (dc_cutoff_hz=5.0) vor den Fenstern, oder "median" je Fenster
+    dc="highpass",               # Gleichanteil: phasenfreier Hochpass (dc_cutoff_hz=5.0), dann Mittelwert je Fenster (Standard) | "median": nur je Fenster
     uncertainty_I=UNCERTAINTY_I,  # vergrößert die Ströme
     uncertainty_U=UNCERTAINTY_U,  # verkleinert die Spannungen
     u_thd95_percent=None,        # 95-%-Quantil des THD (L-L) einer PQ-Messung in % (None = keine Skalierung; mit PQ_FILES aus der Messung)
@@ -419,9 +419,10 @@ the neutral displacement voltage). Entered intervals are shaded.
 
 groundfault searches the whole fault for **disturbed states** – an active residual current increase (Iw rises
 abruptly for a few seconds) and a network change (a section trips or is switched: Iv and thus the fundamental
-component and the RMS value change abruptly) – shades them red and proposes the undisturbed part as `STEADY_STATE`.
-Inside `STEADY_STATE` they are left out automatically (`exclude_disturbances` in section 1); a coil adjustment is no
-disturbance. A transformer recording without a fault-current channel is scanned with the fault current estimated from
+component and the RMS value change abruptly) – shades them red and proposes the undisturbed part as `STEADY_STATE`:
+the first undisturbed range of at least 1 s after the fault state has **settled** (RMS value, Iw, Iv and the even
+harmonics – after a metallic fault this may take seconds; the text names it). Inside `STEADY_STATE` they are left out
+automatically (`exclude_disturbances` in section 1); a coil adjustment is no disturbance. A transformer recording without a fault-current channel is scanned with the fault current estimated from
 the negative-sequence current of the transformer; enter a pre-fault interval for it in the evaluation as well.
 ''', '''
 ## 3 · Effektivwertverlauf – Auswertebereiche ablesen
@@ -433,8 +434,10 @@ der Verlagerungsspannung). Eingetragene Bereiche werden farbig hinterlegt.
 groundfault durchsucht den ganzen Fehler nach **gestörten Zuständen** – Wattreststromerhöhung (Iw steigt für einige
 Sekunden sprunghaft) und Netzänderung (ein Netzabschnitt löst aus oder wird umgeschaltet: Iv und damit
 Grundschwingung und Effektivwert ändern sich sprunghaft) –, hinterlegt sie rot und schlägt den ungestörten Teil als
-`STEADY_STATE` vor. Innerhalb von `STEADY_STATE` werden sie automatisch ausgeblendet (`exclude_disturbances` in
-Abschnitt 1); eine Spulenverstellung ist keine Störung. Eine Trafoaufzeichnung ohne Fehlerstromkanal wird mit dem aus
+`STEADY_STATE` vor: den ersten ungestörten Bereich von mindestens 1 s, nachdem der Fehlerzustand **eingeschwungen** ist
+(Effektivwert, Iw, Iv und die geraden Harmonischen – nach einem satten Fehler kann das Sekunden dauern; der Text nennt
+es). Innerhalb von `STEADY_STATE` werden sie automatisch ausgeblendet (`exclude_disturbances` in Abschnitt 1); eine
+Spulenverstellung ist keine Störung. Eine Trafoaufzeichnung ohne Fehlerstromkanal wird mit dem aus
 dem Gegenstrom des Trafos geschätzten Fehlerstrom durchsucht; dafür in der Auswertung auch einen Vorfehlerbereich
 eintragen.
 ''')),
@@ -960,8 +963,8 @@ if PLAN is not None:
   recording.
 * Polarity: the active component of the fundamental must be positive (Iw > 0). If it is negative, the fault current
   is rotated by 180° (note in the table). With this orientation **Iv > 0 means over-compensation** (inductive excess).
-* DC offset: removed per window by the median. RMS value = true RMS value over all frequencies, not only over the
-  selected harmonics.
+* DC offset: removed by a zero-phase high-pass (5 Hz) on every interval and the mean per window. RMS value = true RMS
+  value over all frequencies, not only over the selected harmonics.
 ''', '''
 ---
 **Konventionen**
@@ -971,8 +974,8 @@ if PLAN is not None:
 * Polarität: Der Wirkanteil der Grundschwingung muss positiv sein (Iw > 0). Ist er negativ, wird der Fehlerstrom um
   180° gedreht (Hinweis in der Tabelle). Mit dieser Orientierung bedeutet **Iv > 0 Überkompensation** (induktiver
   Überschuss).
-* DC-Offset: je Fenster per Median entfernt. Effektivwert = Echt-Effektivwert über alle Frequenzen, nicht nur über
-  die ausgewählten Harmonischen.
+* DC-Offset: mit einem phasenfreien Hochpass (5 Hz) je Intervall und dem Mittelwert je Fenster entfernt.
+  Effektivwert = Echt-Effektivwert über alle Frequenzen, nicht nur über die ausgewählten Harmonischen.
 ''')),
     ]
     return _notebook(cells, lang, NAMES[lang][0])

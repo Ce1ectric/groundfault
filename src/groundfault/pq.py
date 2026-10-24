@@ -12,8 +12,9 @@ Steps
 -----
 1. **Read** the export of the PQ instrument: [`read`][groundfault.pq.read] (several files, duplicated and overlapping
    periods are recognised), [`read_winpq`][groundfault.pq.read_winpq] (CSV export of the software *WinPQ mobil* for
-   the instruments *PQ-Box*) or [`from_frame`][groundfault.pq.from_frame] (any instrument, after reading its export
-   with pandas).
+   the instruments *PQ-Box*), [`read_pql`][groundfault.pq.read_pql] (file of the software *CODAM* for the instruments
+   *LEM Memobox*) or [`from_frame`][groundfault.pq.from_frame] (any instrument, after reading its export with
+   pandas).
 2. **10-min values** ([`ten_minute_values`][groundfault.pq.ten_minute_values]): clock-aligned intervals, square root
    of the mean of the squares of the shorter values as in IEC 61000-4-30; intervals with missing values are left
    out (counted).
@@ -76,7 +77,7 @@ from . import i18n
 from .i18n import tr
 from .legacy import check_option
 
-__all__ = ["PQData", "PQAssessment", "read", "read_winpq", "from_frame", "combine", "ten_minute_values",
+__all__ = ["PQData", "PQAssessment", "read", "read_winpq", "read_pql", "from_frame", "combine", "ten_minute_values",
            "duration_factor", "assess", "pre_fault_levels", "PHASES_LE", "PHASES_LL", "ZERO_SEQUENCE",
            "PERIOD_GAP_DAYS"]
 
@@ -107,6 +108,36 @@ i18n.register({
         "en": "{source}: no harmonic voltages found (columns such as 'H5_UL1_[V]' or 'H5_L1'); columns: {columns}",
         "de": "{source}: keine Oberschwingungsspannungen gefunden (Spalten wie 'H5_UL1_[V]' oder 'H5_L1'); "
               "Spalten: {columns}"},
+    "pq.thd_only": {
+        "en": "{source}: only THD values (columns {columns}) – the scaling needs the harmonic voltages per order; "
+              "export them as well (e.g. H5_U12_[V], H7_U12_[V] … in WinPQ).",
+        "de": "{source}: nur THD-Werte (Spalten {columns}) – die Skalierung braucht die Oberschwingungsspannungen je "
+              "Ordnung; diese mit exportieren (z. B. H5_U12_[V], H7_U12_[V] … in WinPQ)."},
+    "pq.pql_no_intervals": {
+        "en": "{path}: no interval values found (section <MemoboxIntervals> with a <Title> row) – not a file of the "
+              "LEM software CODAM?",
+        "de": "{path}: keine Intervallwerte gefunden (Abschnitt <MemoboxIntervals> mit einer <Title>-Zeile) – keine "
+              "Datei der LEM-Software CODAM?"},
+    "pq.pql_rows_skipped": {
+        "en": "{source}: {n} rows with a wrong number of values skipped (e.g. {first}).",
+        "de": "{source}: {n} Zeilen mit falscher Anzahl Werte übersprungen (z. B. {first})."},
+    "pq.pql_scaled": {
+        "en": "{source}: raw values multiplied by {factor:g} – the fundamental then matches the nominal voltage "
+              "{nominal:.0f} V.",
+        "de": "{source}: Rohwerte mit {factor:g} multipliziert – die Grundschwingung passt dann zur Nennspannung "
+              "{nominal:.0f} V."},
+    "pq.pql_resolution": {
+        "en": "{source}: harmonic voltages in steps of about {step:.0f} V ({pct:.2f} % of the nominal voltage) – orders "
+              "with a level of only a few steps (often from the 11th on) are hardly resolved, and their quantiles are "
+              "uncertain; a quantile of 0 V scales with the THD instead.",
+        "de": "{source}: Oberschwingungsspannungen in Stufen von etwa {step:.0f} V ({pct:.2f} % der Nennspannung) – "
+              "Ordnungen mit einem Pegel von nur wenigen Stufen (oft ab der 11.) sind kaum aufgelöst und ihre Quantile "
+              "unsicher; ein Quantil von 0 V skaliert stattdessen mit dem THD."},
+    "pq.pql_nominal_mismatch": {
+        "en": "{source}: the median fundamental {u1:.0f} V does not match the nominal voltage {nominal:.0f} V – check "
+              "the transformer ratio of the instrument.",
+        "de": "{source}: der Median der Grundschwingung {u1:.0f} V passt nicht zur Nennspannung {nominal:.0f} V – "
+              "Wandlerübersetzung des Messgeräts prüfen."},
     "pq.percent_without_fundamental": {
         "en": "{source}: harmonic voltages in % of the fundamental, but no fundamental (order 1) of {phases} – "
               "they are left out.",
@@ -508,7 +539,7 @@ _PHASE_TOKENS = {"L1": "L1", "UL1": "L1", "L1N": "L1", "L1E": "L1", "L2": "L2", 
 
 
 def _tokens(name: str) -> List[str]:
-    s = str(name).strip()
+    s = str(name).strip().strip("'\"").strip()
     s = re.sub(r"\[(.*?)\]", lambda m: "_[" + m.group(1) + "]", s)
     return [t for t in re.split(r"[_\s]+", s) if t]
 
@@ -676,6 +707,8 @@ def _frame_to_data(df: pd.DataFrame, source: str, interval_s: Optional[float], m
     if missing_fundamental:
         hints.append(tr("pq.percent_without_fundamental", source=source, phases=", ".join(missing_fundamental)))
     if not [k for k in harm if k[0] >= 2]:
+        if thd:
+            raise ValueError(tr("pq.thd_only", source=source, columns=", ".join(str(c) for c in df.columns[:6])))
         raise ValueError(tr("pq.no_harmonics", source=source, columns=[str(c) for c in df.columns][:12]))
     if ignored:
         hints.append(tr("pq.ignored_columns", source=source, n=len(ignored), examples=", ".join(ignored[:4])))
@@ -860,6 +893,153 @@ def read_winpq(path: str, timezone: Optional[str] = None) -> PQData:
     return _frame_to_data(df, meta["file"], interval, meta, hints)
 
 
+_PQL_TIME = "%Y-%m-%d %H:%M:%S.%f"
+
+
+def _pql_section(text: str, name: str) -> Optional[str]:
+    m = re.search(r"<%s>(.*?)</%s>" % (name, name), text, re.S)
+    return m.group(1) if m else None
+
+
+def read_pql(path: str, timezone: Optional[str] = None, reference: Optional[str] = None,
+             max_order: int = 50) -> PQData:
+    """Read the interval values of a measurement of a *LEM Memobox* (file ``*.PQL`` of the software *CODAM*, XML).
+
+    The file holds the configuration of the instrument (``<MemoboxConfiguration>``), the job (``<MemoboxJob>``:
+    title, interval, nominal and transformer voltages) and the interval values (``<MemoboxIntervals>``: a ``<Title>``
+    row with the column names, then one ``<i>`` row per interval). Columns used: per phase or loop ``Lx`` (0, 1, 2)
+    the mean fundamental ``VoltUh1AvgPhaseLxRawVal<x>`` and the harmonic voltages ``VoltHarmPhaseLxRawVal<x>_<k>``
+    (order k + 1, mean value of the interval), in V on the primary side. The THD is computed from these harmonic
+    voltages (orders 2 … 40 of IEC 61000-4-7, as far as recorded); the THD maximum of the file and the other columns
+    (currents, powers, flicker) are not used.
+
+    Parameters
+    ----------
+    path : str
+        PQL file.
+    timezone : str, optional
+        Time zone of the instrument clock (e.g. ``"Europe/Berlin"``); default: naive local time as recorded.
+    reference : {"LL", "LE"}, optional
+        Line-to-line (phases ``L12``, ``L23``, ``L31``) or line-to-earth (``L1``, ``L2``, ``L3``) voltages. Default:
+        from the job – ``VoltPowSysType=1`` (three-wire, delta) gives line-to-line values, otherwise line-to-earth.
+    max_order : int, optional
+        Highest harmonic order read (default 50).
+
+    Returns
+    -------
+    PQData
+        ``meta`` with ``instrument``, ``serial``, ``measurement`` (job title), ``interval_text``,
+        ``nominal_voltage_V`` (primary), ``period_text``, ``status`` (counts of the status column), ``file`` and
+        ``md5``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        Without interval values, without readable time stamps or without harmonic voltages.
+
+    Notes
+    -----
+    The time stamps mark the end of each interval (the first interval ends one interval after the start of the
+    measurement). Rows with a wrong number of values are skipped with a hint. If the median fundamental does not
+    match the nominal voltage of the job but does so after a factor 10ⁿ, the values are scaled with it (hint).
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(tr("pq.file_missing", path=path))
+    check_option("reference", reference, ("LL", "LE"), aliases=(None,))
+    with open(path, "rb") as f:
+        raw = f.read()
+    text = _decode(raw)
+    name = os.path.basename(path)
+    job = dict(re.findall(r"<t>([A-Za-z0-9_]+)=(.*?)</t>", _pql_section(text, "MemoboxJob") or ""))
+    conf = dict(re.findall(r"<t>([A-Za-z0-9_]+)=(.*?)</t>", _pql_section(text, "MemoboxConfiguration") or ""))
+    sec = _pql_section(text, "MemoboxIntervals")
+    title = re.search(r"<Title>(.*?)</Title>", sec, re.S) if sec else None
+    if title is None:
+        raise ValueError(tr("pq.pql_no_intervals", path=path))
+    cols = [c.strip() for c in title.group(1).split(",")[1:]]
+    rows = [r.split(",")[1:] for r in re.findall(r"<i>(.*?)</i>", sec, re.S)]
+    hints: List[str] = []
+    good = [r for r in rows if len(r) == len(cols)]
+    if len(good) < len(rows):
+        first = next((r[2] if len(r) > 2 else "?") for r in rows if len(r) != len(cols))
+        hints.append(tr("pq.pql_rows_skipped", source=name, n=len(rows) - len(good), first=first))
+    df = pd.DataFrame(good, columns=cols)
+    if "DateTime" not in df.columns or df.empty:
+        raise ValueError(tr("pq.pql_no_intervals", path=path))
+    stamps = pd.to_datetime(df["DateTime"].str.strip(), format=_PQL_TIME, errors="coerce")
+    if stamps.isna().all():
+        raise ValueError(tr("pq.no_time", source=name, values=list(df["DateTime"][:3])))
+    df = df[stamps.notna().to_numpy()]
+    idx = pd.DatetimeIndex(stamps[stamps.notna()])
+    ref = reference or ("LL" if str(job.get("VoltPowSysType", "")).strip() == "1" else "LE")
+    phases = PHASES_LL if ref == "LL" else PHASES_LE
+    data: Dict[str, np.ndarray] = {}
+    for x, ph in enumerate(phases):
+        c1 = "VoltUh1AvgPhaseLxRawVal%d" % x
+        if c1 in df.columns:
+            data["H1_%s" % ph] = pd.to_numeric(df[c1], errors="coerce").to_numpy(float)
+        for k in range(1, int(max_order)):
+            ck = "VoltHarmPhaseLxRawVal%d_%d" % (x, k)
+            if ck in df.columns:
+                data["H%d_%s" % (k + 1, ph)] = pd.to_numeric(df[ck], errors="coerce").to_numpy(float)
+    frame = pd.DataFrame(data, index=idx)
+    try:
+        nominal = float(job.get("NomVoltRawVal", "nan")) / 100.0
+    except ValueError:
+        nominal = float("nan")
+    expected = nominal if ref == "LL" else nominal / math.sqrt(3.0)
+    u1 = ["H1_%s" % ph for ph in phases if "H1_%s" % ph in frame.columns]
+    if u1 and np.isfinite(expected) and expected > 0:
+        med = float(np.nanmedian(frame[u1].to_numpy()))
+        ratio = med / expected if med > 0 else float("nan")
+        if np.isfinite(ratio) and not 0.5 <= ratio <= 2.0:
+            fit = [10.0 ** n for n in range(-4, 5) if n and 0.5 <= ratio * 10.0 ** n <= 2.0]
+            if fit:
+                frame = frame * fit[0]
+                hints.append(tr("pq.pql_scaled", source=name, factor=fit[0], nominal=expected))
+            else:
+                hints.append(tr("pq.pql_nominal_mismatch", source=name, u1=med, nominal=expected))
+    for ph in phases:                                   # THD from the harmonic voltages 2 … 40
+        hc = ["H%d_%s" % (m, ph) for m in range(2, 41) if "H%d_%s" % (m, ph) in frame.columns]
+        if "H1_%s" % ph in frame.columns and hc:
+            frame["THD_" + ph] = 100.0 * np.sqrt((frame[hc] ** 2).sum(axis=1, min_count=1)) / frame["H1_%s" % ph]
+    # resolution of the harmonic voltages: the smallest value above 0 (CODAM stores them in steps of about 0.05 % of
+    # the fundamental, ≈ 10 V at 20 kV) – coarser than 0.02 % of the nominal voltage gets a hint
+    harm = [c for c in frame.columns if c.startswith("H") and int(c[1:].split("_")[0]) >= 2]
+    vals = frame[harm].to_numpy(float) if harm else np.empty(0)
+    pos = vals[np.isfinite(vals) & (vals > 0)]
+    if pos.size and np.isfinite(expected) and expected > 0 and float(pos.min()) >= 2e-4 * expected:
+        step = float(pos.min())
+        hints.append(tr("pq.pql_resolution", source=name, step=step, pct=100.0 * step / expected))
+    try:
+        interval = float(job.get("Interval", "nan"))
+    except ValueError:
+        interval = None
+    status = df["Status"].value_counts().to_dict() if "Status" in df.columns else {}
+    meta: Dict[str, Any] = dict(file=name, path=os.path.abspath(path), md5=hashlib.md5(raw).hexdigest(), format="pql",
+                                instrument=("LEM Memobox " + conf.get("HardwType", "").strip()).strip(),
+                                serial=conf.get("SerialNr", "").strip(), measurement=job.get("JobText1", "").strip(),
+                                interval_text="%g s" % interval if interval else "",
+                                nominal_voltage_V=nominal, reference=ref,
+                                period_text="%s – %s" % (job.get("MeasStartMeasured", "").strip(),
+                                                         job.get("MeasStopMeasured", "").strip()),
+                                status={str(k): int(v) for k, v in status.items()}, timestamps="end",
+                                timezone=timezone)
+    frame = _localize(frame, timezone, name, hints)
+    return _frame_to_data(frame, name, interval, meta, hints)
+
+
+def _is_pql(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            head = _decode(f.read(4096)).lower()
+    except OSError:
+        return False
+    return "<codam" in head or "<memoboxconfiguration" in head
+
+
 def _is_winpq(path: str) -> bool:
     try:
         with open(path, "rb") as f:
@@ -873,7 +1053,8 @@ def _is_winpq(path: str) -> bool:
 def read(paths: Union[str, Sequence[str]], timezone: Optional[str] = None) -> PQData:
     """Read one or several exports of a PQ measurement and combine them in time.
 
-    WinPQ exports are recognised by their header ([`read_winpq`][groundfault.pq.read_winpq]); other CSV files are read
+    WinPQ exports are recognised by their header ([`read_winpq`][groundfault.pq.read_winpq]), files of a LEM Memobox
+    by their XML ([`read_pql`][groundfault.pq.read_pql]); other CSV files are read
     with pandas (time in the first column, one column per order and phase as in
     [`from_frame`][groundfault.pq.from_frame]). Files with identical content are read once, files with the same period
     used once, and overlapping periods keep the values of the earlier file (hints).
@@ -912,6 +1093,8 @@ def read(paths: Union[str, Sequence[str]], timezone: Optional[str] = None) -> PQ
         seen[digest] = p
         if _is_winpq(p):
             items.append(read_winpq(p, timezone=timezone))
+        elif _is_pql(p):
+            items.append(read_pql(p, timezone=timezone))
         else:
             with open(p, "rb") as f:
                 lines = _decode(f.read(65536)).splitlines()

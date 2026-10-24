@@ -2360,6 +2360,11 @@ i18n.register({
     "equivalent_source.expansion_split_option": {
         "en": "network_expansion: split must be 'sources' or 'busbar' (got {value!r}).",
         "de": "network_expansion: split muss 'sources' oder 'busbar' sein (erhalten: {value!r})."},
+    "equivalent_source.expansion_busbar_negative": {
+        "en": "Order {order}: the busbar split gives Z_0 = {z0} Ω, Z_1 = {z1} Ω with a negative real part – no passive "
+              "network; Z_0 from network data, Z_1 = (3·Z_q − Z_0)/2 instead.",
+        "de": "Ordnung {order}: die Aufteilung über die Sammelschiene ergibt Z_0 = {z0} Ω, Z_1 = {z1} Ω mit negativem "
+              "Realteil – kein passives Netz; stattdessen Z_0 aus Netzdaten, Z_1 = (3·Z_q − Z_0)/2."},
     "equivalent_source.expansion_no_busbar": {
         "en": "Order {order}: no busbar voltages of the tests – Z_0 from network data, Z_1 = (3·Z_q − Z_0)/2.",
         "de": "Ordnung {order}: keine Spannungen der Sammelschiene in den Versuchen – Z_0 aus Netzdaten, "
@@ -2392,8 +2397,10 @@ class NetworkExpansion:
         Fundamental after/before (median of the measurements).
     table : pandas.DataFrame
         Per order: ``order``, ``category``, ``Z0``, ``Z0_new``, ``Z1``, ``Z1_new``, ``Zq``, ``Zq_new`` (complex, Ω),
-        ``source_factor`` (|U_q,new/U_q|) and ``split`` (``"sources"``: Z_0 from network data and Z_1 = (3·Z_q −
-        Z_0)/2; ``"busbar"``: from the busbar voltages of the tests; ``"given"``: Z_0 and Z_1 given).
+        ``source_factor`` (|U_q,new/U_q|), ``split`` (``"sources"``: Z_0 from network data and Z_1 = (3·Z_q −
+        Z_0)/2; ``"busbar"``: from the busbar voltages of the tests; ``"given"``: Z_0 and Z_1 given) and
+        ``busbar_rejected`` (True: the busbar split of this order has a negative real part and the network data are
+        used instead).
     hints : list of str
         Hints.
     """
@@ -2514,7 +2521,9 @@ def network_expansion(series: SourceSeries, I_C: float, I_C_new: float, *, I_L: 
     ([`zero_sequence_impedance`][groundfault.formulas.zero_sequence_impedance] with I_C, I_L and the damping d) and
     Z_1 = (3·Z_q − Z_0)/2; ``split="busbar"`` – Z_0 and Z_1 of the busbar from the voltage changes of the tests
     ([`busbar_impedances`][groundfault.equivalent_source.busbar_impedances], the B method of the forecast; an order
-    without busbar voltages uses the network data). ``Z0``/``Z1`` give them per order and take precedence. The
+    without busbar voltages, or whose busbar split has a negative real part – no passive network, its parallel
+    resonance would be a computational artefact –, uses the network data). ``Z0``/``Z1`` give them per order and take
+    precedence. The
     changes are added to the measured Z_q, so I_C,new = I_C returns the series unchanged. Orders outside the model
     (the remainder, even orders without a fit) keep their measured content; new harmonic sources with the added cables
     are not included.
@@ -2592,14 +2601,19 @@ def _expand(series: SourceSeries, I_C: float, I_C_new: float, bus: Optional[Dict
                   hints=list(series.hints))
     rows, hints = [], []
     for m, F in sorted(out.fits.items()):
+        rejected = False
         if Z0 and m in Z0 and Z1 and m in Z1:
             z0, z1, how = complex(Z0[m]), complex(Z1[m]), "given"
-        elif bus is not None and m in bus:
+        elif bus is not None and m in bus and min(bus[m][0].real, bus[m][1].real) >= 0:
             (z0, z1), how = bus[m], "busbar"
         else:
             z0, how = fml.zero_sequence_impedance(m, I_C, U, IL, d), "sources"
             z1 = (3 * F.Zq - z0) / 2
-            if bus is not None:
+            if bus is not None and m in bus:
+                rejected = True
+                hints.append(tr("equivalent_source.expansion_busbar_negative", order=m,
+                                z0=_fmt_z(bus[m][0]), z1=_fmt_z(bus[m][1])))
+            elif bus is not None:
                 hints.append(tr("equivalent_source.expansion_no_busbar", order=m))
         for name, z in (("Z_0", z0), ("Z_1", z1)):
             if z.real < 0:
@@ -2612,7 +2626,7 @@ def _expand(series: SourceSeries, I_C: float, I_C_new: float, bus: Optional[Dict
         ratio = lambda new, old: new / old if abs(old) > 1e-12 else 1.0
         k = ratio(z0n, z0) * (IL_new / IL if zero_sequence == "coil" else 1.0) if cat == "zero" else ratio(z1n, z1)
         rows.append(dict(order=m, category=cat, Z0=z0, Z0_new=z0n, Z1=z1, Z1_new=z1n, Zq=F.Zq, Zq_new=Zq_new,
-                         source_factor=float(abs(k)), split=how))
+                         source_factor=float(abs(k)), split=how, busbar_rejected=rejected))
         F.Zq, F.Uq = Zq_new, F.Uq * k
     # the fundamental of every measurement: active current with the added damping, detuning current ∝ I_C
     factors = []

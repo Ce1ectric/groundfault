@@ -44,11 +44,11 @@ print(res.polarity, res.hints)
 ```
 
 ```text
-IRES evaluated   27.985 A   true   27.980 A   deviation +0.015 %
-IG   evaluated   16.124 A   true   16.125 A   deviation -0.000 %
-Iw   evaluated   13.999 A   true   14.000 A   deviation -0.008 %
-Iv   evaluated   -8.002 A   true   -8.000 A   deviation +0.025 %
-IH   evaluated   22.872 A   true   22.867 A   deviation +0.023 %
+IRES evaluated   27.982 A   true   27.980 A   deviation +0.006 %
+IG   evaluated   16.125 A   true   16.125 A   deviation -0.000 %
+Iw   evaluated   13.999 A   true   14.000 A   deviation -0.009 %
+Iv   evaluated   -8.002 A   true   -8.000 A   deviation +0.028 %
+IH   evaluated   22.869 A   true   22.867 A   deviation +0.009 %
 -1 ['Iw was negative → current measurement reversed; current phasors rotated by 180° (magnitudes unchanged).']
 ```
 
@@ -67,6 +67,8 @@ number. Examples from the test suite (`tests/`):
 | true RMS value | root sum of squares of the phasors of a purely harmonic signal | `test_dsp.py::test_rms_equals_root_sum_of_squares_of_harmonics` |
 | network frequency | phase method, spectral method and zero crossings agree within 1 mHz | `test_dsp.py::test_f1_three_methods_agree` |
 | DFT with a large DC offset and off-grid frequencies | the same signal without offset; Hann against rectangular window | `test_numerics.py::test_large_dc_component_no_cancellation`, `::test_leakage_hann_versus_rectangular` |
+| DC removal (high-pass, then the mean per window) | the exact true RMS value of a waveform with even harmonics, which the median per window overestimates; a decaying DC component removed without changing the harmonics | `test_evaluation.py::test_mean_after_highpass_with_even_harmonics`, `::test_highpass_removes_the_decaying_dc_component`, `test_dsp.py::test_highpass_removes_offset_and_drift_keeps_the_harmonics` |
+| settling of the fault state | the first settled window of an exponential transient with a known time constant; the suggested steady-state interval of a recording whose Iw and Iv settle for seconds after the inception starts after the settling | `test_disturbances.py::test_settled_index_of_a_decaying_transient`, `::test_scan_waits_for_the_settled_fault_state` |
 | signal explorer | the evaluation in the same max window; an FFT over exactly ten cycles with a rectangular window for RMS value, harmonics, THD and DC component | `test_explorer.py::test_max_window_matches_evaluation`, `::test_characteristic_values_second_method` |
 | assessment quantities | the true values of the demo series (fundamental component, Iw, Iv, I_RES, harmonics), despite drift, different time origins and a reversed clamp | `test_evaluation.py::test_assessment_quantities_substation`, `::test_polarity_corrected` |
 | √2 method | interpolation against the fitted curve on an analytical resonance curve, also with 1 % noise | `test_formulas.py::test_sqrt2_method_from_resonance_curve_two_ways` |
@@ -99,10 +101,10 @@ pytest -q
 ```text
 …
 SKIPPED [1] tests/test_units.py:63: could not import 'groundmeas.core.units': No module named 'groundmeas'
-572 passed, 1 skipped in 63.26s
+769 passed, 1 skipped in 371.05s (0:06:11)
 ```
 
-They use synthetic recordings only and take about a minute. The skipped test compares the unit handling directly
+They use synthetic recordings only and take a few minutes. The skipped test compares the unit handling directly
 with groundmeas and runs when groundmeas 1.6.1 or newer is installed (see
 [Installation](../getting-started/installation.md#running-the-tests)). By default the suite checks the German output
 (the messages and labels of the predecessor tool); English output is tested explicitly.
@@ -119,12 +121,14 @@ reduction factor, while groundfault leaves all of them to the user.
 
 The evaluation rests on assumptions that the checks can point to but not remove:
 
-* **Steady state.** The steady-state interval is chosen by hand and must contain a steady fault – after the decay of
-  the DC component, before an active residual current increase or a coil adjustment. One network frequency applies to
-  each interval; the plausibility checks report variations.
+* **Steady state.** The steady-state interval is chosen by hand and must contain a steady fault – after the settling
+  of the fault state, before an active residual current increase or a coil adjustment; the suggestion of the scan
+  waits for the settling, but it remains a suggestion. One network frequency applies to each interval; the
+  plausibility checks report variations.
 * **Window analysis.** 200-ms Hann windows resolve 5 Hz; interharmonics close to a harmonic partly fall into it. The
-  orders are limited to 40 and to the sampling rate. The median DC removal slightly overestimates the true RMS value of
-  currents with strong even harmonics.
+  orders are limited to 40 and to the sampling rate. The high-pass of the DC removal (5 Hz) removes components below
+  a few hertz together with the DC component; a drift faster than it stays in the window (the low-frequency check
+  reports it). With `dc="median"` the true RMS value of currents with strong even harmonics comes out too high.
 * **Superposition.** The background is assumed to be the same during the fault as before or after it, and the network
   frequency to change linearly between the two sides. Without a voltage measurement the fault current is the frequency
   reference during the fault. The uncertainty estimate is a typical value, not a bound.

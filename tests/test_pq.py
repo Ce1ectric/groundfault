@@ -757,3 +757,70 @@ def test_series_figure_has_no_line_across_a_gap():
     y = fig.axes[0].lines[0].get_ydata()
     assert np.isnan(np.asarray(y, float)).sum() == 1 and len(y) == 289
     plt.close(fig)
+
+
+# ============================================================================================== LEM Memobox (CODAM)
+def _pql(path, rows, interval=600, pow_sys=1, nominal=2000000, extra_row=None):
+    """A small PQL file of the CODAM software (structure of a real file, invented values): per row the time stamp
+    and per phase the fundamental and the harmonic voltages 1 … 5 (V); returns the path."""
+    title = ["Nr", "Status", "DateTime", "Freq10min"]
+    for x in range(3):
+        title += ["VoltMaxPhaseLxRawVal%d" % x, "VoltUh1AvgPhaseLxRawVal%d" % x, "VoltTHDMaxPhaseLxRawVal%d" % x]
+        title += ["VoltHarmPhaseLxRawVal%d_%d" % (x, k) for k in range(5)]
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<Codam>", "<Version>1.0.2</Version>",
+             "<MemoboxConfiguration>", "<t>HardwType=TEST 50Hz</t>", "<t>SerialNr=0000</t>", "</MemoboxConfiguration>",
+             "<MemoboxJob>", "<t>JobText1=Busbar A / transformer 1</t>", "<t>Interval=%d</t>" % interval,
+             "<t>VoltPowSysType=%d</t>" % pow_sys, "<t>NomVoltRawVal=%d</t>" % nominal,
+             "<t>MeasStartMeasured=2026-1-5 12:0:0.0</t>", "<t>MeasStopMeasured=2026-1-6 0:0:0.0</t>",
+             "</MemoboxJob>", "<MemoboxIntervals>", "<Title>," + ",".join(title) + "</Title>",
+             "<Unit>,(not implemented),</Unit>", "<Scale>,(not implemented),</Scale>"]
+    for i, (stamp, u1, h5) in enumerate(rows):
+        vals = [str(i), "8192", stamp, "5000"]
+        for x in range(3):
+            vals += ["14800", str(u1), "400", str(u1), "0", "10", "0", str(h5 + 10 * x)]
+        lines.append("<i>," + ",".join(vals) + "</i>")
+    if extra_row:
+        lines.append(extra_row)
+    lines += ["</MemoboxIntervals>", "</Codam>"]
+    with open(path, "w", encoding="utf-8", newline="\r\n") as f:
+        f.write("\n".join(lines) + "\n")
+    return path
+
+
+def test_read_pql_of_a_lem_memobox(tmp_path):
+    """read_pql: line-to-line voltages of a three-wire job, order k + 1 from column _k, time stamps at the end of the
+    intervals, THD from the harmonics; read() recognises the file; a row with too many values is skipped."""
+    stamps = ["2026-1-5 12:10:0.0", "2026-1-5 12:20:0.0", "2026-1-5 12:30:0.0"]
+    p = _pql(str(tmp_path / "busbar.PQL"), [(s, 20000, 300 + 100 * i) for i, s in enumerate(stamps)],
+             extra_row="<i>,9,8192,2026-1-5 12:40:0.0,1,2,3</i>")
+    d = pq.read_pql(p)
+    assert d.reference == "LL" and d.phases == ["L12", "L23", "L31"] and d.orders == [1, 2, 3, 4, 5]
+    assert d.interval_s == 600.0 and str(d.start) == "2026-01-05 12:00:00" and str(d.end) == "2026-01-05 12:30:00"
+    assert list(d.harmonics[(5, "L23")]) == [310.0, 410.0, 510.0]
+    assert d.thd["L12"].iloc[0] == pytest.approx(100 * math.hypot(10, 300) / 20000)
+    assert d.meta["instrument"] == "LEM Memobox TEST 50Hz" and d.meta["measurement"] == "Busbar A / transformer 1"
+    assert any("1 rows with a wrong number" in h or "1 Zeilen" in h for h in d.hints)
+    assert any("10 V (0.05 %" in h or "10 V (0,05 %" in h for h in d.hints)     # harmonic voltages in 10-V steps
+    assert pq.read(p).harmonics.equals(d.harmonics)
+    le = pq.read_pql(_pql(str(tmp_path / "wye.PQL"), [(stamps[0], 11547, 200)], pow_sys=0))
+    assert le.reference == "LE" and le.phases == ["L1", "L2", "L3"]
+    assert pq.read_pql(p, reference="LE").phases == ["L1", "L2", "L3"]
+    scaled = pq.read_pql(_pql(str(tmp_path / "raw.PQL"), [(stamps[0], 200, 3)]))        # raw values in 100 V
+    assert scaled.harmonics[(1, "L12")].iloc[0] == pytest.approx(20000.0)
+    with pytest.raises(ValueError):
+        pq.read_pql(str(tmp_path / "busbar.PQL"), reference="XY")
+    (tmp_path / "empty.PQL").write_text("<Codam><MemoboxJob></MemoboxJob></Codam>", encoding="utf-8")
+    with pytest.raises(ValueError):
+        pq.read_pql(str(tmp_path / "empty.PQL"))
+
+
+def test_thd_only_export_and_quoted_columns(tmp_path):
+    """An export with THD columns only (names in quotes) cannot scale the orders: a clear message."""
+    p = tmp_path / "thd.csv"
+    p.write_text("Messdaten Export PQ-Box 50,,Seriennummer: 0000\n\nIntervall: 30 sec\n\n"
+                 "Datum,Zeit,'THD12_[%]','THD23_[%]','THD31_[%]'\n"
+                 "05.01.2026,12:00:30.000,2.1,2.2,2.3\n05.01.2026,12:01:00.000,2.0,2.1,2.2\n", encoding="utf-8")
+    assert pq.parse_column("'THD12_[%]'") == ("thd", None, "L12", "value", "%")
+    with i18n.language("en"):
+        with pytest.raises(ValueError, match="only THD values"):
+            pq.read(str(p))

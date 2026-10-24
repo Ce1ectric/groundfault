@@ -50,7 +50,11 @@ markdown_extensions:
   - pymdownx.snippets:
       base_path: ["."]
       check_paths: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
 
@@ -99,6 +103,7 @@ nav:
       - Troubleshooting: user-guide/troubleshooting.md
   - Methods:
       - methods/index.md
+      - Evaluation chain: methods/evaluation-chain.md
       - Signal processing: methods/signal-processing.md
       - Assessment quantities: methods/assessment.md
       - Superposition at the station: methods/superposition.md

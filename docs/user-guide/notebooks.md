@@ -41,7 +41,7 @@ campaigns folder; in a folder without one (a new, empty work folder) the layout 
 line such as
 
 ```text
-groundfault 3.4.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
+groundfault 3.5.0 · work folder: /home/user/earth_fault_tests · layout: en · font of the figures: Liberation Sans
 ```
 
 One copy of the measurement notebook is enough for all recordings of a campaign: for the next recording change
@@ -132,7 +132,7 @@ U_Tp and F come from the block above.
 |---|---|---|
 | `T_win` | `0.200` | window length in s; the hop equals the window length. Change only for good reasons |
 | `harmonics` | `(1, 3, 5, 7)` | orders of the assessment quantities; the result file stores the orders 1 to 25 regardless (for the equivalent-source method) |
-| `dc` | `"highpass"` in the notebook (package default `"median"`) | removal of the DC component: a zero-phase high-pass (`dc_cutoff_hz=5.0`) on every interval before the windows – also a decaying offset of a clamp disappears; `"median"` per window as before. The harmonics are the same with both |
+| `dc` | `"highpass"` | removal of the DC component: a zero-phase high-pass (`dc_cutoff_hz=5.0`) on every interval before the windows, then the mean per window – also a decaying offset of a clamp disappears, and the true RMS value of a waveform with even harmonics is exact; `"median"` per window as up to version 3.4. The harmonics are the same with both ([DC removal](../methods/signal-processing.md#dc-removal)) |
 | `u_thd95_percent` | `None` | 95 % quantile of the line-to-line THD of a power-quality measurement in %; adds the rows scaled to it to the assessment quantities (needs the voltages before or after the fault). With `PQ_FILES` it comes from the measurement together with the quantiles per order `pq_u95` ([Power-quality measurement](#power-quality-measurement)) |
 | `correct_polarity` | `True` | if the active component Iw is negative (reversed clamp), rotate the current phasors by 180°. Set `False` only if the hint “Polarity decision uncertain” appears and the polarity of the clamp is known for sure |
 | `exclude_disturbances` | `True` | leave disturbed states inside `STEADY_STATE` – an active residual current increase, a network change – out of the max window, the statistics and the checks ([Disturbed states](evaluation.md#disturbed-states)); `False` only reports them |

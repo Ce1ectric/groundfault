@@ -81,10 +81,10 @@ print(overview[["measurement", "Z_F in Ω", "IRES in A", "IG in A", "Iw in A", "
 
 ```text
    measurement  Z_F in Ω  IRES in A  IG in A  Iw in A  Iv in A  IH in A  U0 in V  THD pre-fault (max) in % faulted_phase  notes
-M1 (SUB 2.5 Ω)       2.5      47.97    32.02    20.00    25.00    35.72 11496.85                      2.38            L3      0
-  M2 (SUB 5 Ω)       5.0      39.69    32.02    20.00    25.00    23.45 11446.36                      2.05            L3      0
-  M3 (SUB 0 Ω)       0.0      56.53    32.01    20.00    25.00    46.59 11547.07                      2.16            L3      0
-  M4 (Station)       NaN      46.66    35.00    33.21    11.07    30.85 11547.05                      0.00            L3      1
+M1 (SUB 2.5 Ω)       2.5      47.97    32.02     20.0    25.00    35.72 11496.85                      2.38            L3      0
+  M2 (SUB 5 Ω)       5.0      39.69    32.02     20.0    25.00    23.45 11446.38                      2.05            L3      0
+  M3 (SUB 0 Ω)       0.0      56.53    32.02     20.0    25.00    46.58 11547.05                      2.16            L3      0
+  M4 (Station)       NaN      46.66    35.00     33.2    11.07    30.86 11546.98                      0.00            L3      1
 ```
 
 Further columns: `IH3 in A`, `IH5 in A`, `IH7 in A`, `UH5g pre-fault in V`, `UH7m pre-fault in V`, `Σ coils H1 in A`
@@ -102,18 +102,18 @@ print(campaign.consistency(substation)[["check", "status", "value"]].to_string(i
 
 ```text
                         check status                                         value
-I_G equal in all measurements     OK                      32.0 … 32.0 (span 0.0 %)
- U0 equal in all measurements     OK                    11446 … 11547 (span 0.9 %)
+I_G equal in all measurements     OK                    32.0 … 32.0 A (span 0.0 %)
+ U0 equal in all measurements     OK                  11446 … 11547 V (span 0.9 %)
            Coil current ISp21     OK                                   297 … 300 A
            Coil current ISp22     OK                                   248 … 250 A
-       I_H decreases with Z_F     OK 0 Ω: 46.6 A → 2.50 Ω: 35.7 A → 5.00 Ω: 23.5 A
+       I_H decreases with Z_F     OK 0 Ω: 46.6 A → 2.50 Ω: 35.7 A → 5.00 Ω: 23.4 A
                 Faulted phase     OK                                            L3
 ```
 
 | Check | Expected | Not `OK` |
 |---|---|---|
 | I_G equal in all measurements, U0 equal in all measurements | the fundamental component and the neutral displacement voltage hardly depend on the additional impedance | span of 10 % or more (`WARNING`): network state or detuning changed between the tests |
-| Coil current … | the coil currents are proportional to U0, so equal per coil; a current of 0 A (coil switched off, clamp not connected) or a missing one is left out | a deviation of 10 % or more from the median (`WARNING`); about a factor of 10: wrong measuring range or CT ratio, otherwise coil position or network state changed |
+| Coil current … | the coil currents are proportional to U0, so equal per coil; a current of 0 A (coil switched off, clamp not connected) or a missing one is left out | a deviation of 10 % or more from the median (`WARNING`); near a typical error of the measuring chain – a factor 3, 2, 10, 100, 1000 or the inverse (a clamp around one of several conductors, the measuring range, the CT ratio, [`typical_factor`](../reference/formulas.md#groundfault.formulas.typical_factor)) – the comment names the factor and its correction for the [corrections file](corrections.md), otherwise coil position or network state changed |
 | I_H decreases with Z_F | the harmonic content falls with increasing additional impedance (active two-terminal equivalent) | `NOTE`: drift of the harmonic sources between the tests |
 | Faulted phase | the same phase in all tests | `NOTE`: different faulted phases (the equivalent-source method can take this into account, see below) |
 
@@ -149,13 +149,13 @@ for m, fit in series.fits.items():
 
 ```text
  order   f_Hz sequence    Uq_V  Rq_Ohm  Xq_Ohm  residual_pct  dZq_rel_per_1pct normalization  Uq_ref_faulted_phase  Uq_angle_ref_faulted_phase_deg
-     3 150.06     zero  18.470   3.638  -1.886        16.563             0.022          none                   NaN                             NaN
-     5 250.10      neg 219.971   4.499  -2.501         0.006             0.021       complex                 1.000                          -0.009
-     7 350.14      pos 109.997   7.001  -3.498         0.011             0.027       complex                 1.000                           0.015
-    11 550.22      neg  35.056   2.507  -2.199         0.023             0.017       complex                 1.001                           0.065
-    13 650.26      pos  24.994   4.999  -2.793         0.080             0.022       complex                 0.999                           0.072
+     3 150.06     zero  18.528   3.651  -1.892        16.473             0.022          none                   NaN                             NaN
+     5 250.10      neg 220.004   4.500  -2.501         0.004             0.021       complex                 1.000                          -0.003
+     7 350.14      pos 109.895   6.997  -3.489         0.003             0.027       complex                 0.999                           0.055
+    11 550.22      neg  35.047   2.505  -2.200         0.009             0.017       complex                 1.001                           0.022
+    13 650.26      pos  24.985   4.991  -2.808         0.072             0.022       complex                 0.999                          -0.068
 ℹ harmonic 3: zero-sequence order → without level normalization
-ℹ harmonic 3: Estimators disagree on Z_q (3.64 − j1.89 Ω and 6.11 − j1.5 Ω) → U_q/Z_q individually uncertain; current at Z = 2.5 Ω: 2.88 and 2.94 A (prediction within the measured range is stable)
+ℹ harmonic 3: Estimators disagree on Z_q (3.65 − j1.89 Ω and 6.11 − j1.5 Ω) → U_q/Z_q individually uncertain; current at Z = 2.5 Ω: 2.88 and 2.94 A (prediction within the measured range is stable)
 ```
 
 The demo network has source impedances of 4.5 − j2.5 Ω (250 Hz), 7 − j3.5 Ω (350 Hz), 2.5 − j2.2 Ω (550 Hz) and
@@ -234,16 +234,16 @@ print("Monte Carlo I_RES(2.5 Ω): P5 %.2f A, P50 %.2f A, P95 %.2f A" % (mc["IRES
 
 ```text
    measurement Z_Ohm  IRES_measured_A  IRES_sources_A  deviation_pct  IH_rest_A
-M1 (SUB 2.5 Ω)   2.5           47.971          47.933         -0.077      0.012
-  M2 (SUB 5 Ω)     5           39.686          39.690          0.008      0.011
-  M3 (SUB 0 Ω)     0           56.526          56.558          0.056      0.011
+M1 (SUB 2.5 Ω)   2.5           47.971          47.934         -0.076      0.012
+  M2 (SUB 5 Ω)     5           39.685          39.692          0.017      0.012
+  M3 (SUB 0 Ω)     0           56.525          56.560          0.061      0.010
  order  I_at_ZE_A  min_A  max_A  span_pct
-     3      2.877  2.815  3.186     6.436
-     5     29.597 29.597 29.597     0.001
-     7     10.864 10.863 10.865     0.013
-    11      6.410  6.410  6.411     0.013
+     3      2.879  2.819  3.186     6.373
+     5     29.599 29.598 29.600     0.003
+     7     10.862 10.862 10.863     0.003
+    11      6.410  6.410  6.411     0.012
     13      3.123  3.121  3.127     0.084
-Monte Carlo I_RES(2.5 Ω): P5 45.33 A, P50 45.58 A, P95 45.81 A
+Monte Carlo I_RES(2.5 Ω): P5 45.34 A, P50 45.58 A, P95 45.82 A
 ```
 
 `monte_carlo(series, Z_E, n=2000, sigma_magnitude=0.01, sigma_phase_deg=0.5, sigma_Z=0.02, sigma_level=0.0,
@@ -308,17 +308,17 @@ print(c[c["order"] == "I_RES"][["Z_E_Ohm", "I_measured_source_A", "I_fitted_sour
 
 ```text
  order         method    Uq_V  Rq_Ohm  Xq_Ohm  residual_pct
-     3 equation_error  18.470   3.638  -1.886        16.563
-     5       measured 219.985   4.500  -2.500         0.006
-     7       measured 109.988   6.999  -3.501         0.015
-    11       measured  35.022   2.500  -2.200         0.069
-    13       measured  25.012   5.001  -2.803         0.078
+     3 equation_error  18.528   3.651  -1.892        16.473
+     5       measured 219.985   4.499  -2.500         0.004
+     7       measured 109.988   7.001  -3.501         0.028
+    11       measured  35.022   2.500  -2.200         0.067
+    13       measured  25.012   5.002  -2.803         0.081
 Measured source for the orders [5, 7, 11, 13]: U_q = pre-fault voltage of the faulted phase (level of the series), Z_q = median of U_q/I_k − Z_k over the tests
 zero-sequence order: the source arises in the fault, the pre-fault voltage does not drive the current → fitted equivalent source kept
 Z_E_Ohm  I_measured_source_A  I_fitted_source_A  fitted_to_measured  interpolation
-      0               56.559             56.559                 1.0           True
-      5               40.426             40.426                 1.0           True
-     10               36.067             36.067                 1.0          False
+      0               56.561             56.561                 1.0           True
+      5               40.428             40.428                 1.0           True
+     10               36.069             36.069                 1.0          False
 ```
 
 In the demo the network does not change between the tests, so both sources coincide; with a changing network they
@@ -354,7 +354,7 @@ print({m: round(i, 2) for m, i in r["parts"].items()})
 ```
 
 ```text
-I_G = 32.0 A | I_H = 32.5 A (rest 0.012 A) | I_RES = 45.59 A | with uncertainty 46.95 A | interpolation: True
+I_G = 32.0 A | I_H = 32.5 A (rest 0.012 A) | I_RES = 45.59 A | with uncertainty 46.96 A | interpolation: True
 {3: 2.88, 5: 29.6, 7: 10.86, 11: 6.41, 13: 3.12}
 ```
 
@@ -425,13 +425,13 @@ I_H scaled 48.13 A → I_RES scaled 57.80 A
 ['Orders [17, 19, 23, 25] without their own value (no U95 value or no level of at least 1 V in the tests): as measured (factor 1) – give thd95_percent as well if needed', 'Orders of the zero sequence [3, 9, 15, 21] as measured (not scaled) – the zero sequence arises in the earth fault and does not follow the voltage of undisturbed operation.']
 THD of the series 2.20 % → the 3rd harmonic (zero sequence) as measured, I_RES scaled 57.80 A
  order category      part    I_A  factor        rule  I_scaled_A
-     2     even remainder  0.002   1.000 as measured       0.002
-     3     zero     model  2.877   1.000 as measured       2.877
-     4     even remainder  0.002   1.000 as measured       0.002
-     5  pos_neg     model 29.597   1.499 own voltage      44.370
+     2     even remainder  0.001   1.000 as measured       0.001
+     3     zero     model  2.879   1.000 as measured       2.879
+     4     even remainder  0.001   1.000 as measured       0.001
+     5  pos_neg     model 29.599   1.499 own voltage      44.372
      6     even remainder  0.001   1.000 as measured       0.001
-     7  pos_neg     model 10.864   1.260 own voltage      13.687
-     8     even remainder  0.002   1.000 as measured       0.002
+     7  pos_neg     model 10.862   1.260 own voltage      13.684
+     8     even remainder  0.001   1.000 as measured       0.001
      9     zero remainder  0.002   1.000 as measured       0.002
     10     even remainder  0.000   1.000 as measured       0.000
     11  pos_neg     model  6.410   1.681 own voltage      10.779
@@ -464,7 +464,7 @@ print("I_H scaled %.2f A → I_RES scaled %.2f A (rest %.3f A from %s)"
 ```text
 {'u95_reference': 'seq', 'safety_factor': 1.2, 'thd95_percent': 2.691, 'thd_measured_percent': 2.199}
 {3: 1.0, 5: 1.584, 7: 1.584, 11: 1.583, 13: 1.583}
-I_H scaled 51.28 A → I_RES scaled 60.46 A (rest 0.013 A from M1 (SUB 2.5 Ω))
+I_H scaled 51.28 A → I_RES scaled 60.46 A (rest 0.013 A from M2 (SUB 5 Ω))
 ```
 
 With `PQ_FILES` the campaign notebook replaces `U95`, `U95_REFERENCE`, `THD95_PERCENT` and `PQ_SAFETY_FACTOR` this
@@ -603,10 +603,10 @@ equivalent_sources           Equivalent sources
    Quantity in A M1 (SUB 2.5 Ω) M2 (SUB 5 Ω) M3 (SUB 0 Ω) M4 (Station)
        RMS value           48.0         39.7         56.5         46.7
            50 Hz           32.0         32.0         32.0         35.0
-          150 Hz           3.19         2.14         4.04     0.000623
+          150 Hz           3.19         2.14         4.04     0.000931
           250 Hz           32.6         21.3         42.7         30.0
           350 Hz           12.0         8.36         14.1         6.00
-Harmonic content           35.7         23.5         46.6         30.9
+Harmonic content           35.7         23.4         46.6         30.9
 ```
 
 | Table | Content |

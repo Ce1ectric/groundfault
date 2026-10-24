@@ -4,6 +4,101 @@ All notable changes to groundfault are documented in this file. The format is ba
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and groundfault adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-10-24
+
+A minor version with a new default of the DC removal, a suggestion of the steady-state interval that waits for the
+settled fault state, a reader for the PQL files of a LEM Memobox and six fixes. Results change where a window
+contains even harmonics or a drifting offset: the true RMS value is now exact (the harmonics of the orders m ≥ 1 are
+the same). `Settings(dc="median")` gives the default up to 3.4 again, `dc="highpass_median"` the high-pass of 3.4
+(`dc="highpass"` there, the setting of the notebooks).
+
+### Changed
+
+- **DC removal: zero-phase high-pass and the mean per window by default** (`Settings.dc = "highpass"`, before
+  `"median"`). Every analysis interval passes the Butterworth high-pass of 3.4 (order 4, `dc_cutoff_hz` = 5 Hz,
+  forwards and backwards, mirror extension at both ends) before it is cut into windows; the mean of every window is
+  then removed. The median of a waveform with even harmonics differs from its mean, and the true RMS value came out too
+  high – by 3.6 % for 30 A with 12 A of the 2nd and 8 A of the 4th harmonic (34.48 A instead of 33.29 A); after the
+  high-pass the mean of a window is its DC component, and the RMS value is exact (33.29 A). A decaying offset of a
+  clamp or of the coil current after the fault inception disappears as well. `"highpass_median"` is the former
+  `"highpass"` (high-pass, then the median), `"median"`, `"mean"` and `"none"` remove the DC component per window as
+  before. The result file stores the DC removal of the windows (`measurement.dc_window`); a result file of 3.4 with
+  `"highpass"` counts as `"highpass_median"` in the Word report.
+- Check *Low-frequency component of I_RES (< f1/2)*: with the high-pass it sees the filtered window, and its text
+  names the drift that is faster than the high-pass (a clamp that saturates or recovers).
+- Signal explorer: the DC component of a window is its mean, as in the evaluation.
+- Word report, classification of the scaling factors: an order whose level in the tests lay at or below the 5th
+  percentile of the power-quality measurement and whose factor k_m is 2 or more is named – its factor raises it to
+  a level the network did not have on the day of the tests, and the text asks to check that the PQ measurement and
+  the tests have the same network and switching state. Section *Network expansion*: an order whose busbar split
+  was rejected and whose split from network data has a negative real part as well gets one sentence instead of two,
+  and a range of the two splits whose ends round to the same number is given as that number (63.3 A, not
+  63.3–63.3 A). Step 2 of the processing of the residual current gives the THD factor k_THD = k_s·THD_95/THD_test
+  with its values whenever an order is scaled with it; with the THD of the PQ measurement only (no quantile per
+  order) it says that every order of the positive or negative sequence takes the THD factor.
+- **Suggestion of the steady-state interval** (`disturbances.scan`): the scan starts once the **fault state has
+  settled**, not only the RMS value of the fault current – Iw and Iv (|I_H1| without U0) and the change of the RMS
+  value caused by the even harmonics, E²/(2·I_RES) with E the RMS sum of the orders 2, 4, 6, 8, 10
+  (`SETTLE_ORDERS`). Settled is the first window from which the medians of two consecutive blocks of three windows
+  differ by less than half the step threshold for every one of them (`SETTLE_SHARE`), at the latest 4 s after the
+  inception (`SETTLE_MAX_S`); the odd harmonics follow the harmonic voltage of the network and take no part. After a
+  metallic fault Iw and Iv may need seconds (a saturating clamp or transformer, the DC component of the coil current):
+  before, the remaining drift looked like a step at the edge of the scan, was classified as a network change, and the
+  suggestion was a short range in the transient with the start of the scan as the reference. The suggestion is now
+  the first undisturbed range of at least `MIN_SUGGESTION_S` = 1 s, else the longest; `Disturbances.text()` names a
+  shifted start and the quantity that settled last (`meta["settling"]`).
+
+### Added
+
+- `pq.read_pql`: interval values of a *LEM Memobox* (file `*.PQL` of the software CODAM): per phase or loop the
+  fundamental and the harmonic voltages of the orders 2 … 50 (mean of the interval, primary values), line-to-line or
+  line-to-earth from the configuration of the job, the THD computed from the orders 2 … 40; the scale is checked
+  against the nominal voltage of the job (a factor 10ⁿ is corrected with a hint), rows with a wrong number of values
+  are skipped with a hint, and a hint gives the resolution of the harmonic voltages when it is coarse (CODAM stores
+  them in steps of about 0.05 % of the fundamental, ≈ 10 V at 20 kV: the orders from about the 11th on are hardly
+  resolved). `pq.read` recognises such files.
+- `disturbances.settled_index` – the settling test – and the constants `SETTLE_SHARE`, `SETTLE_MAX_S`,
+  `SETTLE_ORDERS`, `MIN_SUGGESTION_S`; `dsp.window_dc` and `dsp.HIGHPASS_FILTERS` (the DC removal per window that
+  belongs to a value of `Settings.dc`); `evaluation.condition_blocks` (the intervals as the windows see them – used by
+  `evaluate`, `scan` and the transformer scan alike).
+- `formulas.typical_factor` and `formulas.TYPICAL_FACTORS`: the typical error of a measuring chain that explains a
+  ratio measured/expected – 3, 2, 10, 100, 1000 or the inverse (a clamp around one of the three conductors of a
+  star-point former or one of two parallel conductors, the measuring range, the CT ratio), within 15 %. The
+  consistency check of the campaign (`campaign.consistency`) names it for a coil current that differs from the other
+  tests, with the correction for the corrections file (before: only a power of ten, “factor ≈ 10”).
+- An export with the THD only (no harmonic voltages per order) is refused with a message that asks for an export with
+  the harmonics; quoted column names of CSV exports are read.
+- Documentation: *Evaluation chain* – block diagrams of the evaluation of a recording, the DC removal and the window
+  analysis, the analysis intervals with the settling and the disturbed states, the max window and the assessment
+  quantities, and the campaign evaluation.
+
+### Fixed
+
+- **Network expansion with the split from the busbar voltages** (`equivalent_source.network_expansion`,
+  `split="busbar"`): an order at which this split gives an impedance with a negative real part (Re Z_0 < 0 or
+  Re Z_1 < 0 – no passive network, typically an order the tests hardly excite) took it nevertheless, and the parallel
+  resonance computed with it gave an implausibly large current of that order in the expanded network. Such an order
+  now takes the split from the network data, with a hint (column `busbar_rejected` of the table); the Word report
+  names the orders.
+- **Scaling with a quantile of 0 V** (`formulas.order_scaling`, used by the evaluation and the equivalent-source
+  method): an order of the positive or negative sequence whose 95 % quantile is 0 V – below the resolution of the PQ
+  instrument – got the factor 0, and its measured current was removed from the scaled harmonic content. Such an
+  order is now scaled with the THD factor (without one: as measured), like an order without a quantile.
+- Word report: tests on both sides of a change between summer and standard time – the column heading says *local
+  time*, and every time carries its own label (CEST/CET, German MESZ/MEZ); before, all times were labelled with the
+  zone of the first test.
+- Word report, notes on the forecast of the equivalent sources: without a scaling to a power-quality measurement the
+  note on the network state says that the value holds for the harmonic voltage on the day of the tests; before, it
+  read “scaled to the quantiles of the power-quality measurement” for a campaign without one.
+- Word report without a file of the PQ measurement but with quantiles given in the evaluation (`U95`,
+  `THD95_PERCENT` or the settings of the single evaluations): section 2.4.1 names these quantiles and the factor;
+  before, it said that no PQ measurement was available although the tests were scaled to one.
+- Word report, scaled value of the equivalent sources at Z_E (3.2): the sentence says how the orders are scaled –
+  with their own quantile, with the THD factor k_THD and its value, or both – and that only the zero sequence, the
+  even orders and the content between the orders stay as measured; before, it always read “U_q,m set to
+  k_s·U_95,m; … the rest as measured”, also with the THD of a PQ measurement only and although the remainder
+  outside the orders of the model is scaled by the same rules.
+
 ## [3.4.0] - 2026-10-23
 
 A minor version for the question of network planning: can further cables be connected at the substation? The

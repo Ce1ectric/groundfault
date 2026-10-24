@@ -583,6 +583,15 @@ i18n.register({
     "document.no_pq": {
         "en": "No power-quality measurement of the busbar was available for this evaluation.",
         "de": "Eine Power-Quality-Messung der Sammelschiene lag für diese Auswertung nicht vor."},
+    "document.no_pq_given": {
+        "en": "No file of the power-quality measurement of the busbar was available for this evaluation; the scaling "
+              "takes the quantiles given in the evaluation: {values}, factor k_[s] = {k}.",
+        "de": "Eine Datei der Power-Quality-Messung der Sammelschiene lag für diese Auswertung nicht vor; skaliert "
+              "wird mit den in der Auswertung angegebenen Quantilen: {values}, Faktor k_[s] = {k}."},
+    "document.given_u95": {"en": "U_[95,{m}] = {u} V", "de": "U_[95,{m}] = {u} V"},
+    "document.given_thd": {"en": "THD_[95] = {thd} %", "de": "THD_[95] = {thd} %"},
+    "document.given_ll": {"en": "line-to-line", "de": "Leiter-Leiter"},
+    "document.given_seq": {"en": "sequence voltage", "de": "Sequenzspannung"},
     "document.sec_test_voltages": {"en": "Voltages of the earth-fault tests", "de": "Erdschlussmessung"},
     "document.test_voltages_intro": {
         "en": "The line-to-earth voltages were transformed into symmetrical components per order; shown is the "
@@ -632,6 +641,27 @@ i18n.register({
               "Annahme: Ihr Strom entsteht mit der Verlagerung im Erdschluss und wird nicht von der Spannung vor dem "
               "Fehler getrieben; gerade Ordnungen sind für die Spannung eines Netzes ungewöhnlich und bleiben "
               "ebenfalls wie gemessen."},
+    "document.step2_thd_only": {
+        "en": "Step 2: scaling of the harmonic currents to the voltage of the power-quality measurement. It gives the "
+              "THD only, no voltage per order: each order of the positive or negative sequence is scaled with the THD "
+              "factor k_[THD] (k_[s] = {k}). The orders of the zero sequence (3, 9, 15 …) keep their measured value – "
+              "assumption: their current arises with the displacement in the earth fault and is not driven by the "
+              "voltage before the fault; even orders are unusual for the voltage of a network and stay as measured as "
+              "well.",
+        "de": "Schritt 2: Skalierung der Oberschwingungsströme auf die Spannung der Power-Quality-Messung. Sie gibt nur "
+              "den THD an, keine Spannung je Ordnung: Jede Ordnung des Mit- oder Gegensystems wird mit dem THD-Faktor "
+              "k_[THD] skaliert (k_[s] = {k}). Die Ordnungen des Nullsystems (3, 9, 15 …) behalten ihren Messwert – "
+              "Annahme: Ihr Strom entsteht mit der Verlagerung im Erdschluss und wird nicht von der Spannung vor dem "
+              "Fehler getrieben; gerade Ordnungen sind für die Spannung eines Netzes ungewöhnlich und bleiben "
+              "ebenfalls wie gemessen."},
+    "document.step2_thd_value": {
+        "en": "The THD factor is k_[THD] = k_[s]·THD_[95]/THD_[test] = {k}·{thd95} %/{thd} % = {f}: THD_[95] is the "
+              "quantile of the largest line-to-line loop of the PQ measurement, THD_[test] the largest line-to-line "
+              "THD of the test{u_ref}.",
+        "de": "Der THD-Faktor ist k_[THD] = k_[s]·THD_[95]/THD_[Versuch] = {k}·{thd95} %/{thd} % = {f}: THD_[95] ist "
+              "das Quantil der größten Leiter-Leiter-Schleife der PQ-Messung, THD_[Versuch] der größte "
+              "Leiter-Leiter-THD des Versuchs{u_ref}."},
+    "document.ref_table_paren": {"en": " (table {n})", "de": " (Tabelle {n})"},
     "document.ref_table": {"en": ", table {n}", "de": ", Tabelle {n}"},
     "document.step2_safe": {
         "en": "[^The component is never larger than the largest phase, so k_[m] is on the safe side compared with "
@@ -766,12 +796,27 @@ i18n.register({
               "des Bereichs der Versuche ({zmin} … {zmax} Ω)."},
     "document.es_result_assessed": {"en": ", with margin {a} A", "de": ", mit Zuschlag {a} A"},
     "document.es_scaled": {
-        "en": "Scaled order by order to the power-quality measurement (U_[q,m] set to k_[s]·U_[95,m]; zero sequence, "
-              "even orders and the rest as measured): I_[H,scaled] = {ih} A, I_[RES] = {ires} A, assessed "
-              "I_[RES,ass] = {a} A.",
-        "de": "Je Ordnung skaliert auf die PQ-Messung (U_[q,m] auf k_[s]·U_[95,m] gesetzt; Nullsystem, gerade "
-              "Ordnungen und Rest wie gemessen): I_[H,skaliert] = {ih} A, I_[RES] = {ires} A, Bewertung "
-              "I_[RES,Bew] = {a} A."},
+        "en": "Scaled order by order to the power-quality measurement ({how}; {kept} as measured): "
+              "I_[H,scaled] = {ih} A, I_[RES] = {ires} A, assessed I_[RES,ass] = {a} A.",
+        "de": "Je Ordnung skaliert auf die PQ-Messung ({how}; {kept} wie gemessen): I_[H,skaliert] = {ih} A, "
+              "I_[RES] = {ires} A, Bewertung I_[RES,Bew] = {a} A."},
+    "document.es_how_own": {"en": "U_[q,m] set to k_[s]·U_[95,m]", "de": "U_[q,m] auf k_[s]·U_[95,m] gesetzt"},
+    "document.es_how_thd": {
+        "en": "U_[q,m] multiplied by the THD factor k_[THD] = {f}, there is no quantile per order",
+        "de": "U_[q,m] mit dem THD-Faktor k_[THD] = {f} multipliziert, ein Quantil je Ordnung gibt es nicht"},
+    "document.es_how_mixed": {
+        "en": "U_[q,m] set to k_[s]·U_[95,m], an order without its own quantile multiplied by the THD factor "
+              "k_[THD] = {f}",
+        "de": "U_[q,m] auf k_[s]·U_[95,m] gesetzt, eine Ordnung ohne eigenes Quantil mit dem THD-Faktor k_[THD] = {f} "
+              "multipliziert"},
+    "document.es_how_own_unscaled": {
+        "en": "U_[q,m] set to k_[s]·U_[95,m], an order without its own quantile as measured",
+        "de": "U_[q,m] auf k_[s]·U_[95,m] gesetzt, eine Ordnung ohne eigenes Quantil wie gemessen"},
+    "document.es_how_none": {"en": "no order with a quantile", "de": "keine Ordnung mit einem Quantil"},
+    "document.es_kept_between": {"en": "zero sequence, even orders and the content between the orders",
+                                 "de": "Nullsystem, gerade Ordnungen und Anteile zwischen den Ordnungen"},
+    "document.es_kept_rest": {"en": "zero sequence, even orders and the rest outside the orders of the model",
+                              "de": "Nullsystem, gerade Ordnungen und der Rest außerhalb der Ordnungen des Modells"},
     "document.es_mc": {
         "en": "Monte Carlo of the harmonic content[^Random errors (1σ) of the currents {sm} % and {sp}°, of the "
               "additional impedances {sz} %{level}{model}; I_[G] fixed; {n} runs.^]: I_[H](Z_[E]) P5 … P95 = {h5} … "
@@ -822,6 +867,13 @@ i18n.register({
               "the tests – reliable within the range of the additional impedances, beyond it an extrapolation.",
         "de": "Netzzustand: Skaliert auf die Quantile der PQ-Messung gilt der Wert für den ungünstigen Zustand des "
               "gemessenen Zeitraums; das Modell gilt für Netz und Schaltzustand der Versuche – im Bereich der "
+              "Zusatzimpedanzen belastbar, darüber hinaus eine Extrapolation."},
+    "document.forecast_2_unscaled": {
+        "en": "Network state: without a scaling to a power-quality measurement, the value holds for the harmonic "
+              "voltage on the day of the tests; the model is valid for the network and switching state of the tests – "
+              "reliable within the range of the additional impedances, beyond it an extrapolation.",
+        "de": "Netzzustand: Ohne Skalierung auf eine PQ-Messung gilt der Wert für die Oberschwingungsspannung am "
+              "Versuchstag; das Modell gilt für Netz und Schaltzustand der Versuche – im Bereich der "
               "Zusatzimpedanzen belastbar, darüber hinaus eine Extrapolation."},
     "document.forecast_3": {
         "en": "Growth of the network: the active part of the fundamental grows with I_[CE] (I_[w] = d·I_[CE]); with "
@@ -1131,6 +1183,11 @@ i18n.register({
     # ---- review round: processing, context, coil controller, limits, compact station
     "document.proc_dc_highpass": {
         "en": "removal of the DC component with a high-pass (Butterworth, {fc} Hz, zero-phase) on every interval, then "
+              "the mean per window",
+        "de": "Entfernen des Gleichanteils mit einem Hochpass (Butterworth, {fc} Hz, phasenfrei) je Auswertebereich, "
+              "danach je Fenster der Mittelwert"},
+    "document.proc_dc_highpass_median": {
+        "en": "removal of the DC component with a high-pass (Butterworth, {fc} Hz, zero-phase) on every interval, then "
               "the median per window",
         "de": "Entfernen des Gleichanteils mit einem Hochpass (Butterworth, {fc} Hz, phasenfrei) je Auswertebereich, "
               "danach je Fenster der Median"},
@@ -1204,6 +1261,15 @@ i18n.register({
               "PQ-Messung{window}. Ihr Median beträgt am Wochentag der Versuche ({day}) {u_day} V, über die Wochentage "
               "{u_lo} … {u_hi} V; das Quantil ({q} V) steht für die Zeiten hoher Oberschwingungsspannung. Daraus "
               "folgen die Faktoren k_[m] ({ks})."},
+    "document.scaling_low": {
+        "en": "In the tests the {orders} order lay at the {p} percentile of the power-quality measurement – below almost "
+              "all of its values –, and its factor k_[m] = {k} raises it to a level the network did not have on the day "
+              "of the tests. Check that the power-quality measurement and the tests have the same network and "
+              "switching state (feeding HV network, coupling of the busbars) before relying on it.",
+        "de": "Die {orders}. Ordnung lag in den Versuchen im {p} Perzentil der PQ-Messung – unter fast allen ihren "
+              "Werten –, und ihr Faktor k_[m] = {k} hebt sie auf einen Pegel, den das Netz am Versuchstag nicht hatte. "
+              "Vor der Verwendung prüfen, ob PQ-Messung und Versuche denselben Netz- und Schaltzustand haben "
+              "(vorgelagertes HS-Netz, Kupplung der Sammelschienen)."},
     "document.scaling_context_window": {
         "en": ", within the same time window of the week at the {p} percentile (table {t})",
         "de": ", im selben Zeitfenster der Woche im {p} Perzentil (Tabelle {t})"},
@@ -1477,6 +1543,29 @@ i18n.register({
         "de": "Bei der {orders}. Ordnung ergibt eine Aufteilung eine Impedanz mit negativem Realteil – ihre Daten "
               "passen nicht ganz zu einem passiven Netz (Winkelfehler bei der Oberschwingungsfrequenz, eine driftende "
               "Quelle), ihre Änderung ist unsicher."},
+    "document.tz_local": {"en": "local time", "de": "Ortszeit"},
+    "document.expansion_rejected_still": {
+        "en": " With the network data, too, the real part stays negative at the orders {orders} – their change is "
+              "uncertain.",
+        "de": " Auch mit den Netzdaten bleibt der Realteil bei den Ordnungen {orders} negativ – ihre Änderung ist "
+              "unsicher."},
+    "document.expansion_rejected_still_one": {
+        "en": " With the network data, too, its real part stays negative – its change is uncertain.",
+        "de": " Auch mit den Netzdaten bleibt ihr Realteil negativ – ihre Änderung ist unsicher."},
+    "document.expansion_rejected": {
+        "en": "At the orders {orders} the split from the busbar voltages gives an impedance with a negative real part – "
+              "no passive network, and a parallel resonance computed with it would be an artefact. For these orders "
+              "both splits use the network data.",
+        "de": "Bei den Ordnungen {orders} ergibt die Aufteilung über die Sammelschienenspannungen eine Impedanz mit "
+              "negativem Realteil – das ist kein passives Netz, und eine damit berechnete Parallelresonanz wäre ein "
+              "Rechenartefakt. Für diese Ordnungen verwenden beide Aufteilungen die Netzdaten."},
+    "document.expansion_rejected_one": {
+        "en": "At the {orders}th order the split from the busbar voltages gives an impedance with a negative real "
+              "part – no passive network, and a parallel resonance computed with it would be an artefact. For this "
+              "order both splits use the network data.",
+        "de": "Bei der {orders}. Ordnung ergibt die Aufteilung über die Sammelschienenspannungen eine Impedanz mit "
+              "negativem Realteil – das ist kein passives Netz, und eine damit berechnete Parallelresonanz wäre ein "
+              "Rechenartefakt. Für diese Ordnung verwenden beide Aufteilungen die Netzdaten."},
     "document.expansion_validity": {
         "en": "The conversion extrapolates the network model of the tests: it holds for a network built as today and "
               "for the assumptions above; the difference of the two splits shows how well the split of Z_[q] is "
@@ -1808,6 +1897,38 @@ def _n(x, digits: int = 3) -> str:
 def _hz(f) -> str:
     """Frequency of an order as an integer in Hz (nominal frequency × order)."""
     return "%d" % int(round(float(f))) if _finite(f) else "–"
+
+
+def _span(values) -> str:
+    """Range of numbers as the text shows them (47,5–48,1); one number when both ends look the same (63,3)."""
+    lo, hi = _n(min(values)), _n(max(values))
+    return lo if lo == hi else "%s–%s" % (lo, hi)
+
+
+def _es_scaling_text(rs: Mapping[str, Any]) -> Tuple[str, str]:
+    """How the scaled result of the equivalent sources at Z_E scales the orders of the positive or negative sequence –
+    its own quantile, the THD factor or both, from the rules of its table (orders of the model and remainder) – and
+    what stays as measured: the zero sequence, the even orders and the content between the orders, or the rest
+    outside the orders of the model when it is not resolved per order."""
+    own_rule, thd_rule, none_rule = fml.SCALING_RULES[0], fml.SCALING_RULES[1], fml.SCALING_RULES[3]
+    tab = rs.get("table")
+    if tab is not None and len(tab):
+        pn = tab[tab["category"] == "pos_neg"]
+        rules = set(pn["rule"])
+        thd = pn.loc[pn["rule"] == thd_rule, "factor"]
+        between = bool((tab["part"] == "remainder").any())
+    else:                                                    # no table: the rules of the orders of the model
+        rules = {r for m, r in (rs.get("rules") or {}).items() if fml.harmonic_category(int(m)) == "pos_neg"}
+        f = [k for m, k in (rs.get("factors") or {}).items() if (rs.get("rules") or {}).get(m) == thd_rule]
+        thd = pd.Series(f, dtype=float)
+        between = False
+    f_thd = _n(float(thd.iloc[0])) if len(thd) else "–"
+    if own_rule in rules:
+        how = (tr("document.es_how_mixed", f=f_thd) if thd_rule in rules else
+               tr("document.es_how_own_unscaled") if none_rule in rules else tr("document.es_how_own"))
+    else:
+        how = tr("document.es_how_thd", f=f_thd) if thd_rule in rules else tr("document.es_how_none")
+    return how, tr("document.es_kept_between" if between else "document.es_kept_rest")
 
 
 def _signed(x, digits: int = 2) -> str:
@@ -3408,6 +3529,16 @@ def _assessed(e, quantity: str) -> float:
     return float(row["assessment"].iloc[0]) if len(row) else float("nan")
 
 
+def _dc_method(meas: Mapping[str, Any]) -> str:
+    """The DC removal of a result file: ``"highpass"`` (high-pass, then the mean per window) or
+    ``"highpass_median"`` – a result of groundfault 3.4 with ``"highpass"`` (no ``dc_window`` stored) used the median
+    per window – or the method per window."""
+    dc = str(meas.get("dc_method", "") or "")
+    if dc == "highpass" and meas.get("dc_window", "median") == "median":
+        return "highpass_median"
+    return dc
+
+
 def _stored_settings(e) -> dict:
     meas = getattr(e, "measurement", None)
     if isinstance(meas, dict):
@@ -3590,6 +3721,7 @@ class _Campaign:
         # ---- scaling of every test with the PQ measurement of the campaign (consistent within the report)
         self.pq_valid = bool(pq is not None and getattr(pq, "valid", False))
         self.scaled: Dict[str, dict] = {}
+        self.thd95_used: Dict[str, Optional[float]] = {}               # THD quantile of the scaling per test
         self.stored_factors = sorted({float(_stored_settings(self.results[n]).get("pq_safety_factor") or 1.0)
                                       for n in self.names if _finite(self.results[n].values.get("IH_scaled"))})
         if self.pq_valid:
@@ -3598,10 +3730,12 @@ class _Campaign:
                 if n in self.stations and not _finite(self.results[n].values.get("IH_scaled")):
                     continue                                    # a station test is scaled only if its evaluation was
                 try:
+                    thd95 = pq.thd95() if _finite(pq.thd95()) else None
                     self.scaled[n] = evaluation.rescale_harmonics(
                         self.results[n], u95=sc["u95"], u95_reference=sc["u95_reference"],
-                        thd95_percent=pq.thd95() if _finite(pq.thd95()) else None, safety_factor=pq.factor,
+                        thd95_percent=thd95, safety_factor=pq.factor,
                         uncertainty_I=self.mI, uncertainty_U=self.mU)
+                    self.thd95_used[n] = thd95
                 except Exception as ex:                         # a test without voltages: not scaled
                     self.hints.append("%s: %s" % (n, ex))
         else:
@@ -3614,6 +3748,7 @@ class _Campaign:
                         e, u95=st.get("pq_u95"), u95_reference=st.get("pq_u95_reference") or "seq",
                         thd95_percent=st.get("u_thd95_percent"), safety_factor=float(st.get("pq_safety_factor") or 1),
                         uncertainty_I=self.mI, uncertainty_U=self.mU)
+                    self.thd95_used[n] = st.get("u_thd95_percent")
         for n, sres in self.scaled.items():
             big = sres["table"][sres["table"]["factor"] > 20.0]
             if len(big):
@@ -3786,7 +3921,7 @@ class _Campaign:
                     f1=float(meas.get("f1_hz", np.nan)), steady=meas.get("steady_state_s"),
                     pre=meas.get("pre_fault_s"), post=meas.get("post_fault_s"),
                     T_win=float(meas.get("T_win_s", np.nan)), window=meas.get("window", ""),
-                    dc=meas.get("dc_method", ""), main=(meas.get("main_channel") or {}).get("i_res", ""),
+                    dc=_dc_method(meas), main=(meas.get("main_channel") or {}).get("i_res", ""),
                     corrections=list(meta.get("corrections") or []), Z=self.Z.get(n),
                     polarity=meas.get("polarity_i_res"))
 
@@ -3967,6 +4102,8 @@ class _Campaign:
         first = {sp: es.network_expansion(self.series, ice, targets[0], split=sp, **kw) for sp in splits}
         negative = sorted({int(r["order"]) for sp in splits for _, r in first[sp].table.iterrows()
                            if complex(r["Z0"]).real < 0 or complex(r["Z1"]).real < 0})
+        rejected = sorted({int(r["order"]) for sp in splits for _, r in first[sp].table.iterrows()
+                           if bool(r.get("busbar_rejected", False))})
         now = float(curves[key(z_rep)]["decisive"]["decisive"].iloc[0])
         # the limits: those of the cases (at their Z_E), else the limits of the call at the Z_E of the report
         fu = float(self.f_factor) * float(self.u_tp) if _finite(self.u_tp) and _finite(self.f_factor) else float("nan")
@@ -3992,7 +4129,8 @@ class _Campaign:
         coil_end = float(xp["I_L_max"]) * ice / il if xp["I_L_max"] else float("nan")
         return dict(ice=ice, il=il, d=d, damping_added=da, c1_ratio=float(xp["c1_ratio"]),
                     zero_sequence=xp["zero_sequence"], targets=targets, planned=bool(xp["targets"]), splits=splits,
-                    Z_E=abs(complex(z_rep)), curves=curves, rows=rows, first=first, negative=negative, now=now,
+                    Z_E=abs(complex(z_rep)), curves=curves, rows=rows, first=first, negative=negative,
+                    rejected=rejected, now=now,
                     cases=cases, column=col, ih_column=ih_col, end=end, top=float(grid[-1]), I_L_max=xp["I_L_max"],
                     coil_end=coil_end, U_LE=float(first["sources"].U_LE), fu=fu)
 
@@ -4268,9 +4406,24 @@ class _Writer:
         on = self.c.fault_times.get(n, (None, None))[0]
         ts = t["start"] + pd.Timedelta(seconds=float(on)) if on is not None else t["start"]
         loc = _local(ts, self.c.info.timezone)
-        return loc.strftime("%H:%M:%S") if loc is not None else "–"
+        if loc is None:
+            return "–"
+        return loc.strftime("%H:%M:%S") + ((" " + self.tz_labels()[n]) if self.tz_mixed() else "")
+
+    def tz_labels(self) -> Dict[str, str]:
+        """Label of the time zone per test with a start time (e.g. MESZ/MEZ – they differ across a clock change)."""
+        return {n: _tz_label(self.c.info.timezone, _local(self.c.tests[n]["start"], self.c.info.timezone))
+                for n in self.c.names if self.c.tests[n]["start"] is not None}
+
+    def tz_mixed(self) -> bool:
+        """True if the tests lie on both sides of a clock change (summer and standard time)."""
+        return len(set(self.tz_labels().values())) > 1
 
     def tz_text(self) -> str:
+        """Label of the time zone in a column heading – "local time" if the tests lie on both sides of a clock
+        change, each time then carries its own label."""
+        if self.tz_mixed():
+            return tr("document.tz_local")
         n = next((x for x in self.c.names if self.c.tests[x]["start"] is not None), None)
         ts = _local(self.c.tests[n]["start"], self.c.info.timezone) if n else None
         return _tz_label(self.c.info.timezone, ts)
@@ -4468,8 +4621,17 @@ class _Writer:
                        own.sort_values("order").iterrows())
         window = tr("document.scaling_context_window", p=p_win, t=self.tables["pq_tests"]) \
             if p_win and "pq_tests" in self.tables else ""
-        return tr("document.scaling_context", order=dom, p_all=p_all, window=window, u_day=_n(med[wd]),
+        text = tr("document.scaling_context", order=dom, p_all=p_all, window=window, u_day=_n(med[wd]),
                   day=days[wd], u_lo=_n(med.min()), u_hi=_n(med.max()), q=_n(pq.u95().get(dom)), ks=ks or "–")
+        # an order whose test level lay below (almost) every value of the PQ measurement: a large factor that
+        # rests on an untypical test – the reader should check the network state
+        for _, r in tab[tab["rule"] == "own voltage"].sort_values("order").iterrows():
+            m, k = int(r["order"]), float(r["factor"])
+            gm = pc[(pd.to_numeric(pc["order"], errors="coerce") == m) & pc["test"].astype(str).isin(c.subs)]
+            pa = pd.to_numeric(gm.get("percentile_all", pd.Series(dtype=float)), errors="coerce").dropna()
+            if _finite(k) and k >= 2.0 and len(pa) and float(pa.max()) <= 5.0:
+                text += " " + tr("document.scaling_low", orders=m, p=self.percentile_range(pa), k=_n(k))
+        return text
 
     def order_spread(self, n: str) -> str:
         """Orders of the fault current that change by more than 20 % over the windows of the steady state."""
@@ -4880,7 +5042,8 @@ class _Writer:
         res = c.full.get(c.basis)
         fig_ref = tr("document.proc_intervals_fig", name=c.basis) if res is not None else ""
         steps = [tr("document.proc_read", corr=tr("document.proc_read_corr") if has_corr else ""),
-                 (tr("document.proc_dc_highpass", fc=_g(st.get("dc_cutoff_hz") or 5.0)) if t["dc"] == "highpass"
+                 (tr("document.proc_dc_" + t["dc"], fc=_g(st.get("dc_cutoff_hz") or 5.0))
+                  if t["dc"] in ("highpass", "highpass_median")
                   else tr("document.proc_dc", method=self.word("dc", t["dc"]))),
                  f1_text,
                  tr("document.proc_dft", T=_n(T), n=_n(T / 1000.0 * self._f_nominal(), 2) if _finite(T) else "–",
@@ -5165,13 +5328,37 @@ class _Writer:
         return tr("document.probe_inverted", ut_probe=str(sv.loc[it, "channel"]), ut=_n(v[it]),
                   ue_probe=str(sv.loc[ie, "channel"]), ue=_n(v[ie]))
 
+    def given_quantiles(self) -> Optional[Tuple[str, str]]:
+        """The quantiles of a scaling without a file of the PQ measurement – those of the campaign (``scaling``),
+        else those stored in the evaluation of the basis test – as text, and the factor k_s; None without any."""
+        c = self.c
+        sc = dict(c.scaling or {})
+        u95, ref, thd, k = sc.get("u95"), sc.get("u95_reference"), sc.get("thd95_percent"), sc.get("safety_factor")
+        if not (u95 or _finite(thd)):
+            if c.basis not in c.scaled:
+                return None
+            st = _stored_settings(c.results[c.basis])
+            u95, ref, thd, k = (st.get("pq_u95"), st.get("pq_u95_reference"), st.get("u_thd95_percent"),
+                                st.get("pq_safety_factor"))
+            if not (u95 or _finite(thd)):
+                return None
+        items = []
+        if u95:
+            side = tr("document.given_ll") if str(ref or "seq") == "LL" else tr("document.given_seq")
+            items.append(", ".join(tr("document.given_u95", m=int(m), u=_n(float(u)))
+                                   for m, u in sorted(dict(u95).items(), key=lambda x: int(x[0]))) + " (%s)" % side)
+        if _finite(thd):
+            items.append(tr("document.given_thd", thd=_n(float(thd))) + " (%s)" % tr("document.given_ll"))
+        return "; ".join(items), _n(float(k) if _finite(k) else 1.0)
+
     def voltages(self):
         c, d = self.c, self.d
         d.heading(tr("document.sec_voltages"), 2)
         self.heading(tr("document.sec_pq"), 3, key="pq")
         pq = c.pq
         if pq is None:
-            d.para(tr("document.no_pq"))
+            given = self.given_quantiles()
+            d.para(tr("document.no_pq_given", values=given[0], k=given[1]) if given else tr("document.no_pq"))
         else:
             cov = pq.coverage
             fmt = (lambda ts: _date_short(pd.Timestamp(ts), c.lang)) if cov.get("start") is not None else (lambda ts: "–")
@@ -5326,9 +5513,18 @@ class _Writer:
         else:
             u_ref = tr("document.ref_table", n=self.tables["voltages"]) if "voltages" in self.tables else ""
             safe = tr("document.step2_safe", n=self.tables["pq_tests"]) if "pq_tests" in self.tables else ""
-            d.para(tr("document.step2", k=_n(k), u_ref=u_ref, safe=safe))
-            d.para(tr("document.step2_condition"))
             tab = s["table"]
+            thd_rows = bool((tab["rule"] == "THD").any())
+            if thd_rows and not (tab["rule"] == "own voltage").any():      # a PQ measurement with the THD only
+                d.para(tr("document.step2_thd_only", k=_n(k)))
+            else:
+                d.para(tr("document.step2", k=_n(k), u_ref=u_ref, safe=safe))
+            f_thd, u_meas, thd95 = s.get("f_thd"), s.get("UTHD_meas"), c.thd95_used.get(n)
+            if thd_rows and _finite(f_thd) and _finite(u_meas) and _finite(thd95):
+                ref = tr("document.ref_table_paren", n=self.tables["voltages"]) if "voltages" in self.tables else ""
+                d.para(tr("document.step2_thd_value", k=_n(k), thd95=_n(thd95), thd=_n(u_meas), f=_n(f_thd),
+                          u_ref=ref))
+            d.para(tr("document.step2_condition"))
             shown = tab[tab["I_A"] >= self.order_threshold]
             rest = tab[(tab["I_A"] < self.order_threshold)]
             rows = []
@@ -5431,8 +5627,9 @@ class _Writer:
                       basis=tr("document.es_basis", basis=_sentence(c.info.Z_E_basis)) if c.info.Z_E_basis else ""))
             if c.es_scaled is not None:
                 rs = c.es_scaled
-                d.para(tr("document.es_scaled", ih=_n(rs["IH_scaled"]), ires=_n(rs["IRES_scaled"]),
-                          a=_n(rs["IRES_scaled_assessed"])))
+                how, kept = _es_scaling_text(rs)
+                d.para(tr("document.es_scaled", how=how, kept=kept, ih=_n(rs["IH_scaled"]),
+                          ires=_n(rs["IRES_scaled"]), a=_n(rs["IRES_scaled_assessed"])))
                 ref = tr("document.es_decomposition_ref", sec=self.sections["ires"]) if "ires" in self.sections else ""
                 d.para(tr("document.es_decomposition", ires=_n(r0["IRES"]), ih=_n(r0["IH"]), ihs=_n(rs["IH_scaled"]),
                           ig=_n(r0["IG"]), ref=ref))
@@ -5478,7 +5675,7 @@ class _Writer:
         xq = pd.to_numeric(st.get("Xq_Ohm", pd.Series(dtype=float)), errors="coerce").dropna()
         reactive = tr("document.forecast_reactive") if len(xq) and (xq < 0).all() else ""
         items = [tr("document.forecast_1", fig=tr("document.ref_figure", n=fig_ze) if fig_ze else "",
-                    reactive=reactive), tr("document.forecast_2")]
+                    reactive=reactive), tr("document.forecast_2" if c.scaling else "document.forecast_2_unscaled")]
         if c.expansion is not None and _finite(c.d):
             items.append(tr("document.forecast_3_expansion", d=_fixed(100 * c.d, 1)))
         elif _finite(c.ice_limit):
@@ -5585,8 +5782,7 @@ class _Writer:
         t_rows = {sp: rows_[sp].iloc[1] for sp in x["splits"]}
         vals = [float(t_rows[sp][col]) for sp in x["splits"]]
         ihs = [float(t_rows[sp][ihc]) for sp in x["splits"]]
-        span = (lambda v: _n(v[0]) if len(v) == 1 or abs(max(v) - min(v)) < 0.005 else
-                "%s–%s" % (_n(min(v)), _n(max(v))))
+        span = _span
         order = ""
         parts = {m: float(ref["I_%d_A" % m].iloc[0]) for m in orders if "I_%d_A" % m in ref.columns}
         if parts and t_orders:
@@ -5645,10 +5841,19 @@ class _Writer:
         if _finite(x["coil_end"]) and x["coil_end"] < max(x["targets"] + [lc["reach"]["I_C_A"] for lc in x["cases"]
                                                                           if lc["reach"]["status"] == "reached"]):
             d.para(tr("document.expansion_coils_short", ice=_fixed(round(x["coil_end"], -1), 0)))
-        neg = x["negative"]
+        rej = x.get("rejected") or []
+        neg = [m for m in x["negative"] if m not in rej]       # orders with a negative real part in network data too
+        still = [m for m in x["negative"] if m in rej]
         if neg:
             d.para(tr("document.expansion_negative_one", orders=neg[0]) if len(neg) == 1 else
                    tr("document.expansion_negative", orders=self.join([str(m) for m in neg])))
+        if rej:
+            text = (tr("document.expansion_rejected_one", orders=rej[0]) if len(rej) == 1 else
+                    tr("document.expansion_rejected", orders=self.join([str(m) for m in rej])))
+            if still:
+                text += (tr("document.expansion_rejected_still_one") if len(rej) == 1 else
+                         tr("document.expansion_rejected_still", orders=self.join([str(m) for m in still])))
+            d.para(text)
         d.para(tr("document.expansion_validity"))
 
     @staticmethod
@@ -6045,9 +6250,11 @@ class _Writer:
         add = rows.append
         add([tr("document.d_file")] + [c.tests[n]["cfg"] for n in names])
         add([tr("document.d_site")] + [c.place(n) for n in names])
+        labels = self.tz_labels() if self.tz_mixed() else {}
         add([tr("document.d_start", tz=tzl)] + [
             _local(c.tests[n]["start"], c.info.timezone).strftime("%d.%m.%Y %H:%M:%S" if c.lang == "de"
                                                                   else "%Y-%m-%d %H:%M:%S")
+            + ((" " + labels[n]) if n in labels else "")
             if c.tests[n]["start"] is not None else "–" for n in names])
         add([tr("document.d_fs")] + [_n(c.tests[n]["fs"] / 1000.0) for n in names])
         add([tr("document.d_duration")] + [_n(c.tests[n]["duration"]) for n in names])

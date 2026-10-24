@@ -221,18 +221,48 @@ def test_check_intervals():
 
 
 def test_decaying_dc_component_detected(tmp_path):
-    """Decaying DC component after fault inception (coil DC, τ = 0.3 s): an interval that starts early puts the
-    max window on the DC component (I_RES too high) → warning with the share; later start: OK."""
+    """Decaying DC component after fault inception (coil DC, τ = 0.3 s) with a DC removal per window only
+    (dc="median"): an interval that starts early puts the max window on the DC component (I_RES too high) → warning
+    with the share; later start: OK. The default high-pass removes it."""
     w = demo.make_substation_recording(str(tmp_path / "dc.cfg"), 0.0, duration=8.0, active_step=None, dc_offset=(150.0, 0.3))
     rec = open_recording(str(tmp_path / "dc.cfg"))
-    early = evaluate(rec, Intervals((2.1, 5.8), (0.2, 1.8), (7.0, 7.8)))
+    early = evaluate(rec, Intervals((2.1, 5.8), (0.2, 1.8), (7.0, 7.8)), Settings(dc="median"))
     pr = early.table("plausibility").set_index("check")
     assert pr.at["Niederfrequenter Anteil I_RES (< f1/2)", "status"] == "WARNING"
     assert early.values["IRES"] > 1.01 * w["IRES"] and any("Gleichanteil" in h for h in early.hints)
-    late = evaluate(rec, Intervals((4.2, 5.8), (0.2, 1.8), (7.0, 7.8)))
+    late = evaluate(rec, Intervals((4.2, 5.8), (0.2, 1.8), (7.0, 7.8)), Settings(dc="median"))
     pr = late.table("plausibility").set_index("check")
     assert pr.at["Niederfrequenter Anteil I_RES (< f1/2)", "status"] == "OK"
     assert late.values["IRES"] == pytest.approx(w["IRES"], rel=3e-3)
+    default = evaluate(rec, Intervals((2.1, 5.8), (0.2, 1.8), (7.0, 7.8)))
+    pr = default.table("plausibility").set_index("check")
+    assert pr.at["Niederfrequenter Anteil I_RES (< f1/2)", "status"] == "OK"
+    assert default.values["IRES"] == pytest.approx(w["IRES"], rel=3e-3)
+
+
+def test_mean_after_highpass_with_even_harmonics(tmp_path):
+    """A stationary fault current with a strong 2nd and 4th harmonic is not symmetric: its median lies beside its
+    mean. The default (high-pass, then the mean per window) gives the true RMS value and no low-frequency part; the
+    median per window shifts the waveform and the RMS value counts the shift (warning of the check)."""
+    fs, f1 = 10000.0, 50.0
+    t = np.arange(0.0, 6.0, 1.0 / fs)
+    i = (30 * np.sqrt(2) * np.sin(2 * np.pi * f1 * t) + 12 * np.sqrt(2) * np.sin(2 * np.pi * 2 * f1 * t + 0.6)
+         + 8 * np.sqrt(2) * np.sin(2 * np.pi * 4 * f1 * t + 1.9))
+    u = {k: 11500 * np.sqrt(2) * np.sin(2 * np.pi * f1 * t - 2 * np.pi * k / 3) for k in range(3)}
+    signals = {"UL1E": ("V", u[0]), "UL2E": ("V", u[1]), "UL3E": ("V", u[2]), "IF": ("A", i)}
+    cfg = str(tmp_path / "even.cfg")
+    write_comtrade(cfg, signals, fs)
+    true = float(np.sqrt(30 ** 2 + 12 ** 2 + 8 ** 2))
+    rec = open_recording(cfg)
+    iv = Intervals((1.0, 5.0), (0.2, 0.8), (5.2, 5.8))
+    default, med = evaluate(rec, iv), evaluate(rec, iv, Settings(dc="highpass_median"))
+    assert default.values["IRES"] == pytest.approx(true, rel=2e-3)
+    assert med.values["IRES"] > 1.005 * true
+    assert med.values["IG"] == pytest.approx(default.values["IG"], rel=1e-4)       # the harmonics are the same
+    pr = default.table("plausibility").set_index("check")
+    assert pr.at["Niederfrequenter Anteil I_RES (< f1/2)", "status"] == "OK"
+    assert default.values["ires_low_frequency_A"] < 0.2
+    assert med.values["ires_low_frequency_A"] > 5.0                  # the shift of the median (here ≈ 9 A)
 
 
 def test_saturation_detected(tmp_path):
@@ -453,15 +483,20 @@ def test_highpass_removes_the_decaying_dc_component(tmp_path):
                                        dc_offset=(150.0, 0.3))
     rec = open_recording(str(tmp_path / "dc.cfg"))
     early = Intervals((2.1, 5.8), (0.2, 1.8), (7.0, 7.8))
-    med, hp = evaluate(rec, early), evaluate(rec, early, Settings(dc="highpass"))
+    med, hp = evaluate(rec, early, Settings(dc="median")), evaluate(rec, early, Settings(dc="highpass"))
+    assert Settings().dc == "highpass"                                   # the default
     assert med.values["IRES"] > 1.03 * w["IRES"]
     assert hp.values["IRES"] == pytest.approx(w["IRES"], rel=3e-3)
     pr = hp.table("plausibility").set_index("check")
     assert pr.at["Niederfrequenter Anteil I_RES (< f1/2)", "status"] == "OK"
     assert hp.result_set["measurement"]["dc_method"] == "highpass"
+    assert hp.result_set["measurement"]["dc_window"] == "mean"
     assert hp.result_set["measurement"]["settings"]["dc_cutoff_hz"] == 5.0
+    hpm = evaluate(rec, early, Settings(dc="highpass_median"))           # the "highpass" of groundfault 3.4
+    assert hpm.result_set["measurement"]["dc_window"] == "median"
+    assert hpm.values["IRES"] == pytest.approx(w["IRES"], rel=3e-3)
     late = Intervals((4.2, 5.8), (0.2, 1.8), (7.0, 7.8))
-    a, b = evaluate(rec, late), evaluate(rec, late, Settings(dc="highpass"))
+    a, b = evaluate(rec, late, Settings(dc="median")), evaluate(rec, late, Settings(dc="highpass"))
     assert b.values["IRES"] == pytest.approx(a.values["IRES"], rel=1e-3)
     assert b.values["IG"] == pytest.approx(a.values["IG"], rel=1e-4)
     for bad in (0.0, 20.0, -5.0):

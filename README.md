@@ -204,7 +204,7 @@ GitHub offers them as APA and BibTeX under *Cite this repository*:
 @software{Ehlert_groundfault_2026,
   author  = {Ehlert, Christian},
   title   = {{groundfault}},
-  version = {3.4.0},
+  version = {3.5.0},
   month   = oct,
   year    = {2026},
   url     = {https://github.com/Ce1ectric/groundfault},

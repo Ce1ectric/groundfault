@@ -209,3 +209,67 @@ def test_scan_suggests_the_undisturbed_interval(tmp_path):
 def test_settings_are_checked(kwargs):
     with pytest.raises(ValueError):
         Settings(**kwargs)
+
+
+def test_settled_index_of_a_decaying_transient():
+    """settled_index: the first window from which two consecutive blocks differ by less than the tolerance – an
+    exponential approach settles once its remaining drift is small; a constant series at once; a ramp never."""
+    t = 0.2 * np.arange(40)
+    k, drift = disturbances.settled_index({"iv": -6.5 - 9.5 * np.exp(-t / 0.7)}, tol=0.67)
+    assert k == 7 and t[k] == pytest.approx(1.4) and drift["iv"] < 0.67
+    k, _ = disturbances.settled_index({"iw": np.full(40, 20.0), "iv": np.full(40, 3.0)}, tol=0.5)
+    assert k == 0
+    k, drift = disturbances.settled_index({"iw": 20.0 + 2.0 * t}, tol=0.5)       # 1.2 A per block
+    assert k is None and drift["iw"] == pytest.approx(1.2)
+    k, _ = disturbances.settled_index({"iv": -6.5 - 9.5 * np.exp(-t / 0.7)}, tol=0.67, last=3)
+    assert k is None
+
+
+def _with_transient(src, dst, A, tau, t_on=2.0, t_off=6.0, f1=50.02):
+    """The demo recording ``src`` with a fundamental component A·e^{−(t−t_on)/τ} added to the fault current during
+    the fault (a transient after the inception that settles slowly), written to ``dst``."""
+    from groundfault import detect_roles, write_comtrade
+    q = open_recording(src)
+    x = q.read(0, q.n)
+    k = detect_roles(q.channel_names, q.units).main("i_res").index
+    t = np.arange(q.n) / q.fs
+    m = (t >= t_on) & (t < t_off)
+    add = np.zeros(q.n)
+    add[m] = A * np.exp(-(t[m] - t_on) / tau) * np.sqrt(2) * np.sin(2 * np.pi * f1 * t[m] + 0.4)
+    signals = {nm: (u, x[:, j] + (add if j == k else 0.0)) for j, (nm, u) in enumerate(zip(q.channel_names, q.units))}
+    write_comtrade(dst, signals, q.fs, t_start=q.t_start)
+    return dst
+
+
+def test_scan_waits_for_the_settled_fault_state(tmp_path):
+    """After the fault inception the fundamental settles with a time constant of 1 s (8 A): the scan – and with it the
+    suggestion – starts only when Iw and Iv have settled; without the transient it starts as before."""
+    base = str(tmp_path / "SUB_0_10_000kHz.cfg")
+    demo.make_substation_recording(base, 0.0, duration=9.0, second_ct=None)
+    d0 = disturbances.scan(open_recording(base))
+    assert d0.meta["settling"]["shifted"] is False
+    a0, b0 = d0.suggestion()
+    cfg = _with_transient(base, str(tmp_path / "SUB_T_10_000kHz.cfg"), 8.0, 1.0)
+    d = disturbances.scan(open_recording(cfg))
+    st = d.meta["settling"]
+    assert st["settled"] and st["shifted"] and set(st["limiting"]) <= {"iw", "iv"}
+    a, b = d.suggestion()
+    assert a >= 3.1 and a > a0 + 0.4 and b == pytest.approx(b0) == pytest.approx(4.6, abs=0.11)
+    with i18n.language("de"):
+        assert "Einschwingen nach dem Fehlereintritt bis" in d.text()
+
+
+def test_suggestion_prefers_a_range_of_at_least_one_second():
+    """A short undisturbed range at the start (0.4 s before an active residual current increase) is no suggestion
+    when a range of at least MIN_SUGGESTION_S follows; with short ranges only, the longest one is suggested."""
+    Iw = np.where((T > 0.4) & (T < 1.0), 32.0, 20.0)
+    d = disturbances.detect(T, _I1(Iw, 25.0), U0)
+    assert d.reference_intervals()[0] == (pytest.approx(0.0), pytest.approx(0.4))
+    assert d.suggestion() == (1.0, 8.0)
+    import pandas as pd
+    seg = pd.DataFrame(dict(from_s=[0.0, 0.4, 1.0, 1.6], to_s=[0.4, 1.0, 1.6, 2.0],
+                            state=["reference", "active increase", "reference", "active increase"]))
+    short = disturbances.Disturbances(t_s=T[:10], state=np.full(10, "reference", dtype=object),
+                                      reference=np.ones(10, bool), events=pd.DataFrame(), segments=seg,
+                                      threshold_A=1.0, with_u0=True)
+    assert short.suggestion() == (1.0, 1.6)                       # both shorter than 1 s: the longest

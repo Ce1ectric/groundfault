@@ -10,9 +10,10 @@ spectrum of a freely chosen excerpt – to check the evaluation ("does the value
   evenly spread over the recording) together with their spectrum and characteristic values.
 
 The computation is the same as in the evaluation ([`groundfault.evaluate`][groundfault.evaluation.evaluate]): window
-``T_win`` (default 200 ms = 10 cycles), DC component removed per window by the median, true RMS value over all
+``T_win`` (default 200 ms = 10 cycles), DC component removed per window by the mean, true RMS value over all
 frequencies, harmonics as RMS phasors from the DFT with a Hann window at m·f1, and THD = √(Σ_{m≥2} X_m²)/X_1 over the
-computed orders. Given the evaluation result ``res``, f1 and the channel roles are taken from the evaluation; the values
+computed orders. The explorer shows the raw signals: the high-pass that the evaluation applies to its intervals
+(``Settings.dc="highpass"``) is not applied, so a DC component that decays after the fault inception stays visible. Given the evaluation result ``res``, f1 and the channel roles are taken from the evaluation; the values
 of the max window then agree with its tables.
 
 Titles, labels and hover texts follow the output language ([`groundfault.i18n`][groundfault.i18n]); the HTML file is
@@ -165,14 +166,14 @@ i18n.register({
         "de": "Momentanwerte der ganzen Aufzeichnung (Hüllkurve: Minimum/Maximum je Abschnitt)"},
     "explorer.html_footer": {
         "en": "Computed as in the evaluation tool (package <code>groundfault</code>): window {window_ms:.4g} ms, "
-              "DC component removed per window by the median, true RMS value over all frequencies, harmonics as RMS "
+              "DC component removed per window by the mean, true RMS value over all frequencies, harmonics as RMS "
               "values from the DFT with a Hann window at m·f1 (f1 = {f1:.6g} Hz), THD = √(Σ H<sub>m</sub>², "
               "m ≥ 2)/H<sub>1</sub>. Angles in the spectrum and in the table are referred to the fundamental of the "
               "first selected channel (φ<sub>m</sub> − m·φ<sub>1</sub>). Instantaneous values are stored for the "
               "display with at most {fs_max_khz:g} kHz (low-pass filtered); spectrum and characteristic values are "
               "computed from the original data.",
         "de": "Berechnung wie im Auswertewerkzeug (Paket <code>groundfault</code>): Fenster {window_ms:.4g} ms, "
-              "Gleichanteil je Fenster per Median entfernt, Echt-Effektivwert über alle Frequenzen, Harmonische als "
+              "Gleichanteil je Fenster per Mittelwert entfernt, Echt-Effektivwert über alle Frequenzen, Harmonische als "
               "Effektivwerte aus der DFT mit Hann-Fenster bei m·f1 (f1 = {f1:.6g} Hz), THD = √(Σ H<sub>m</sub>², "
               "m ≥ 2)/H<sub>1</sub>. Winkel im Spektrum und in der Tabelle sind auf die Grundschwingung des ersten "
               "gewählten Kanals bezogen (φ<sub>m</sub> − m·φ<sub>1</sub>). Momentanwerte für die Anzeige mit "
@@ -333,7 +334,7 @@ def window_metrics(rec, channels=None, T_win: float = 0.2, T_hop: Optional[float
     """Characteristic values per window over the whole recording.
 
     The recording is read block by block (``block_windows`` windows at a time), so the memory stays small for long
-    recordings. Per window: true RMS value after removing the DC component (median), mean value, peak value and the
+    recordings. Per window: true RMS value after removing the DC component (mean), mean value, peak value and the
     RMS phasors at m·f1 (window function ``window``) – the same functions as in the evaluation.
 
     Parameters
@@ -378,7 +379,7 @@ def window_metrics(rec, channels=None, T_win: float = 0.2, T_hop: Optional[float
         blk = rec.read(int(starts[a]), int(starts[b - 1]) + nwin, idx, shift)
         for j in range(n_k):
             seg = dsp.window_view(blk[:, j], nwin, nhop)[: b - a]
-            Xj, rj = dsp.dft_phasors(seg, fs, f1 * ords, window, "median")
+            Xj, rj = dsp.dft_phasors(seg, fs, f1 * ords, window, "mean")
             X[a:b, j] = Xj; rms[a:b, j] = rj
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -484,12 +485,12 @@ def _phasors(x: np.ndarray, fs: float, freqs: np.ndarray, block: int = 1 << 15) 
     [`dsp.window_phasors`][groundfault.dsp.window_phasors])."""
     x = np.asarray(x, float)
     if len(x) <= 4 * block:
-        return dsp.window_phasors(x, fs, freqs)[0]
+        return dsp.window_phasors(x, fs, freqs, dc="mean")[0]
     if not np.isfinite(x).all():
         return np.full(len(freqs), np.nan + 0j)
     N = len(x)
     w = dsp.window_function(N, "hann")
-    x0 = (x - np.median(x)) * w
+    x0 = (x - np.mean(x)) * w
     X = np.zeros(len(freqs), complex)
     for a in range(0, N, block):
         n = np.arange(a, min(N, a + block))
@@ -598,7 +599,7 @@ def excerpt_table(rec, channels: Sequence[int], t0: float, t1: float, f1: float,
     for j, k in enumerate(channels):
         ki = roles.channels[k]
         xj = x[:, j][np.isfinite(x[:, j])]
-        x0 = dsp.remove_dc(xj[None, :], "median", axis=1)[0] if xj.size else xj
+        x0 = dsp.remove_dc(xj[None, :], "mean", axis=1)[0] if xj.size else xj
         eff = float(dsp.true_rms(x0)) if xj.size else np.nan
         s = sp[sp["index"] == k].set_index("order")
         h = lambda m: float(s.at[m, "rms"]) if m in s.index else np.nan   # noqa: E731

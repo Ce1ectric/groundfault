@@ -108,9 +108,9 @@ measurement  U_pre_V  U_post_V
         0 Ω    220.0     220.0
       2.5 Ω    242.0     242.0
         5 Ω    209.0     209.0
-complex   5: Z_q = 4.50 -2.50j Ω, residual 0.01 % | 7: Z_q = 7.00 -3.50j Ω, residual 0.01 %
-magnitude 5: Z_q = 3.13 -2.74j Ω, residual 12.79 % | 7: Z_q = 3.89 -3.75j Ω, residual 14.16 %
-None      5: Z_q = 2.82 -2.52j Ω, residual 15.65 % | 7: Z_q = 3.37 -3.27j Ω, residual 17.53 %
+complex   5: Z_q = 4.50 -2.50j Ω, residual 0.00 % | 7: Z_q = 7.00 -3.49j Ω, residual 0.00 %
+magnitude 5: Z_q = 3.13 -2.74j Ω, residual 12.78 % | 7: Z_q = 3.89 -3.75j Ω, residual 14.16 %
+None      5: Z_q = 2.82 -2.52j Ω, residual 15.64 % | 7: Z_q = 3.37 -3.27j Ω, residual 17.54 %
 ```
 
 **Orders.** `orders="auto"` fits the odd orders above 1 whose current is at least `min_current_A` (0.5 A) in at least
@@ -210,14 +210,14 @@ print(series.pairwise_table().query("order == 5").round(3).to_string(index=False
 ```text
  order sequence normalization  Uq_ref_faulted_phase  Uq_angle_ref_faulted_phase_deg  dZq_rel_per_1pct
      3     zero          none                   NaN                             NaN             0.022
-     5      neg       complex                 1.000                          -0.009             0.021
-     7      pos       complex                 1.000                           0.015             0.027
-    11      neg       complex                 1.001                           0.065             0.017
-    13      pos       complex                 0.999                           0.072             0.022
+     5      neg       complex                 1.000                          -0.003             0.021
+     7      pos       complex                 0.999                           0.055             0.027
+    11      neg       complex                 1.001                           0.022             0.017
+    13      pos       complex                 0.999                          -0.068             0.022
  order        pair  Rq_Ohm  Xq_Ohm    Uq_V  dZq_rel_per_1pct assessment
-     5 0 Ω / 2.5 Ω   4.500  -2.500 220.002             0.030         ok
-     5   0 Ω / 5 Ω   4.498  -2.501 219.963             0.020         ok
-     5 2.5 Ω / 5 Ω   4.496  -2.504 219.924             0.057         ok
+     5 0 Ω / 2.5 Ω     4.5  -2.499 219.984             0.030         ok
+     5   0 Ω / 5 Ω     4.5  -2.501 220.009             0.020         ok
+     5 2.5 Ω / 5 Ω     4.5  -2.504 220.035             0.057         ok
 ```
 
 `report.source_plane(series, mc)` shows these checks in the complex plane: per order the fitted source impedance
@@ -235,8 +235,8 @@ fig = report.source_plane(series, mc)                    # one shaded box per or
 ```
 
 ```text
-order 5: R_q 4.250 … 4.746 Ω, X_q -2.735 … -2.275 Ω
-order 7: R_q 6.530 … 7.483 Ω, X_q -3.959 … -3.069 Ω
+order 5: R_q 4.250 … 4.747 Ω, X_q -2.735 … -2.275 Ω
+order 7: R_q 6.526 … 7.478 Ω, X_q -3.949 … -3.060 Ω
 ```
 
 The boxes contain the source impedances of the demo network, 4.5 − j2.5 Ω and 7 − j3.5 Ω.
@@ -379,12 +379,12 @@ print(measured.loo_table().query("order == 7")[["measurement", "I_measured_A", "
 ```text
 measurement  Rq_Ohm  Xq_Ohm  Zq_deviation_pct  Zq_angle_deviation_deg
         0 Ω    7.00   -3.50              0.00                    0.00
-      2.5 Ω    6.77   -4.67              5.03                   -8.02
-        5 Ω    7.07   -2.77             -3.00                    5.17
+      2.5 Ω    6.77   -4.67              5.04                   -8.03
+        5 Ω    7.07   -2.77             -3.00                    5.16
 Z_E_Ohm  Uq_fitted_to_measured  I_measured_source_A  I_fitted_source_A  fitted_to_measured  interpolation
-      0                  0.892               14.056             14.214               1.011           True
+      0                  0.892               14.056             14.215               1.011           True
       5                  0.892                8.800              8.584               0.975           True
-     10                  0.892                6.337              6.043               0.954          False
+     10                  0.892                6.337              6.042               0.953          False
 fitted equivalent source: −U_q/level = 0.89∠-3°; current fitted/measured source 0.98 at Z = 5 Ω (tested range), 0.95 at Z = 10 Ω
 measurement  I_measured_A  I_from_others_A  deviation_pct
         0 Ω         14.06            14.01          -0.35
@@ -501,7 +501,7 @@ print("I_RES(2.5 Ω) = %.3f A, behind a line of zero length %.3f A, rest %.3f A"
 ```
 
 ```text
-I_RES(2.5 Ω) = 45.587 A, behind a line of zero length 45.587 A, rest 0.012 A
+I_RES(2.5 Ω) = 45.589 A, behind a line of zero length 45.589 A, rest 0.012 A
 ```
 
 ## Network expansion
@@ -556,6 +556,11 @@ different data – the network data on I_C, I_L and the damping, the busbar spli
 harmonic frequencies –; where the data are consistent they lie close, and their difference shows how well the split is
 known. The [report](../user-guide/document.md) computes both and takes the larger residual current.
 
+An order the tests hardly excite may give a busbar split with a negative real part, Re Z_0 < 0 or Re Z_1 < 0. That is
+no passive network: added in parallel with the capacitance of the new cables, it can produce a parallel resonance that
+does not exist, and with it an implausibly large current of that order. Such an order takes the split from the
+network data instead, with a hint (column `busbar_rejected` of the table per order); `split="sources"` is unchanged.
+
 **Validation.** `tests/test_forecast_physics.py` checks the conversion against the nodal calculation of a synthetic
 20-kV network – three phases per order, the upstream impedance, earth capacitances with losses, loads, a coil with a
 nonlinear current that arises with the fault, harmonic sources behind the upstream impedance and in the MV network –
@@ -584,13 +589,13 @@ for split in ("sources", "busbar"):
 
 ```text
  order           Z0          Z1           Z0_from Z1_from
-     3 10.87- 5.63j  0.02-0.01j equivalent_source pos/neg
-     5 13.50- 7.50j  0.00+0.00j            busbar     pos
-     7 21.01-10.50j  0.02-0.01j            busbar     neg
-    11  7.50- 6.59j  0.01-0.03j            busbar     pos
-    13 15.03- 8.39j -0.04-0.05j            busbar     neg
+     3 10.93- 5.62j  0.01-0.03j equivalent_source pos/neg
+     5 13.50- 7.50j -0.00+0.00j            busbar     pos
+     7 20.99-10.52j -0.00-0.00j            busbar     neg
+    11  7.51- 6.59j  0.02+0.03j            busbar     pos
+    13 14.98- 8.39j -0.01-0.01j            busbar     neg
 sources 600 A: 45.6 A | 700 A: 50.0 A | 800 A: 54.3 A | 900 A: 58.6 A | 60 A at I_C ≈ 931 A
-busbar  600 A: 45.6 A | 700 A: 52.3 A | 800 A: 59.5 A | 900 A: 66.8 A | 60 A at I_C ≈ 807 A
+busbar  600 A: 45.6 A | 700 A: 50.2 A | 800 A: 54.7 A | 900 A: 59.1 A | 60 A at I_C ≈ 920 A
 ```
 
 The demo network is a signal model rather than a network: its harmonic sources are stiff (Z_1 ≈ 0 – the busbar

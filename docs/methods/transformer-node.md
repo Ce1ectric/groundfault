@@ -231,7 +231,7 @@ print(p[p["order"].isin([1, 5, 7, 11])].round(2).to_string(index=False))
 
 ```text
  order  f_Hz  P_pre_fault_kW  P_fault_kW  P_post_fault_kW  Q_pre_fault_kvar  Q_fault_kvar  Q_post_fault_kvar
-     1  50.0         8000.03     8207.46          7999.98           1999.99       5503.13            2000.01
+     1  50.0         8000.07     8207.48          8000.05           1999.99       5503.14            2000.02
      5 250.0           -4.00       -5.12            -4.00              9.00          8.39               9.00
      7 350.0            2.00        1.61             2.00             -3.00         -2.33              -3.00
     11 550.0           -1.00       -1.44            -1.00              1.50          1.81               1.50
@@ -251,11 +251,11 @@ print(z[z["order"].isin([5, 7, 11])][cols].round(3).to_string(index=False))
 ```text
  order sequence  dI_A  Z_up_Ohm  Z_up_angle_deg  X_up_per_order_Ohm  Z_up_post_Ohm  uncertainty_pct  significant  Z_transformer_Ohm  Z_hv_Ohm
      5      pos 2.700     9.614          89.587               1.923          9.615            0.229         True              9.024     0.590
-     5      neg 2.700     9.595          89.487               1.919          9.615            0.220         True              9.012     0.583
-     7      pos 1.201    13.436          89.555               1.919         13.419            0.357         True             12.575     0.860
+     5      neg 2.700     9.595          89.484               1.919          9.616            0.228         True              9.012     0.584
+     7      pos 1.200    13.436          89.556               1.919         13.421            0.352         True             12.575     0.861
      7      neg 1.201    13.461          89.522               1.923         13.446            0.370         True             12.618     0.843
     11      pos 0.450    21.041          89.883               1.913         21.103            0.390         True             19.673     1.369
-    11      neg 0.450    21.085          89.644               1.917         20.982            0.665         True             19.730     1.355
+    11      neg 0.450    21.093          89.666               1.918         21.009            0.685         True             19.730     1.364
 ```
 
 True values: |Z_up| = 9.600, 13.440 and 21.120 Ω, transformer 9.000, 12.600 and 19.800 Ω, HV network 0.601, 0.841

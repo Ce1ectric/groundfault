@@ -41,8 +41,11 @@ i18n.register({
                                "de": "Spulenstrom {channel} in {measurement}"},
     "campaign.value_coil_median": {"en": "{value} A (median {median} A)", "de": "{value} A (Median {median} A)"},
     "campaign.coil_deviation": {"en": "deviates by {deviation:.0f} %{note}", "de": "weicht um {deviation:.0f} % ab{note}"},
-    "campaign.coil_factor_note": {"en": " – factor ≈ {factor:g}: check the measuring range/CT ratio",
-                                  "de": " – Faktor ≈ {factor:g}: Messbereich/Wandlerübersetzung prüfen"},
+    "campaign.coil_factor_note": {
+        "en": " – factor ≈ {factor}: a typical error of the measuring chain (clamp around one of several conductors, "
+              "measuring range, CT ratio); if confirmed, correction {correction} in the corrections file",
+        "de": " – Faktor ≈ {factor}: typischer Fehler der Messkette (Zange um einen von mehreren Leitern, Messbereich, "
+              "Wandlerübersetzung); wenn bestätigt, Korrektur {correction} in der Korrekturdatei"},
     "campaign.coil_state_note": {"en": " – coil position/network state changed?",
                                  "de": " – Spulenstellung/Netzzustand geändert?"},
     "campaign.check_coil": {"en": "Coil current {channel}", "de": "Spulenstrom {channel}"},
@@ -149,8 +152,9 @@ def consistency(results: Mapping[str, object], tolerance: float = 0.10) -> pd.Da
 
     * The fundamental component I_G and the neutral displacement voltage U0 hardly depend on the fault
       resistance (Z_F ≪ 1/|Y0|) → nearly equal in all measurements.
-    * The coil currents (H1) are proportional to U0 → nearly equal per coil; a factor ≈ 10 indicates a wrong
-      measuring range or CT ratio. A coil current of 0 A (coil switched off, clamp not connected) cannot be
+    * The coil currents (H1) are proportional to U0 → nearly equal per coil; a ratio near a typical error of the
+      measuring chain ([`typical_factor`][groundfault.formulas.typical_factor]: 3, 2, 10, 100, 1000 or the inverse –
+      a clamp around one of several conductors, the measuring range, the CT ratio) is named with its correction. A coil current of 0 A (coil switched off, clamp not connected) cannot be
       assessed this way and is left out like a missing value.
     * The harmonic content must decrease with increasing Z_F (active Thevenin equivalent).
     * Faulted phase (and polarity) should agree.
@@ -205,9 +209,11 @@ def consistency(results: Mapping[str, object], tolerance: float = 0.10) -> pd.Da
             if not np.isfinite(q):
                 continue
             if abs(q - 1) > tolerance:
-                factor = 10 ** round(math.log10(q))
-                note = (tr("campaign.coil_factor_note", factor=factor)
-                        if abs(math.log10(q)) > 0.7 else tr("campaign.coil_state_note"))
+                factor = fml.typical_factor(q)
+                if factor is None and abs(math.log10(q)) > 0.7:
+                    factor = 10.0 ** round(math.log10(q))           # a power of ten, roughly (coil state changed too)
+                note = (tr("campaign.coil_factor_note", factor=_factor_text(factor), correction=_factor_text(1 / factor))
+                        if factor is not None else tr("campaign.coil_state_note"))
                 p(tr("campaign.check_coil_in", channel=k, measurement=n), "WARNING",
                   tr("campaign.value_coil_median", value=_z(v), median=_z(med)),
                   tr("campaign.coil_deviation", deviation=100 * (q - 1), note=note))
@@ -230,6 +236,13 @@ def consistency(results: Mapping[str, object], tolerance: float = 0.10) -> pd.Da
         p(tr("campaign.check_faulted_phase"), "OK" if len(fl) == 1 else "NOTE", ", ".join(sorted(fl)),
           tr("campaign.same_phase") if len(fl) == 1 else tr("campaign.different_phases"))
     return pd.DataFrame(pr)
+
+
+def _factor_text(f: float) -> str:
+    """A factor as written in the corrections file: ``3``, ``1/3``, ``10``, ``1/100``."""
+    if f >= 1.0:
+        return "%g" % round(f, 6)
+    return "1/%g" % round(1.0 / f, 6)
 
 
 def _z(x: float) -> str:

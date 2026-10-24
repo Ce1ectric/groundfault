@@ -27,7 +27,19 @@ The functions are in [`groundfault.pq`](../reference/pq.md); the method is descr
   serial number, measurement, interval, nominal voltage) and the columns `H5_UL1_[V]` (harmonic voltage of order 5,
   line-to-earth L1, primary volts), `THD12_[%]` (THD of the line-to-line voltage L1-L2), `U12_[V]` (RMS value),
   `UNE_[V]`; columns of maxima (`H5_UL1_max_[V]`) are kept separately. Comma or semicolon as separator and a decimal
-  point or comma are recognised.
+  point or comma are recognised. An export with the THD only is refused with a message: the scaling needs the
+  harmonic voltages per order. If there is nothing else, give the quantile of its THD by hand (`THD95_PERCENT` in
+  the campaign notebook, `u_thd95_percent` in the evaluation – the largest loop of the 10-min values, as `assess`
+  forms it): every order of the positive or negative sequence then takes the THD factor.
+* **LEM Memobox** – the file `*.PQL` of the software CODAM (`pq.read_pql`, also recognised by `pq.read`): the job
+  (title, interval, nominal and transformer voltages) and the interval values. Per phase or loop the mean fundamental
+  and the harmonic voltages of the orders 2 … 50 of each interval are read in primary volts – line-to-line
+  (`L12`, `L23`, `L31`) for a three-wire job, otherwise line-to-earth; the THD is computed from the orders 2 … 40.
+  The scale is checked against the nominal voltage of the job (a factor 10ⁿ is corrected with a hint), and rows with
+  a wrong number of values are skipped with a hint. CODAM stores the harmonic voltages in steps of about 0.05 % of
+  the fundamental (≈ 10 V at 20 kV); a hint gives the step. Orders whose level is only a few steps – often from
+  the 11th on – are hardly resolved, their quantiles are uncertain, and a quantile of 0 V scales with the THD
+  instead of its own voltage.
 * **Other instruments** – read the export with pandas and pass the table to `pq.from_frame(frame, interval_s=…)`:
   one row per interval, the time in the index or in a column, columns such as `H5_L1` (V or `H5_L1_[%]` in % of the
   fundamental), `THD_L12` and `U_L12`. Unknown columns are left out with a hint.
@@ -194,10 +206,10 @@ print(w[[5, 7]].quantile([0.5, 0.95]).to_string(float_format="%.3f"))
 ```
 
 ```text
-              start  n_intervals     5     7
-2025-12-15 00:10:00         1008 0.989 0.989
-2025-12-16 00:10:00         1008 1.026 1.026
-2025-12-17 00:10:00         1008 0.993 0.993
+                    start  n_intervals     5     7
+2025-12-15 00:10:00+01:00         1008 0.989 0.989
+2025-12-16 00:10:00+01:00         1008 1.026 1.026
+2025-12-17 00:10:00+01:00         1008 0.993 0.993
          5     7
 0.50 0.999 0.999
 0.95 1.034 1.034
@@ -331,17 +343,17 @@ print(res.table("harmonic_scaling").query("order <= 13").round(2).to_string(inde
 
 ```text
                measured_value unit
-quantity                          
-IH_total                46.59    A
+quantity
+IH_total                46.58    A
 UTHD_meas                2.16    %
 UTHD_95                  4.04    %
 IH_zero                  4.04    A
 IH_even                  0.01    A
-IH_other                 0.61    A
+IH_other                 0.18    A
 IH_scaled               92.05    A
-IRMS_forecast           97.45    A
+IRMS_forecast           97.46    A
  order   f_Hz category   I_A  U_level_V  U95_V  factor        rule  I_scaled_A
-     2 100.04     even  0.00       0.07   1.59    1.00 as measured        0.00
+     2 100.04     even  0.00       0.06   1.59    1.00 as measured        0.00
      3 150.06     zero  4.04      25.01  33.02    1.00 as measured        4.04
      4 200.08     even  0.00       0.05   1.27    1.00 as measured        0.00
      5 250.10  pos_neg 42.74     219.99 290.61    1.98 own voltage       84.69
@@ -371,7 +383,7 @@ print("I_H,scaled = %.2f A, I_RES = %.2f A with the factor 2.0 (evaluated with %
 ```
 
 ```text
-I_H,scaled = 122.67 A, I_RES = 126.78 A with the factor 2.0 (evaluated with 1.5: 97.45 A)
+I_H,scaled = 122.68 A, I_RES = 126.79 A with the factor 2.0 (evaluated with 1.5: 97.46 A)
 ```
 
 ### The campaign: residual current at the earthing impedance
@@ -409,12 +421,12 @@ print("time series:     I_RES 95 %% quantile = %.2f A (%d 10-min values)" % (ts[
 without scaling: I_H = 32.45 A, I_RES = 45.59 A
 scaled:          I_H = 64.12 A, I_RES = 71.67 A | factors {3: 1.0, 5: 1.98, 7: 1.98, 11: 1.98, 13: 1.98}
  order   f_Hz category      part              test    I_A  U_level_V   U95_V  factor        rule  I_scaled_A
-     2 100.04     even remainder SUB_2_5_10_000kHz  0.002      0.013   1.591   1.000 as measured       0.002
-     3 150.06     zero     model                    2.877        NaN  33.025   1.000 as measured       2.877
+     2 100.04     even remainder SUB_2_5_10_000kHz  0.002      0.012   1.591   1.000 as measured       0.002
+     3 150.06     zero     model                    2.879        NaN  33.025   1.000 as measured       2.879
      4 200.08     even remainder SUB_2_5_10_000kHz  0.002      0.027   1.273   1.000 as measured       0.002
-     5 250.10  pos_neg     model                   29.597    219.985 290.614   1.982 own voltage      58.650
+     5 250.10  pos_neg     model                   29.598    219.985 290.614   1.982 own voltage      58.652
      6 300.12     even remainder SUB_2_5_10_000kHz  0.001      0.005     NaN   1.000 as measured       0.001
-     7 350.14  pos_neg     model                   10.865    109.988 145.307   1.982 own voltage      21.530
+     7 350.14  pos_neg     model                   10.863    109.988 145.307   1.982 own voltage      21.526
      8 400.16     even remainder SUB_2_5_10_000kHz  0.002      0.023     NaN   1.000 as measured       0.002
      9 450.18     zero remainder SUB_2_5_10_000kHz  0.002      0.032   2.652   1.000 as measured       0.002
     10 500.20     even remainder SUB_2_5_10_000kHz  0.000      0.030     NaN   1.000 as measured       0.000

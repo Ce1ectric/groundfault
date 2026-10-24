@@ -211,8 +211,9 @@ to IEC 61000-4-30) of the same network and switching state. Each order is treate
   with the quantile U_95,m of the order (`Settings.pq_u95`, line-to-earth of the largest phase; a line-to-line value
   divided by √3) and its level U_m in the test – the natural sequence of the order (positive for m = 7, 13, 19 …,
   negative for m = 5, 11, 17 …) before and after the fault (`Settings.thd_reference`: `"mean"`, `"pre_fault"` or
-  `"post_fault"`). An order without its own value – no quantile, or a level below `Settings.pq_min_level_V` (1 V) –
-  gets the flat factor of the THD (in % `Settings.u_thd95_percent` or in V `Settings.u_thd95_volt`, both line-to-line):
+  `"post_fault"`). An order without its own value – no quantile, a quantile of 0 V (below the resolution of the
+  instrument), or a level below `Settings.pq_min_level_V` (1 V) – gets the flat factor of the THD (in %
+  `Settings.u_thd95_percent` or in V `Settings.u_thd95_volt`, both line-to-line):
 
   \[
   k_\text{THD} = k_\text{s}\,\frac{U_{\text{PQ},95\%}}{U_\text{meas}}

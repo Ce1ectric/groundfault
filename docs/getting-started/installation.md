@@ -41,7 +41,7 @@ python -c "import groundfault; print(groundfault.__version__)"
 ```
 
 ```text
-3.4.0
+3.5.0
 ```
 
 ## Optional extras
@@ -172,10 +172,10 @@ pytest -q
 ```text
 …
 SKIPPED [1] tests/test_units.py:63: could not import 'groundmeas.core.units': No module named 'groundmeas'
-572 passed, 1 skipped in 63.26s
+769 passed, 1 skipped in 371.05s (0:06:11)
 ```
 
-It takes about a minute. `pytest -k station` runs a subset. The skipped test compares the unit handling directly with
+It takes a few minutes. `pytest -k station` runs a subset. The skipped test compares the unit handling directly with
 groundmeas; it runs when groundmeas 1.6.1 or newer is installed. That version is only available on GitHub and needs
 Python 3.14 or newer – the version on PyPI is older and has no `groundmeas.core.units`:
 

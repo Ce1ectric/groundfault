@@ -10,8 +10,8 @@ functions are in [`groundfault.dsp`](../reference/dsp.md), [`groundfault.symmetr
 
 The evaluation works on three **analysis intervals** chosen by hand from the RMS trend
 ([Choosing the analysis intervals](../user-guide/evaluation.md#choosing-the-analysis-intervals)): the steady-state
-fault, and the operation without fault before and after it. Each interval is read for all channels at once and
-divided into windows of
+fault, and the operation without fault before and after it. Each interval is read for all channels at once, passes the
+high-pass of the [DC removal](#dc-removal) and is divided into windows of
 
 \[
 N_\text{win} = \operatorname{round}(T_\text{win}\, f_\text{s})
@@ -32,23 +32,71 @@ f_s/2.2) are dropped with a hint.
 
 ## DC removal
 
-Before any further step the DC component is removed per window:
+Current clamps often have a DC offset, integrating sensors drift, and after the fault inception the coil current
+carries a DC component that decays with a time constant of up to several seconds. None of it belongs to the
+steady-state residual current, but all of it would enter the true RMS value. By default (`Settings.dc = "highpass"`)
+it is removed in two steps ([Evaluation chain](evaluation-chain.md#2-dc-removal-and-window-analysis)):
 
-\[
-x_0[n] = x[n] - \operatorname{median}_n x[n]
-\]
+1. Every analysis interval passes a **zero-phase high-pass** before it is cut into windows
+   ([`dsp.highpass`](../reference/dsp.md)): a Butterworth filter of order 4 with the cut-off frequency
+   f_c = 5 Hz (`Settings.dc_cutoff_hz`), run forwards and backwards. The two passes cancel each other's phase shift,
+   and the magnitude response is the square of the Butterworth response,
+   \[
+   \lvert H(f)\rvert^2 = \frac{1}{1 + (f_\text{c}/f)^{8}},
+   \]
+   which differs from 1 by 10⁻⁸ at 50 Hz. The interval is extended at both ends by its mirror image (3/f_c long), so a
+   constant or slowly decaying offset gives no step at the ends and no sample outside the interval acts on it; the
+   first and last 0.2 s of the interval keep a small error of the RMS value (about 0.1 %), the harmonics none. Gaps
+   (NaN) are bridged linearly for the filter and stay gaps.
+2. The **mean** of every window is removed:
+   \[
+   x_0[n] = x[n] - \frac{1}{N}\sum_{n=0}^{N-1} x[n]
+   \]
 
-Current clamps often have a DC offset, and integrating sensors drift; a DC component would otherwise enter the true
-RMS value. The **median** (`Settings.dc = "median"`, default) is robust against spikes and short transients in the
-window; `"mean"` and `"none"` are available. For waveforms with even harmonics the median differs slightly from the
-mean, so the true RMS value comes out a little too high – about 1 % with a 2nd harmonic of 10 % of the fundamental,
-about 4 % with 20 % – which errs on the safe side. The phasors of the orders m ≥ 1 are not affected.
+After the high-pass the mean of a window is just the rest of its DC component. The mean – not the median – is the
+right estimate: the median of a waveform with even harmonics (a saturating clamp, the transient after a metallic fault)
+lies beside its mean, subtracting it shifts the waveform, and the true RMS value counts the shift. 30 A at 50 Hz with
+12 A of the 2nd and 8 A of the 4th harmonic and a decaying DC component of 5 A:
 
-A constant offset is all the median removes. A **decaying DC component** – the transient of the coil current after
-fault inception, with a time constant of up to several seconds – or a drift remains in the window and increases the
-true RMS value without belonging to the steady-state residual current. The plausibility check *Low-frequency
-component of I_RES (< f1/2)* therefore smooths the fault current of the max window with a moving average over one
-cycle, which keeps only the components below about f1/2, and computes their RMS value I_lf. If
+```python
+import numpy as np
+from groundfault import dsp
+
+fs, f1 = 10_000.0, 50.0
+t = np.arange(int(2.0 * fs)) / fs
+x = np.sqrt(2) * (30 * np.sin(2 * np.pi * f1 * t) + 12 * np.sin(2 * np.pi * 2 * f1 * t + 0.6)
+                  + 8 * np.sin(2 * np.pi * 4 * f1 * t + 1.9)) + 5.0 * np.exp(-t / 1.5)   # decaying DC component
+window = slice(10_000, 12_000)                                   # the 200-ms window from 1.0 s
+for name, y, dc in (("median per window", x, "median"), ("mean per window", x, "mean"),
+                    ("high-pass + mean", dsp.highpass(x, fs), "mean")):
+    X, rms = dsp.window_phasors(y[window], fs, [f1, 2 * f1, 4 * f1], dc=dc)
+    print("%-17s RMS %.3f A   H1, H2, H4 = %s A" % (name, rms, np.round(np.abs(X), 3)))
+print("true RMS value    %.3f A" % np.sqrt(30 ** 2 + 12 ** 2 + 8 ** 2))
+```
+
+```text
+median per window RMS 34.489 A   H1, H2, H4 = [30. 12.  8.] A
+mean per window   RMS 33.294 A   H1, H2, H4 = [30. 12.  8.] A
+high-pass + mean  RMS 33.287 A   H1, H2, H4 = [30. 12.  8.] A
+true RMS value    33.287 A
+```
+
+The median per window gives 3.6 % too much, the mean per window leaves the slope of the decaying component in the
+window, the high-pass with the mean is exact. The harmonics are the same with every choice of `Settings.dc`:
+
+| `Settings.dc` | On the interval | Per window | Use |
+|---|---|---|---|
+| `"highpass"` (default) | zero-phase high-pass | mean | exact true RMS value, also with even harmonics and a decaying offset |
+| `"highpass_median"` | zero-phase high-pass | median | the high-pass of groundfault 3.4 |
+| `"median"` | – | median | the default up to groundfault 3.4: robust against single spikes, too high with even harmonics |
+| `"mean"` | – | mean | a constant offset |
+| `"none"` | – | – | signals without a DC component |
+
+A drift that is faster than the high-pass – a clamp that saturates and recovers within a fraction of a second – and,
+without the high-pass, a **decaying DC component** remain in the window and increase the true RMS value without
+belonging to the steady-state residual current. The plausibility check *Low-frequency component of I_RES (< f1/2)*
+therefore smooths the fault current of the max window – as the windows see it, after the high-pass – with a moving
+average over one cycle, which keeps only the components below about f1/2, and computes their RMS value I_lf. If
 
 \[
 1 - \frac{\sqrt{I_\text{RES}^2 - I_\text{lf}^2}}{I_\text{RES}} \ge 1\,\%
@@ -239,6 +287,39 @@ Left out are the max window, the statistics, the stationarity check, the coil-cu
 superposition of a station (method `voltage`). The superposition at fault inception and clearance uses its own
 windows next to those instants; a disturbed state there does not bias it, because the ratio ΔU/I_F of a linear earthing
 system does not depend on the size of the fault current.
+
+### Settling and the suggested steady-state interval
+
+Before the intervals are chosen, [`disturbances.scan`](../reference/disturbances.md) applies the same detection to
+the whole fault and proposes the undisturbed part as the steady-state interval
+([diagram 3](evaluation-chain.md#3-analysis-intervals)). Since the start of the scanned range is the reference of the
+network state, the scan must not start in the transient after the fault inception. The RMS value of the fault current
+settles first – it counts as settled once its 100-ms values stay within 3 % for 0.5 s, at least 0.5 s after the
+inception. Iw and Iv may need longer: after a metallic fault a clamp or transformer that saturates and recovers, or the
+DC component of the coil current, change them for seconds, and the even harmonics decay with them. Scanned from the
+settled RMS value on, such a settling may look like a step – the few windows before it hide the ramp – that counts as
+a network change, and the suggestion would lie in the transient.
+
+The scan therefore starts at the first window k from which the fault state has settled
+([`settled_index`](../reference/disturbances.md)): for every quantity q – Iw and Iv (without U0 |I_H1|) and the change
+of the RMS value caused by the even harmonics,
+
+\[
+q_\text{even} = \frac{E^2}{2\,I_\text{RES}}, \qquad E^2 = \sum_{m \in \{2, 4, 6, 8, 10\}} \lvert\underline{I}_m\rvert^2
+\]
+
+(with I_RES the median RMS value; a change ΔE² changes the RMS value by about ΔE²/(2 I_RES)) – the medians of two
+consecutive blocks of m = 3 windows differ by less than half the step threshold,
+
+\[
+\bigl\lvert \operatorname{median}(q_{k+m} \ldots q_{k+2m-1}) - \operatorname{median}(q_k \ldots q_{k+m-1}) \bigr\rvert
+< 0.5\,\theta
+\]
+
+(`SETTLE_SHARE`), at the latest 4 s after the inception (`SETTLE_MAX_S`); a state that has not settled by then is
+scanned from the settled RMS value on, with a note. The odd harmonics take no part – they follow the harmonic voltage
+of the network, which changes by a few per cent within seconds without any transient of the fault. The suggestion is
+the first undisturbed range of at least 1 s (`MIN_SUGGESTION_S`), else the longest one.
 
 ## Statistics over the steady state
 

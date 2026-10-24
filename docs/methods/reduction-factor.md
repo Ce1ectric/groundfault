@@ -98,10 +98,10 @@ r_eff  = 0.4534 (table 0.4534)
 b      = -0.201 (table -0.201, falling)
 at 100 A: U_E fault test 43.8 V, earthing measurement 96.7 V, deviation 21.1 % of F·U_Tp = 250 V → unchanged
 coverage of I_F²: 100.0 %
-r_eff                                 0.453392
+r_eff                                 0.453388
 r_eff_direct                          0.453374
-r_eff_rms                             0.469794
-r_eff_shield                          0.453371
+r_eff_rms                             0.469767
+r_eff_shield                          0.453366
 Z_E_earth_current_to_injection_eff    1.000048
 r_50Hz                                 0.50001
 classification_r_50Hz                  typical

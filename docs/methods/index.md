@@ -7,6 +7,7 @@ the [API reference](../reference/index.md).
 
 | Page | Content | Main functions |
 |---|---|---|
+| [Evaluation chain](evaluation-chain.md) | block diagrams of the steps: a recording, the DC removal and window analysis, the analysis intervals (settling, disturbed states, suggestion), the max window and the assessment quantities, the campaign | [`evaluate`](../reference/evaluation.md), [`disturbances.scan`](../reference/disturbances.md) |
 | [Signal processing](signal-processing.md) | windows, DC removal, DFT at the harmonic frequencies, network frequency, true RMS value, max window, disturbed states (active residual current increase, network change), statistics, symmetrical components, alignment of recorder subsystems, RMS recordings | [`dsp`](../reference/dsp.md), [`evaluate`](../reference/evaluation.md), [`disturbances`](../reference/disturbances.md), [`symmetrical`](../reference/symmetrical.md), [`rms`](../reference/rms.md) |
 | [Assessment quantities](assessment.md) | residual current, fundamental component, active and detuning current (angle method, √2 method), harmonic content, measurement uncertainty, scaling to a power-quality measurement, limit from the permissible touch voltage, resistive approach, line parameters | [`formulas`](../reference/formulas.md), [`campaign`](../reference/campaign.md) |
 | [Superposition at the station](superposition.md) | background and fault-related component, the three superposition methods, network frequency on both sides, uncertainty (null test, frequency reference), extrapolation, PEN currents, current into the LV network, probe maximum, parallel checks | [`station`](../reference/station.md) |
@@ -21,11 +22,13 @@ the staged tests and updated with recorded earth faults – is described in its 
 
 ## Processing chain
 
+In short – the block diagrams of every step are on the page [Evaluation chain](evaluation-chain.md):
+
 ```text
 COMTRADE recording (.cfg/.dat)
   │  corrections of the measuring chain, channel roles, analysis intervals (read off by hand, with a proposal)
   ▼
-200-ms windows of all channels ── DC removal (median) ── Hann window ── DFT at m·f1 (f1 estimated per interval)
+high-pass per interval ── 200-ms windows of all channels ── mean removed ── Hann window ── DFT at m·f1 (f1 per interval)
   │  per window and channel: true RMS value and RMS phasors of the orders 1 … 40
   ├─► disturbed states (steps of Iw, Iv) left out
   ├─► max window (largest residual current) ──► assessment quantities: I_RES, I_G, Iw, Iv, I_H, uncertainty,

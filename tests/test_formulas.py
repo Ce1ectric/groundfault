@@ -239,3 +239,26 @@ def test_public_names():
                  if inspect.isfunction(v) and v.__module__ == fml.__name__ and not n.startswith("_")}
     assert functions <= set(fml.__all__)
     assert all(hasattr(fml, n) for n in fml.__all__)
+
+
+def test_typical_factor_of_the_measuring_chain():
+    """Ratios measured/expected near 3, 2, 10, 100, 1000 or their inverses are typical errors of a measuring chain
+    (a clamp around one of several conductors, measuring range, CT ratio); others are not, nor are ratios ≤ 0."""
+    assert fml.typical_factor(3.0) == 3.0 and fml.typical_factor(2.9) == 3.0
+    assert fml.typical_factor(1 / 3.05) == pytest.approx(1 / 3)
+    assert fml.typical_factor(0.49) == 0.5 and fml.typical_factor(2.1) == 2.0
+    assert fml.typical_factor(98.0) == 100.0 and fml.typical_factor(0.0011) == pytest.approx(0.001)
+    assert fml.typical_factor(1.0) is None and fml.typical_factor(1.4) is None and fml.typical_factor(2.45) is None
+    assert fml.typical_factor(5.0) is None and fml.typical_factor(0.0) is None and fml.typical_factor(-3.0) is None
+    assert fml.typical_factor(float("nan")) is None and fml.typical_factor(None) is None
+    assert fml.typical_factor(3.5) is None and fml.typical_factor(3.5, tolerance=0.2) == 3.0
+
+
+def test_order_scaling_with_a_quantile_of_zero():
+    """A quantile of 0 V (an order below the resolution of the PQ instrument) is no level: the order is scaled with
+    the THD factor (or not at all without one) instead of being removed with a factor 0."""
+    assert fml.order_scaling(17, 0.0, 2.0, f_thd=1.3) == (1.3, "THD")
+    assert fml.order_scaling(17, 0.0, 2.0) == (1.0, "no information")
+    assert fml.order_scaling(17, -5.0, 2.0, f_thd=1.3) == (1.3, "THD")
+    assert fml.order_scaling(17, 4.0, 2.0)[1] == "own voltage"
+

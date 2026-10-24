@@ -39,8 +39,8 @@ print(res.summary())
 UE_70m  u_e            ✓        70.0
     UT  u_t            ✓         1.0
 Measurement: Station_Elm_Road_10_000kHz  (Station_Elm_Road_10_000kHz.cfg)
-Max window: 2.600 s  | f1 = 49.9800 Hz (phase)
-IRES = 46.66 A | IG = 35.00 A | Iw = 33.21 A | Iv = 11.07 A | IH = 30.85 A
+Max window: 2.800 s  | f1 = 49.9800 Hz (phase)
+IRES = 46.66 A | IG = 35.00 A | Iw = 33.20 A | Iv = 11.07 A | IH = 30.86 A
 ⚠ No extrapolation of the station voltages to limits of the residual current: Settings.ires_limits is empty (the limits are defined by the user).
 ```
 
@@ -129,10 +129,10 @@ print(res.values["station_frequency"]["method"])
 
 ```text
 channel  order   f_Hz  I_F_A  U_during_fault_V  Z_direct_Ohm  Z_fault_Ohm  Z_fault_angle_deg  method_spread_pct  uncertain
- UE_70m      1  49.98 35.001            16.327         0.466        0.466             -5.428              0.009      False
+ UE_70m      1  49.98 34.999            16.326         0.466        0.466             -5.428              0.009      False
  UE_70m      5 249.90 30.000            12.019         0.401        0.401              1.799              0.008      False
- UE_70m      7 349.86  6.001             2.237         0.373        0.373              4.245              0.069      False
- UE_70m     11 549.78  3.999             1.489         0.372        0.372             11.339              0.118      False
+ UE_70m      7 349.86  6.002             2.239         0.373        0.373              4.245              0.069      False
+ UE_70m     11 549.78  4.001             1.487         0.372        0.372             11.339              0.118      False
 ['direct', 'inception', 'clearance', 'voltage', 'fault']
 ```
 
@@ -196,9 +196,9 @@ print(sf_b[sf_b["channel"] == "UE_70m"][["order", "U_during_fault_V", "U_backgro
 ⚠ No extrapolation of the station voltages to limits of the residual current: Settings.ires_limits is empty (the limits are defined by the user).
 ⚠ Station: uncertain values – 150 Hz (methods differ by 56 %, uncertainty ≈ 70 %). The superposition methods contradict each other there, or the background is large compared with the fault-related component and fluctuates; compare these frequencies with earthing measurements only with caution (column 'uncertain' in station_frequency).
  order  U_during_fault_V  U_background_V  Z_direct_Ohm  Z_fault_Ohm  method_spread_pct  background_to_fault  uncertainty_pct  uncertain
-     1            16.465           3.752         0.470        0.511              3.137                0.210            2.286      False
-     3             3.408           2.739         2.270        0.488             54.874                3.741           70.179       True
-     5            16.525           0.001         0.551        0.551              0.007                0.000            0.004      False
+     1            16.532           3.752         0.472        0.511              3.137                0.210            2.286      False
+     3             3.163           2.739         2.109        0.488             54.874                3.745           70.250       True
+     5            16.529           0.001         0.551        0.551              0.007                0.000            0.004      False
      7             3.519           0.000         0.586        0.586              0.008                0.000            0.006      False
 ```
 
@@ -252,7 +252,7 @@ print(res_lim.table("station_extrapolation").head(2).round(2).to_string(index=Fa
 
 ```text
 channel role  I_limit_A  U_proportional_V  U_fault_V  U_background_plus_fault_V  U_background_plus_fault_in_phase_V
- UE_70m  u_e       50.0             21.92      21.92                      21.92                               21.92
+ UE_70m  u_e       50.0             21.91      21.92                      21.92                               21.92
  UE_70m  u_e      100.0             43.83      43.83                      43.83                               43.83
 ```
 
@@ -285,8 +285,8 @@ print(sc[sc["order"] == 1][["channel", "position", "I_during_fault_A", "I_backgr
 ```text
 channel position  I_during_fault_A  I_background_A  I_fault_A  share_fault  share_fault_angle_deg
  IPEN_v  feeders            20.562          18.000      4.367        0.125                -11.125
- IPEN_n   busbar             4.783           4.001      4.369        0.125                168.863
-     IS                     18.022           0.000     18.025        0.515                  9.703
+ IPEN_n   busbar             4.784           4.001      4.368        0.125                168.863
+     IS                     18.024           0.000     18.024        0.515                  9.703
 ```
 
 The current of the transformer star point (the load unbalance) does not change because of the earth fault, so by
@@ -349,14 +349,14 @@ print(eff[["channel", "probe", "I_LV_eff_A", "Z_E_LV_eff_Ohm", "rZE_fault_eff_Oh
 
 ```text
  probe  order  I_F_A  I_LV_A  kcl_deviation_pct  Z_E_LV_Ohm  Z_LV_to_rZE_fault parallel_check  I_LV_to_I_E earth_current_check
-UE_70m      1 35.001   4.368              0.039       3.738              8.013      satisfied        0.250           satisfied
+UE_70m      1 34.999   4.368              0.039       3.738              8.013      satisfied        0.250           satisfied
 UE_70m      5 30.000   2.890              0.030       4.159             10.381      satisfied        0.241           satisfied
-UE_70m      7  6.001   0.493              0.241       4.540             12.172      satisfied        0.235           satisfied
-UE_70m     11  3.999   0.269              0.202       5.521             14.858      satisfied        0.225           satisfied
+UE_70m      7  6.002   0.493              0.241       4.540             12.172      satisfied        0.235           satisfied
+UE_70m     11  4.001   0.269              0.202       5.521             14.858      satisfied        0.225           satisfied
 channel  probe  I_LV_eff_A  Z_E_LV_eff_Ohm  rZE_fault_eff_Ohm parallel_check earth_current_check
-max(UE) UE_70m       5.268           3.883              0.438      satisfied           satisfied
- UE_70m UE_70m       5.268           3.883              0.438      satisfied           satisfied
-  UE_5m  UE_5m       5.268           2.505              0.283      satisfied           satisfied
+max(UE) UE_70m       5.267           3.883              0.438      satisfied           satisfied
+ UE_70m UE_70m       5.267           3.883              0.438      satisfied           satisfied
+  UE_5m  UE_5m       5.267           2.505              0.283      satisfied           satisfied
 ```
 
 `res.values["station_lv_network"]` records which PEN channels were used with which sign, the shield channels and the

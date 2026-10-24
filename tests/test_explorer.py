@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from groundfault import (Intervals, demo, diagnostics, evaluate, explorer, i18n, interactive, open_recording, report,
-                         rms, write_comtrade)
+from groundfault import (Intervals, Settings, demo, diagnostics, evaluate, explorer, i18n, interactive, open_recording,
+                         report, rms, write_comtrade)
 
 
 @pytest.fixture(scope="module")
@@ -25,7 +25,9 @@ def station(tmp_path_factory):
     p = str(tmp_path_factory.mktemp("ex") / "st.cfg")
     w = demo.make_station_recording(p, duration=6.0, t_on=1.5, t_off=4.5, background={1: demo.polar(8, 70)})
     rec = open_recording(p)
-    res = evaluate(rec, Intervals(*[tuple(w["intervals"][k]) for k in ("steady_state", "pre_fault", "post_fault")]))
+    # the explorer shows the raw signals (mean per window, no high-pass): compared with an evaluation without it
+    res = evaluate(rec, Intervals(*[tuple(w["intervals"][k]) for k in ("steady_state", "pre_fault", "post_fault")]),
+                   Settings(dc="mean"))
     return w, rec, res
 
 
@@ -39,7 +41,8 @@ def _voltages_delayed(rec, path, delay_s):
 
 
 def test_max_window_matches_evaluation(station):
-    """Explorer and evaluation use the same functions: identical values in the max window."""
+    """Explorer and evaluation use the same functions: identical values in the max window (evaluation with the mean
+    per window and without the high-pass, as the explorer computes)."""
     w, rec, res = station
     ex = explorer.explorer(rec, res)
     a, b = ex.times["max window"]
@@ -271,7 +274,7 @@ def test_explorer_with_alignment(tmp_path):
     rec2, n = _voltages_delayed(open_recording(p), str(tmp_path / "offset.cfg"), 0.5)
     out = dict(roles=["u_l1e", "u_l2e", "u_l3e"], dt_s=0.5)
     res = evaluate(rec2, Intervals(*[tuple(w["intervals"][k]) for k in ("steady_state", "pre_fault", "post_fault")]),
-                   alignment=out)
+                   Settings(dc="mean"), alignment=out)
     ex = explorer.explorer(rec2, res)                      # alignment taken from the result
     assert ex.shift and set(ex.shift.values()) == {n}
     chan = [k.index for k in res.roles.with_role("u_l1e") + res.roles.with_role("i_res")]
@@ -279,6 +282,12 @@ def test_explorer_with_alignment(tmp_path):
     st, wi = res.steady_state, res.max_index
     for j, k in enumerate(chan):
         assert tab.loc[j, "H1"] == pytest.approx(abs(st.X[wi, k, st.ix(1)]), rel=1e-9)
+    # with the default high-pass of the evaluation the harmonics agree as well (the high-pass leaves them unchanged)
+    hp = evaluate(rec2, Intervals(*[tuple(w["intervals"][k]) for k in ("steady_state", "pre_fault", "post_fault")]),
+                  alignment=out)
+    for j, k in enumerate(chan):
+        assert tab.loc[j, "H1"] == pytest.approx(abs(hp.steady_state.X[hp.max_index, k, hp.steady_state.ix(1)]),
+                                                 rel=1e-5)
 
 
 def test_event_times_with_alignment(tmp_path):

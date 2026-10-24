@@ -11,9 +11,9 @@ What [`evaluate`](../reference/evaluation.md) does, in short:
    offset for channels of another recorder subsystem;
 2. estimate the network frequency f1 per interval (reference: the line-to-line voltage U_L1-L2, cross-checked with a
    second method);
-3. divide the steady-state interval into 200-ms windows and compute, for all channels and from the same window, the
-   true RMS value and the RMS phasors of the orders 1…40 (DC removed per window by the median, Hann window, DFT at
-   m·f1);
+3. remove the DC component with a zero-phase high-pass on every interval, divide the steady-state interval into 200-ms
+   windows and compute, for all channels and from the same window, the true RMS value and the RMS phasors of the
+   orders 1…40 (mean of the window removed, Hann window, DFT at m·f1);
 4. leave out disturbed states – an active residual current increase or a network change (a section trips) inside the
    steady-state interval – and take, of the undisturbed windows, the one with the **largest residual earth-fault
    current** – the *max window* – and derive the assessment quantities from it: angle method (active and reactive component Iw, Iv), polarity check, harmonic content,
@@ -224,8 +224,13 @@ clearance or begins before the inception, its windows without fault current (RMS
 are left out as well, with the state `no fault current`.
 
 Before the intervals are chosen, [`disturbances.scan`](../reference/disturbances.md) searches the whole fault – from
-the settled fault current after inception to the clearance – and proposes the first undisturbed range as the
-steady-state interval:
+the settled fault state after inception to the clearance – and proposes the first undisturbed range of at least 1 s
+(else the longest) as the steady-state interval. Settled means: first the RMS value of the fault current, then Iw, Iv
+and the share of the even harmonics, which may need seconds after a metallic fault – a clamp or transformer that
+saturates and recovers, the DC component of the coil current
+([Settling](../methods/signal-processing.md#settling-and-the-suggested-steady-state-interval)). If the start had to
+wait for them, the text says so in a line of its own (*Settling after the fault inception until … s*), with the quantity
+that settled last. In the demo recording the fault state has settled together with the RMS value:
 
 ```python
 from groundfault import disturbances
@@ -270,7 +275,7 @@ Disturbed states excluded: network change from 3.8 s (ΔIv +12.0 A); active resi
     3.8   4.6                   network change        4 False  20.0  37.0    62.8
     4.6   5.4 active increase + network change        4 False  35.0  37.0    69.0
     5.4   5.8                   network change        2 False  20.0  37.0    62.8
-IRES 56.53 A at 2.7 s (undisturbed state: 56.52 A)
+IRES 56.53 A at 3.7 s (undisturbed state: 56.52 A)
 ```
 
 The table `steady_state_segments` lists the consecutive windows of the same state (`used` = part of the reference),
@@ -307,8 +312,8 @@ parameters are meant to be kept; the limits and margins at the end of the table 
 | `T_win` | `0.200` | window length in s |
 | `T_hop` | `None` | hop between two windows in s; `None` = `T_win` (no overlap) |
 | `window` | `"hann"` | window function of the DFT: `"hann"`, `"hann_periodic"` or `"rectangular"` |
-| `dc` | `"median"` | removal of the DC component: per window `"median"`, `"mean"` or `"none"`; or `"highpass"` – a zero-phase Butterworth high-pass on every interval before the windows, then the median per window (removes also a slowly decaying offset of a clamp; the harmonics are the same, only the low-frequency part and with it the RMS value of windows with a drifting offset change) |
-| `dc_cutoff_hz` | `5.0` | cut-off frequency of the high-pass in Hz (`dc="highpass"`; at most a quarter of `f_nominal`) |
+| `dc` | `"highpass"` | removal of the DC component: `"highpass"` – a zero-phase Butterworth high-pass on every interval before the windows, then the mean per window (also a slowly decaying offset of a clamp disappears, and the true RMS value of a waveform with even harmonics is exact); `"highpass_median"` – the high-pass, then the median (the `"highpass"` of 3.4); per window only: `"median"` (the default up to 3.4), `"mean"` or `"none"`. The harmonics are the same with every choice, only the low-frequency part and with it the true RMS value change ([DC removal](../methods/signal-processing.md#dc-removal)) |
+| `dc_cutoff_hz` | `5.0` | cut-off frequency of the high-pass in Hz (`dc="highpass"` or `"highpass_median"`; at most a quarter of `f_nominal`) |
 | `harmonics` | `(1, 3, 5, 7)` | orders of the fault current in the table `assessment_quantities` (the fundamental is always included) |
 | `export_orders` | `1 … 25` | orders whose phasors are stored in the result file (input of the equivalent-source method) |
 | `voltage_harmonics` | odd orders up to 25 | orders of the voltage levels before and after the fault |
@@ -368,8 +373,8 @@ print(res.summary())
 
 ```text
 Measurement: SUB_0_10_000kHz  (SUB_0_10_000kHz.cfg)
-Max window: 4.300 s  | f1 = 50.0200 Hz (phase)
-IRES = 56.53 A | IG = 32.01 A | Iw = 20.00 A | Iv = 25.00 A | IH = 46.59 A
+Max window: 4.100 s  | f1 = 50.0200 Hz (phase)
+IRES = 56.53 A | IG = 32.02 A | Iw = 20.00 A | Iv = 25.00 A | IH = 46.58 A
 ```
 
 | Parameter | Meaning |
@@ -423,13 +428,13 @@ quantity  measured_value  assessment unit  angle_deg
     IRES           56.53       56.53    A        NaN
       Iw           20.00       20.00    A        NaN
       Iv           25.00       25.00    A        NaN
-     IH1           32.01       32.01    A    -141.34
-     IH3            4.04        4.04    A    -135.98
-     IH5           42.74       42.74    A      54.05
-     IH7           14.06       14.06    A      16.58
-IH_total           46.59       46.59    A        NaN
+     IH1           32.02       32.02    A    -141.34
+     IH3            4.04        4.04    A    -135.95
+     IH5           42.74       42.74    A      54.06
+     IH7           14.06       14.06    A      16.57
+IH_total           46.58       46.58    A        NaN
   IH_sum           46.58       46.58    A        NaN
-    UH1n        11547.07    11547.07    V     -90.00
+    UH1n        11547.05    11547.05    V     -90.00
 ```
 
 Columns: `quantity` (code), `description` (text in the output language), `measured_value`, `assessment` (with the
@@ -465,9 +470,9 @@ print(res_pq.table("assessment_quantities").tail(7)[["quantity", "measured_value
      quantity  measured_value  assessment unit
     UTHD_meas            2.16        2.12    %
       UTHD_95            3.60        3.60    %
-      IH_zero            4.04        4.16    A
+      IH_zero            4.04        4.17    A
       IH_even            0.01        0.01    A
-     IH_other            0.61        0.63    A
+     IH_other            0.18        0.18    A
     IH_scaled           77.36       81.30    A
 IRMS_forecast           83.72       87.74    A
 ```
@@ -486,10 +491,10 @@ print(res.table("plausibility")[["check", "status", "value"]].to_string(index=Fa
 Disturbed states in the steady-state interval     OK              none detected (threshold 1.60 A)
                          Network frequency f1     OK            50.0200 Hz (comparison 50.0200 Hz)
    Network frequency constant in the interval     OK                              spread 0.0000 Hz
-                  RMS ↔ √ΣX² (orders 1,3,5,7)     OK                                         2.1 %
+                  RMS ↔ √ΣX² (orders 1,3,5,7)     OK                                         2.0 %
                      RMS ↔ √ΣX² (orders 1…40)     OK                                         0.0 %
          Stationarity of I_H1 in the interval     OK             span 0.0 % (ΔIw 0.0 A, ΔIv 0.0 A)
-    Low-frequency component of I_RES (< f1/2)     OK             0.08 A (I_RES increased by 0.0 %)
+    Low-frequency component of I_RES (< f1/2)     OK             0.04 A (I_RES increased by 0.0 %)
                 Polarity of the fault current     OK Iw = 20.00 A (margin 38.7° to the ±90° limit)
                    Fault-current CT IF2 ↔ IF1     OK                 RMS ratio 1.008, Δφ(H1) -0.5°
                                 Faulted phase     OK                       L3: 0 V (0.0 % of max.)
@@ -513,7 +518,7 @@ The fourth column, `comment`, explains each check. The status is `OK`, `NOTE`, `
 | RMS ↔ √ΣX² (orders 1…40) | deviation of 3 % or more (`WARNING`): interharmonics, noise or transients in the window | look at the window in the signal explorer |
 | Stationarity of I_H1 in the interval | the fundamental varies by 5 % or more in the undisturbed windows (`WARNING`); the comment names the cause: active component changes, reactive component changes (typically a coil adjustment – abrupt steps are already left out as disturbed states) or both | choose a narrower steady-state interval; with a coil adjustment Iv refers to the time of the max window |
 | Coil current balance ΔIv ↔ ΔΣI_coil | only if the coil currents change within the interval: Iv does not change by the same amount as the measured coil currents (slope outside 0.8…1.25 or R² < 0.8, `WARNING`) | a coil channel with a wrong ratio or a clamp around only one of several parallel feeders – correction in the corrections file |
-| Low-frequency component of I_RES (< f1/2) | a decaying DC component or drift raises I_RES by 1 % or more (`WARNING`); the value without it is given | start the steady-state interval later, or remove it with `Settings(dc="highpass")` (the check then sees the filtered window) |
+| Low-frequency component of I_RES (< f1/2) | a drift faster than the high-pass – a clamp that saturates or recovers – or, with a DC removal per window only (`dc="median"`, `"mean"`), a decaying DC component raises I_RES by 1 % or more (`WARNING`); the value without it is given. The check sees the window as the evaluation does, after the high-pass | start the steady-state interval later |
 | Polarity of the fault current | Iw was negative and the current phasors were rotated (`CORRECTED`), or the margin to the ±90° limit is below 10° (`UNCERTAIN`) | `CORRECTED`: usually a reversed clamp – fine; `UNCERTAIN`: check the clamp polarity, `correct_polarity=False` if it is known |
 | Fault-current CT … ↔ … | two fault-current channels differ by 5 % or more in RMS value or by 5° or more in angle (`WARNING`; a reversal by 180° is tolerated) | one CT saturated or scaled wrongly – choose the right main channel |
 | Faulted phase | the smallest line-to-earth voltage is 10 % or more of the largest (`WARNING`) | not a solid earth fault, or wrong voltage channels |
@@ -542,9 +547,9 @@ print(vm[["interval", "f1_Hz", "U_pos_H1_V", "UH5g_V", "UH7m_V", "UTHD12_pct", "
 
 ```text
   interval  f1_Hz  U_pos_H1_V  UH5g_V  UH7m_V  UTHD12_pct  Uzero_H1_V
- pre_fault  50.02    11547.01  220.00  109.97        2.16      150.00
-     fault  50.02    11546.92  220.05  109.94        2.16    11547.07
-post_fault  50.02    11547.00  219.98  109.99        2.16      150.01
+ pre_fault  50.02    11547.04  220.00  109.97        2.16      150.00
+     fault  50.02    11547.05  220.00  109.91        2.16    11547.05
+post_fault  50.02    11547.02  219.98  109.99        2.16      150.01
 ```
 
 `harmonics` lists every channel and order of the max window (`channel`, `role`, `order`, `f_Hz`, `magnitude`,
@@ -562,7 +567,7 @@ print(res.table("coil_currents").round(2).to_string(index=False))
 ```text
 channel quantity  value_max_window  n  mean  std   min   max   p95
     IF1      RMS             56.53  9 56.52  0.0 56.52 56.53 56.53
-    IF1       H1             32.01  9 32.02  0.0 32.01 32.02 32.02
+    IF1       H1             32.02  9 32.02  0.0 32.01 32.02 32.02
     IF1       H3              4.04  9  4.04  0.0  4.04  4.04  4.04
     IF1       H5             42.74  9 42.74  0.0 42.74 42.74 42.74
     IF1       H7             14.06  9 14.06  0.0 14.05 14.06 14.06
@@ -603,8 +608,9 @@ resonance of the MV network and what the node says about the harmonic residual c
   phasors are rotated by 180° (hint and plausibility row). With this orientation **Iv > 0 means over-compensation**
   (Iv = ΣI_coil − I_C) – the one sign convention of groundfault
   ([conventions](../methods/index.md#orientation-of-the-fault-current-and-sign-of-the-detuning)).
-* The DC component is removed per window by the median. The RMS value is the true RMS value over all frequencies, not
-  only over the selected harmonics.
+* The DC component is removed by a zero-phase high-pass (5 Hz) on every interval and the mean of every window
+  (`Settings.dc`, [DC removal](../methods/signal-processing.md#dc-removal)). The RMS value is the true RMS value over
+  all frequencies, not only over the selected harmonics.
 
 ## The result file
 
@@ -624,7 +630,7 @@ print(r.settings.ires_limits, r.settings.u_tp, r.settings.f_factor)
 
 ```text
 results/SUB_0_10_000kHz/SUB_0_10_000kHz_result.json
-<ResultFile SUB_0_10_000kHz> 56.52565693412697 0.0
+<ResultFile SUB_0_10_000kHz> 56.525416727653365 0.0
 () None None
 ```
 

@@ -100,18 +100,18 @@ print(check[check.order.isin([3, 5, 7, "I_H"])][["target", "order", "kind", "I_m
 [{'campaign': '2026-01-15_Demo', 'measurement': 'SUB_0_10_000kHz', 'Z': 0.0}, {'campaign': '2026-01-15_Demo', 'measurement': 'SUB_2_5_10_000kHz', 'Z': 2.5}, {'campaign': '2026-01-15_Demo', 'measurement': 'SUB_5_10_000kHz', 'Z': 5.0}]
 NetworkModel('Demo substation', tests=3, faults=0, orders=[3, 5, 7, 11, 13])
            target order       kind  I_measured_A  I_forecast_A  deviation_A
-  SUB_0_10_000kHz     3 two_source          4.04          4.12         0.08
+  SUB_0_10_000kHz     3 two_source          4.04          4.09         0.05
   SUB_0_10_000kHz     5  pre_fault         42.74         42.75         0.01
-  SUB_0_10_000kHz     7  pre_fault         14.06         14.05        -0.01
-  SUB_0_10_000kHz   I_H                    46.58         46.59         0.01
-SUB_2_5_10_000kHz     3 two_source          3.19          3.22         0.03
+  SUB_0_10_000kHz     7  pre_fault         14.06         14.04        -0.02
+  SUB_0_10_000kHz   I_H                    46.58         46.58        -0.01
+SUB_2_5_10_000kHz     3 two_source          3.19          3.21         0.02
 SUB_2_5_10_000kHz     5  pre_fault         32.56         32.55        -0.01
 SUB_2_5_10_000kHz     7  pre_fault         11.95         11.94        -0.01
-SUB_2_5_10_000kHz   I_H                    35.70         35.69        -0.01
+SUB_2_5_10_000kHz   I_H                    35.70         35.68        -0.01
   SUB_5_10_000kHz     3 two_source          2.14          2.15         0.01
-  SUB_5_10_000kHz     5  pre_fault         21.28         21.28         0.01
-  SUB_5_10_000kHz     7  pre_fault          8.36          8.36        -0.01
-  SUB_5_10_000kHz   I_H                    23.46         23.47         0.00
+  SUB_5_10_000kHz     5  pre_fault         21.28         21.28         0.00
+  SUB_5_10_000kHz     7  pre_fault          8.36          8.36         0.00
+  SUB_5_10_000kHz   I_H                    23.46         23.47         0.01
 ```
 
 `messages` lists missing result files and the hints of loading (a reversed coil channel, orders without a voltage

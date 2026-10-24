@@ -68,6 +68,7 @@ __all__ = [
     "sequence_voltage_from_ll", "limit_resistance", "resistive_assessment", "max_residual_current",
     "earth_return_depth", "z0_overhead_line", "r0_overhead_line", "limit_distance", "source_from_two_measurements",
     "residual_current_from_sources", "fundamental_from_network_data", "zero_sequence_impedance", "MU0",
+    "typical_factor", "TYPICAL_FACTORS",
 ]
 
 i18n.register({
@@ -495,6 +496,54 @@ def voltage_with_uncertainty(U_measured: Number, m_U: float) -> Number:
     return np.asarray(U_measured, float) * (1.0 - m_U) if np.ndim(U_measured) else float(U_measured) * (1.0 - m_U)
 
 
+TYPICAL_FACTORS = (3.0, 2.0, 10.0, 100.0, 1000.0)
+"""Factors of typical errors of a measuring chain, each also as its inverse
+([`typical_factor`][groundfault.formulas.typical_factor]): 3 – a clamp around one of the three conductors of a
+star-point former or of a coil connection (or around all three where one was meant), 2 – around one of two parallel
+conductors, 10, 100, 1000 – the measuring range of a clamp or the ratio of a current transformer set by a power of
+ten; a saturating clamp gives a ratio that is none of them."""
+
+
+def typical_factor(ratio: float, tolerance: float = 0.15) -> Optional[float]:
+    """The typical error of a measuring chain that explains a ratio measured/expected – one of
+    [`TYPICAL_FACTORS`][groundfault.formulas.TYPICAL_FACTORS] or its inverse (3, 1/3, 2, 1/2, 10, 1/10 … 1/1000) –
+    or None.
+
+    Parameters
+    ----------
+    ratio : float
+        Measured value divided by the expected one (e.g. a coil current against the same coil in the other tests).
+    tolerance : float, optional
+        Largest relative deviation of the ratio from the factor (0.15 = 15 %, on a logarithmic scale, so that 3 and
+        1/3 are treated alike).
+
+    Returns
+    -------
+    float or None
+        The nearest typical factor within the tolerance; the correction factor of the channel is its inverse. None
+        for a ratio that is no typical error (or not positive).
+
+    Examples
+    --------
+    >>> typical_factor(3.02), typical_factor(0.34), typical_factor(9.7), typical_factor(1.4)
+    (3.0, 0.3333333333333333, 10.0, None)
+    """
+    try:
+        q = float(ratio)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(q) and q > 0):
+        return None
+    limit = math.log1p(float(tolerance))
+    best = None
+    for f in TYPICAL_FACTORS:
+        for c in (f, 1.0 / f):
+            d = abs(math.log(q / c))
+            if d <= limit and (best is None or d < best[0]):
+                best = (d, c)
+    return None if best is None else best[1]
+
+
 def window_samples(T_win: float, fs: float) -> int:
     """Window length in samples: N_win = T_win·f_s (rounded).
 
@@ -596,8 +645,9 @@ def order_scaling(m: int, U_95: Optional[float], U_level: float, f_thd: Optional
 
     * Positive or negative sequence ([`harmonic_category`][groundfault.formulas.harmonic_category] ``"pos_neg"``):
       with its own voltage, k_m = k_s·U_95,m/U_level,m (a line-to-line quantile divided by √3) – if ``U_95`` is a
-      number and ``U_level`` at least ``min_level``; otherwise with the THD factor ``f_thd``; without one 1 (``"no
-      information"``).
+      number above 0 and ``U_level`` at least ``min_level``; otherwise with the THD factor ``f_thd``; without one 1
+      (``"no information"``). A quantile of 0 V is no level: the order lies below the resolution of the instrument
+      (its own factor would remove the measured current).
     * Zero sequence and even orders: 1 (``"as measured"``).
 
     Parameters
@@ -605,7 +655,7 @@ def order_scaling(m: int, U_95: Optional[float], U_level: float, f_thd: Optional
     m : int
         Harmonic order (≥ 2).
     U_95 : float or None
-        Quantile of the voltage of order m in V (None or NaN: no value).
+        Quantile of the voltage of order m in V (None, NaN or ≤ 0: no value).
     U_level : float
         Level of the voltage of order m during the test in V (the natural sequence of m).
     f_thd : float, optional
@@ -630,10 +680,12 @@ def order_scaling(m: int, U_95: Optional[float], U_level: float, f_thd: Optional
     (1.0, 'as measured')
     >>> order_scaling(17, None, 2.0, f_thd=4.0)
     (4.0, 'THD')
+    >>> order_scaling(17, 0.0, 2.0, f_thd=4.0)          # 0 V: below the resolution of the instrument, not a level
+    (4.0, 'THD')
     """
     if harmonic_category(m) != "pos_neg":
         return 1.0, "as measured"
-    u = None if U_95 is None or not np.isfinite(float(U_95)) else float(U_95)
+    u = None if U_95 is None or not np.isfinite(float(U_95)) or float(U_95) <= 0 else float(U_95)
     level = float(U_level) if U_level is not None else float("nan")
     if u is not None and np.isfinite(level) and level > 0 and level >= float(min_level):
         return float(safety_factor) * (u / math.sqrt(3) if from_ll else u) / level, "own voltage"

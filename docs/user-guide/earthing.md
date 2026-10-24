@@ -261,7 +261,7 @@ trend_r_vs_f                                falling
 exponent_r_vs_f                              -0.201
 reference_current_A                           100.0
 U_E_fault_at_reference_current_V             43.832
-U_E_injection_at_reference_current_V         96.676
+U_E_injection_at_reference_current_V         96.677
 U_Tp_V                                        100.0
 F_factor                                        2.5
 F_times_U_Tp_V                                250.0
@@ -417,12 +417,12 @@ of_which             4 earth_fault_current [A], 8 earth_potential_rise [V], 4 pr
 uncertain_Hz
 status               ready
 ['Fault resistance unknown – fault_resistance_ohm stays empty (z_fault_ohm of the evaluation or column fault_resistance_Ohm in register.csv, e.g. 0 = solid fault).']
-         measurement_type    value unit  value_angle_deg  measurement_distance_m                                                       description
-      earth_fault_current 35.00110    A         0.000000                     NaN earth fault current at the station (channel IF1); angle reference
-     earth_potential_rise 16.32780    V        -5.428189                    70.0                           probe UE_70m (70 m), fault-related part
-     earth_potential_rise 10.53470    V        -5.424571                     5.0                             probe UE_5m (5 m), fault-related part
-prospective_touch_voltage  6.28036    V        -5.424950                     1.0                                probe UT (1 m), fault-related part
-           shield_current 18.02250    A         9.696313                     NaN                          shield current IS; angle relative to I_F
+         measurement_type   value unit  value_angle_deg  measurement_distance_m                                                       description
+      earth_fault_current 34.9990    A         0.000000                     NaN earth fault current at the station (channel IF1); angle reference
+     earth_potential_rise 16.3269    V        -5.428187                    70.0                           probe UE_70m (70 m), fault-related part
+     earth_potential_rise 10.5341    V        -5.424569                     5.0                             probe UE_5m (5 m), fault-related part
+prospective_touch_voltage  6.2800    V        -5.424947                     1.0                                probe UT (1 m), fault-related part
+           shield_current 18.0240    A         9.702450                     NaN                          shield current IS; angle relative to I_F
 ```
 
 What is entered:

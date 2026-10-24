@@ -4,6 +4,7 @@ languages, templates, sections without data – and the building blocks it uses 
 PQ measurement, bootstrap of the PQ quantiles, assessment values with the voltage margin, methods of the scaling,
 touch-voltage cases)."""
 import importlib.util
+import json
 import math
 import os
 import re
@@ -199,6 +200,10 @@ def test_numbers_come_from_the_results(campaign):
     text = _text(path)
     assert "I_RES" not in text and "Z_E" not in text                 # symbols as subscripts, not as plain text
     assert re.search(r"größte Abweichung (< 0,001|0,0\d*) %", text)  # raw data evaluated again: as the result files
+    how, kept = document._es_scaling_text(r)                        # the scaled value at Z_E says how it is scaled
+    plain = lambda s: re.sub(r"_\[([^\]]*)\]", r"\1", s)
+    assert "Je Ordnung skaliert auf die PQ-Messung (%s; %s wie gemessen)" % (plain(how), plain(kept)) in text
+    assert "und Rest wie gemessen" not in text                       # the remainder is scaled order by order
 
 
 def test_placeholders_and_photos(campaign, tmp_path):
@@ -436,9 +441,10 @@ def test_touch_voltage_cases(campaign):
 
 def test_helpers_of_the_texts():
     """Small deviations, quantiles, states and plain symbols in the language of the report."""
-    from groundfault.document import _g, _markup_symbols, _small, _status
+    from groundfault.document import _g, _markup_symbols, _small, _span, _status
     with i18n.language("de"):
         assert _small(5e-12) == "< 0,001" and _small(0.25) == "0,25" and _g(0.95) == "0,95"
+        assert _span([48.1, 47.5]) == "47,5–48,1" and _span([63.31, 63.27]) == "63,3" and _span([5.0]) == "5,00"
         assert _status("WARN") == _status("WARNING") == "Warnung" and _status("CORRECTED") == "korrigiert"
     with i18n.language("en"):
         assert _small(5e-12) == "< 0.001" and _status("NOTE") == "note"
@@ -826,3 +832,111 @@ def test_network_expansion(campaign, tmp_path):
         with pytest.raises(ValueError):
             document.campaign_report(ns["RESULTS"], str(tmp_path / "bad.docx"), raw=False, bootstrap=0,
                                      **_kwargs(ns, info=dict(info, expansion=bad)))
+
+
+def test_times_on_both_sides_of_a_clock_change():
+    """Tests in summer and in standard time (e.g. a station measured weeks later): the column says "local time"
+    and every time carries its own label (MESZ/MEZ); tests on one side keep the label in the heading."""
+    from types import SimpleNamespace
+    import pandas as pd
+    from groundfault import document
+    W = document._Writer
+
+    def writer(*starts):
+        tests = {"M%d" % k: dict(start=pd.Timestamp(s, tz="UTC")) for k, s in enumerate(starts, 1)}
+        c = SimpleNamespace(info=SimpleNamespace(timezone="Europe/Berlin"), names=list(tests), tests=tests,
+                            fault_times={n: (10.0, 20.0) for n in tests})
+        w = SimpleNamespace(c=c)
+        for name in ("tz_labels", "tz_mixed", "tz_text", "time_text"):
+            setattr(w, name, getattr(W, name).__get__(w))
+        return w
+    with i18n.language("de"):
+        mixed = writer("2025-10-07 03:00:00", "2025-10-27 11:56:00")
+        assert mixed.tz_mixed() and mixed.tz_text() == "Ortszeit"
+        assert mixed.time_text("M1") == "05:00:10 MESZ" and mixed.time_text("M2") == "12:56:10 MEZ"
+        one = writer("2025-10-07 03:00:00", "2025-10-07 03:30:00")
+        assert not one.tz_mixed() and one.tz_text() == "MESZ" and one.time_text("M2") == "05:30:10"
+    with i18n.language("en"):
+        assert writer("2025-10-07 03:00:00", "2025-10-27 11:56:00").tz_text() == "local time"
+
+
+def test_factor_of_an_order_far_below_the_pq_measurement_is_named():
+    """An order whose test level lay below almost every value of the PQ measurement gets a large factor k_m: the
+    classification of the factors names it and asks to check the network and switching state; an order inside the
+    distribution is not named."""
+    from types import SimpleNamespace
+    import pandas as pd
+    from groundfault import document
+    W = document._Writer
+    idx = pd.date_range("2025-05-05 00:10", periods=7 * 144, freq="10min", tz="Europe/Berlin")
+    series = pd.Series(300.0 + 50.0 * (idx.hour >= 8), index=idx)
+    pqa = SimpleNamespace(dominant_order=5, largest=lambda m: series, u95=lambda: {5: 350.0, 7: 180.0})
+    comparison = pd.DataFrame([dict(order=5, test="M1", percentile_all=84.0, percentile_window=70.0),
+                               dict(order=7, test="M1", percentile_all=0.0, percentile_window=0.0),
+                               dict(order=11, test="M1", percentile_all=3.0, percentile_window=2.0)])
+    c = SimpleNamespace(pq=pqa, pq_valid=True, pq_comparison=comparison, subs=["M1"], lang="de",
+                        tests={"M1": dict(start=pd.Timestamp("2025-05-06 07:20", tz="UTC"))},
+                        info=SimpleNamespace(timezone="Europe/Berlin"))
+    w = SimpleNamespace(c=c, tables={})
+    for name in ("scaling_context", "percentile_range", "ordinal"):
+        setattr(w, name, getattr(W, name).__get__(w))
+    table = pd.DataFrame([dict(order=5, rule="own voltage", factor=1.35, I_scaled_A=35.0),
+                          dict(order=7, rule="own voltage", factor=8.92, I_scaled_A=20.5),
+                          dict(order=11, rule="own voltage", factor=1.6, I_scaled_A=3.8)])
+    with i18n.language("de"):
+        text = w.scaling_context("M1", dict(table=table))
+    assert text.startswith("Einordnung der Faktoren: In den Versuchen lag die 5. Ordnung im 84. Perzentil")
+    assert "Die 7. Ordnung lag in den Versuchen im 0. Perzentil der PQ-Messung" in text and "k_[m] = 8,92" in text
+    assert "11. Ordnung lag" not in text                       # small factor: not named although at the 3rd percentile
+
+
+def test_network_state_of_the_forecast_with_and_without_scaling(campaign, tmp_path):
+    """The note on the network state of the forecast names the PQ measurement only when the harmonics are scaled to
+    it; without a scaling the value holds for the harmonic voltage on the day of the tests."""
+    ns = campaign
+    scaled = "Netzzustand: Skaliert auf die Quantile der PQ-Messung gilt der Wert"
+    unscaled = "Netzzustand: Ohne Skalierung auf eine PQ-Messung gilt der Wert für die Oberschwingungsspannung am " \
+               "Versuchstag"
+    text = _text(ns["REPORT_FILE"])
+    assert scaled in text and unscaled not in text
+    path = tmp_path / "unscaled.docx"
+    document.campaign_report(ns["RESULTS"], str(path), raw=False, bootstrap=0,
+                             **_kwargs(ns, scaling=None, pq=None, pq_levels=None, pq_comparison=None))
+    text = _text(path)
+    assert unscaled in text and scaled not in text
+
+
+def test_scaling_with_the_thd_of_a_pq_measurement_only(campaign, tmp_path):
+    """A PQ measurement that gives the THD only, entered in the evaluation as its quantile: the PQ section names the
+    given quantile and the factor, step 2 scales every order of the positive or negative sequence with the THD factor
+    and gives its value k_THD = k_s·THD_95/THD_test, and the scaled value of the equivalent sources at Z_E names the
+    THD factor of the measurement series instead of the quantiles per order."""
+    import groundfault as gf
+    ns = campaign
+    folder = ns["CAMPAIGN_FOLDER"]
+    subs = [m for m in ns["MEASUREMENTS"] if m["Z"] is not None]
+    settings = gf.Settings(u_thd95_percent=2.0, pq_safety_factor=1.2, uncertainty_I=0.05, uncertainty_U=0.05)
+    results, scaled = {}, {}
+    for m in subs:
+        cfg = next(folder.glob("%s/*/%s.cfg" % (ns["LAYOUT"].raw, m["measurement"])))
+        with open(str(cfg).replace(".cfg", "_truth.json"), encoding="utf-8") as f:
+            b = json.load(f)["intervals"]
+        rec = gf.open_recording(str(cfg))
+        res = gf.evaluate(rec, gf.Intervals(*(tuple(b[k]) for k in ("steady_state", "pre_fault", "post_fault"))),
+                          settings, z_fault_ohm=m["Z"])
+        p = res.save_json(str(tmp_path / ("%s_ergebnis.json" % m["measurement"])))
+        results[m["name"]] = gf.load_result(p, m["name"])
+        scaled[m["name"]] = evaluation.rescale_harmonics(results[m["name"]], thd95_percent=2.0, safety_factor=1.2)
+        assert set(scaled[m["name"]]["table"]["rule"]) <= {"THD", "as measured"}
+    path = tmp_path / "thd_only.docx"
+    document.campaign_report(results, str(path), measurements=subs, raw=False, bootstrap=0, info=ns["REPORT"],
+                             series=ns["MAIN"], Z_E=ns["Z_E"],
+                             scaling=dict(safety_factor=1.2, thd95_percent=2.0, thd_measured_percent=1.5))
+    text = _text(path)
+    assert "Je Ordnung skaliert auf die PQ-Messung (Uq,m mit dem THD-Faktor kTHD = %s multipliziert, ein Quantil " \
+           "je Ordnung gibt es nicht; Nullsystem, gerade Ordnungen" % _n(1.2 * 2.0 / 1.5) in text
+    assert "skaliert wird mit den in der Auswertung angegebenen Quantilen: THD95 = 2,00 % (Leiter-Leiter), " \
+           "Faktor ks = 1,20." in text
+    assert "Sie gibt nur den THD an, keine Spannung je Ordnung" in text
+    values = ["= 1,20·2,00 %%/%s %% = %s" % (_n(s["UTHD_meas"]), _n(s["f_thd"])) for s in scaled.values()]
+    assert any(v in text for v in values), values

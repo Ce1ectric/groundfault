@@ -46,7 +46,8 @@ section 8 (`REPORT`, [Notebooks](notebooks.md)).
 | Appendices | A data of the recordings (file, start, sampling rate, fundamental frequency, intervals, window, corrections, reproduction from the raw data); B plausibility checks (findings of the single evaluations, consistency between the tests, checks of the report); C symbols |
 
 Sections without data are left out or say so: without a station there is no section 2.3 and no assessment of the
-earthing; without a PQ measurement section 2.4.1 states that none was available and step 2 of 3.1 uses the scaling of
+earthing; without a file of the PQ measurement section 2.4.1 says so – naming the quantiles and the factor when the
+evaluation was scaled with quantiles given by hand (`U95`, `THD95_PERCENT`) – and step 2 of 3.1 uses the scaling of
 the single evaluations (none: step 2 is left out); without equivalent sources 3.2 says that none were determined, and
 without them or without I_CE there is no network expansion.
 
@@ -136,7 +137,7 @@ footnote `[^text of the note^]`:
 | `title`, `network`, `subtitle` | title (default: “Evaluation of staged earth-fault tests”), network area, a further line |
 | `authors`, `organisation`, `date`, `version`, `further_info` | title page (date default: today) |
 | `places` | display name per measuring point (site folder of the recordings), e.g. `{"SUB": "Substation North"}`; default: the location of the sites file, else the folder name |
-| `timezone` | time zone of the times in the report, e.g. `"Europe/Berlin"` (the recorder clock is taken as UTC) |
+| `timezone` | time zone of the times in the report, e.g. `"Europe/Berlin"` (the recorder clock is taken as UTC); tests on both sides of a change between summer and standard time get the heading *local time* and every time its own label (CEST/CET) |
 | `purpose`, `normal_state`, `coil_unchanged`, `auto_tuning`, `procedure`, `notes` | texts of chapter 1 |
 | `instrument`, `transducers`, `uncertainty_components` | recorder, transducer per channel role (without: the table of measured quantities has no column for them), accuracy of every device of the measuring chain in % |
 | `quantity_labels` | own name of a measured quantity per key of that table (`"u_le"`, `"i_res"`, `"i_coil"`, `"i_shield"`, `"i_pen"`, `"u_e"`, `"u_t"` …), e.g. `{"i_shield": "shield current of a parallel feeder"}` |
@@ -222,6 +223,11 @@ findings of the plausibility checks, hints – keep the language of the evaluati
   larger than the largest phase, so k_m is on the safe side of the ratio of the largest phases that the table of the
   tests in the PQ distribution shows. The source voltage U_q,m of the measured source is the same component at the
   faulted phase (median of the tests).
+* **THD factor**: an order of the positive or negative sequence without its own quantile is scaled with
+  k_THD = k_s·THD_95/THD_test – THD_95 the quantile of the largest line-to-line loop of the PQ measurement, THD_test
+  the largest line-to-line THD of the test; step 2 gives its value. With the THD only (a quantile of the THD and
+  none per order) every order of the positive or negative sequence takes it, and step 2 says so. The scaled value
+  at Z_E (3.2) names the factor of the equivalent sources, with the THD of the measurement series.
 * **Scaling to the PQ measurement**: with a valid PQ measurement every test is scaled again with the quantiles and the
   factor of that measurement ([`evaluation.rescale_harmonics`](../reference/evaluation.md#groundfault.evaluation.rescale_harmonics))
   – also when its single evaluation used other settings (appendix B names the difference); a station test only if its
@@ -242,7 +248,9 @@ findings of the plausibility checks, hints – keep the language of the evaluati
   fundamental with the damping of the new cables. I_CE of today and the coil current are those of the coil controller
   (`coil_controller`) or the measured coil currents, the damping that of the tests. The split of Z_q into Z_0 and
   Z_1 is taken from network data and from the busbar voltages of the tests; the larger residual current of the two
-  decides (the table of uncertainties gives both). For every limit case – at its Z_E, with the smaller of the limit
+  decides (the table of uncertainties gives both). An order at which the split from the busbar voltages gives an
+  impedance with a negative real part – no passive network – takes the split from network data, and the section
+  names it. For every limit case – at its Z_E, with the smaller of the limit
   and F·U_Tp/(r·Z_E) – the report gives the I_CE at which the residual current reaches it, and at the planned I_CE
   the fundamental, the harmonic content, the proportional estimate (every part growing like I_CE) and per order the
   factor of the source voltage. It assumes no new harmonic sources with the cables and the scaling of 3.1 unchanged.

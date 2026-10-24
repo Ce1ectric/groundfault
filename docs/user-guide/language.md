@@ -45,8 +45,8 @@ i18n.set_language("en")
 
 ```text
 Messung: UW_0_10_000kHz  (UW_0_10_000kHz.cfg)
-Max-Fenster: 4,300 s  | f1 = 50,0200 Hz (phase)
-IRES = 56,53 A | IG = 32,01 A | Iw = 20,00 A | Iv = 25,00 A | IH = 46,59 A
+Max-Fenster: 4,100 s  | f1 = 50,0200 Hz (phase)
+IRES = 56,53 A | IG = 32,02 A | Iw = 20,00 A | Iv = 25,00 A | IH = 46,58 A
                                 Pruefung Status                              Wert
           Fenster im stationären Bereich     OK                                 9
 Gestörte Zustände im stationären Bereich     OK   keine erkannt (Schwelle 1,60 A)

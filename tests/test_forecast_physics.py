@@ -440,3 +440,24 @@ def test_network_expansion_against_the_reference():
         es.network_expansion(S, 0.0, k * I_C, U_LE=U_LE)
     with pytest.raises(TypeError):
         es.expansion_curve(S, Z_E, I_C, [I_C], I_LE=U_LE)
+
+
+def test_network_expansion_rejects_a_busbar_split_with_negative_resistance():
+    """A busbar split with a negative real part (no passive network – phase errors of the measurement) would give a
+    computed parallel resonance that does not exist: the order uses the network data instead, with a hint, and the
+    table marks it."""
+    from groundfault import equivalent_source as es
+    orders = (3, 5, 7)
+    S = _series({m: Grid(m, E_seq=BACKGROUND[m]) for m in orders}, {3: 4.0})
+    I_C, I_L = 3 * W * CE * U_LE, U_LE / X_N
+    bus = {int(r.order): (complex(r.Z0), complex(r.Z1)) for r in es.busbar_impedances(S).itertuples()}
+    z0, z1 = bus[5]
+    bus[5] = (z0, complex(-0.2 - abs(z1.real), z1.imag))                  # negative real part at the 5th
+    x = es._expand(S, I_C, 1.3 * I_C, bus, I_L=I_L, U_LE=U_LE, damping=0.03, damping_added=None, c1_ratio=1.0,
+                   Z0=None, Z1=None, zero_sequence="coil")
+    t = x.table.set_index("order")
+    assert t.loc[5, "split"] == "sources" and bool(t.loc[5, "busbar_rejected"])
+    assert t.loc[7, "split"] == "busbar" and not bool(t.loc[7, "busbar_rejected"])
+    ref = es.network_expansion(S, I_C, 1.3 * I_C, I_L=I_L, U_LE=U_LE, damping=0.03)          # network data
+    close(x.series.fits[5].Zq, ref.series.fits[5].Zq, 1e-12)
+    assert any("Order 5" in h or "Ordnung 5" in h for h in x.hints)

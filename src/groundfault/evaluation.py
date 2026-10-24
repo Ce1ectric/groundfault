@@ -4,11 +4,12 @@
 [`evaluate`][groundfault.evaluation.evaluate] processes one COMTRADE recording in seven steps:
 
 1. Load the analysis intervals (steady-state fault, pre-fault, post-fault), optionally with a time offset for
-   channels recorded with a different time base.
+   channels recorded with a different time base, and remove the DC component and slow drifts with the zero-phase
+   high-pass ([`condition_blocks`][groundfault.evaluation.condition_blocks], ``Settings.dc``).
 2. Estimate the network frequency f1 per interval (reference U_L1-L2, cross-checked with a second method).
 3. Divide the steady-state interval into 200-ms windows (N_win = T_win·f_s samples) and compute, for *all*
-   channels and from the **same** window, the true RMS value and the complex phasors of the orders 1…H (DC
-   removal, Hann window, DFT at the multiples m·f1).
+   channels and from the **same** window, the true RMS value and the complex phasors of the orders 1…H (mean of the
+   window removed, Hann window, DFT at the multiples m·f1).
 4. Leave out disturbed states – an active residual current increase or a step of the reactive component (network or
    coil switching, [`groundfault.disturbances`][groundfault.disturbances]) – so that only the undisturbed state is
    the reference. Of its windows take the one with the largest residual earth-fault current (the *max window*) and
@@ -57,8 +58,8 @@ from .comtrade import Recording
 from .channels import RoleAssignment, canonical_role, detect_roles
 from .symmetrical import fortescue, line_to_line
 
-__all__ = ["Settings", "Intervals", "Result", "evaluate", "load_blocks", "ResultFile", "load_result",
-           "rescale_harmonics"]
+__all__ = ["Settings", "Intervals", "Result", "evaluate", "load_blocks", "condition_blocks", "ResultFile",
+           "load_result", "rescale_harmonics"]
 
 Interval = Tuple[float, float]
 
@@ -265,6 +266,13 @@ i18n.register({
         "de": "abklingender Gleichanteil/Drift im Max-Fenster – gehört nicht zum stationären Fehlerstrom; "
               "stationären Bereich später beginnen oder mit dc=\"highpass\" entfernen (ohne diesen Anteil: "
               "I_RES ≈ {without:.2f} A)"},
+    "evaluation.low_frequency_comment_hp": {
+        "en": "drift faster than the high-pass ({fc:g} Hz) in the max window – not part of the steady-state fault "
+              "current (a clamp that saturates or recovers?); start the steady-state interval later (without this "
+              "component: I_RES ≈ {without:.2f} A)",
+        "de": "Drift schneller als der Hochpass ({fc:g} Hz) im Max-Fenster – gehört nicht zum stationären "
+              "Fehlerstrom (Zange in Sättigung oder im Abklingen?); stationären Bereich später beginnen (ohne diesen "
+              "Anteil: I_RES ≈ {without:.2f} A)"},
     "evaluation.low_frequency_ok": {"en": "no significant DC component/drift",
                                     "de": "kein nennenswerter Gleichanteil/Drift"},
     "evaluation.low_frequency_hint": {
@@ -274,6 +282,13 @@ i18n.register({
         "de": "Niederfrequenter Anteil (abklingender Gleichanteil/Drift) von {lf:.2f} A im Max-Fenster bei "
               "{t:.2f} s erhöht I_RES um {share:.1f} % (ohne ihn ≈ {without:.2f} A) – stationären Bereich später "
               "beginnen (Gleichanteil abgeklungen?) oder mit dem Hochpass entfernen (Settings(dc=\"highpass\"))."},
+    "evaluation.low_frequency_hint_hp": {
+        "en": "Low-frequency component (drift faster than the high-pass of {fc:g} Hz) of {lf:.2f} A in the max window "
+              "at {t:.2f} s increases I_RES by {share:.1f} % (without it ≈ {without:.2f} A) – start the steady-state "
+              "interval later.",
+        "de": "Niederfrequenter Anteil (Drift schneller als der Hochpass mit {fc:g} Hz) von {lf:.2f} A im Max-Fenster "
+              "bei {t:.2f} s erhöht I_RES um {share:.1f} % (ohne ihn ≈ {without:.2f} A) – stationären Bereich später "
+              "beginnen."},
     "evaluation.check_polarity": {"en": "Polarity of the fault current", "de": "Polarität Fehlerstrom"},
     "evaluation.value_margin": {"en": " (margin {margin:.1f}° to the ±90° limit)",
                                 "de": " (Reserve {margin:.1f}° zur ±90°-Grenze)"},
@@ -391,8 +406,8 @@ def _equation_harmonic(m: int) -> str:
 class Settings:
     """Parameters of the evaluation.
 
-    The defaults evaluate non-overlapping 200-ms windows with a Hann window after median DC removal and assess the
-    fundamental component and the harmonics 3, 5 and 7 of the fault current.
+    The defaults evaluate non-overlapping 200-ms windows with a Hann window after the DC removal with a high-pass and
+    the mean per window, and assess the fundamental component and the harmonics 3, 5 and 7 of the fault current.
 
     Attributes
     ----------
@@ -405,11 +420,14 @@ class Settings:
     window : str
         Window function of the DFT: ``"hann"`` (symmetric, default), ``"hann_periodic"`` or ``"rectangular"``.
     dc : str
-        Removal of the DC component: per window ``"median"`` (default), ``"mean"`` or ``"none"``; or ``"highpass"`` –
-        a zero-phase Butterworth high-pass ([`groundfault.dsp.highpass`][groundfault.dsp.highpass]) on every interval
-        before the windows (removes also a slowly decaying offset, e.g. of a current clamp), then the median per
-        window. For the harmonics both give the same result; the high-pass changes only the low-frequency part and with
-        it the RMS value of windows with a drifting offset.
+        Removal of the DC component: ``"highpass"`` (default) – a zero-phase Butterworth high-pass
+        ([`groundfault.dsp.highpass`][groundfault.dsp.highpass]) on every interval before the windows (it removes also
+        the DC component that decays after the fault inception and a slowly drifting offset of a current clamp), then
+        the mean per window; ``"highpass_median"`` – the high-pass, then the median per window (``"highpass"`` of
+        groundfault 3.4); or per window only ``"median"``, ``"mean"`` or ``"none"``. The harmonics are the same with
+        every method; they differ only in the low-frequency part and with it in the true RMS value. The median of a
+        waveform that is not symmetric (even harmonics) lies beside its mean, and the RMS value counts the shift – the
+        reason for the mean after the high-pass ([`groundfault.dsp.window_dc`][groundfault.dsp.window_dc]).
     dc_cutoff_hz : float
         Cut-off frequency of the high-pass in Hz (``dc="highpass"``; default 5 Hz, at most a quarter of
         ``f_nominal``).
@@ -507,7 +525,7 @@ class Settings:
     T_win: float = 0.200                       # window length [s]
     T_hop: Optional[float] = None              # hop [s]; None = T_win (no overlap, default)
     window: str = "hann"                      # window function of the DFT
-    dc: str = "median"                         # DC removal: per window, or "highpass" on the intervals
+    dc: str = "highpass"                       # DC removal: high-pass on the intervals + mean per window (default)
     dc_cutoff_hz: float = 5.0                  # cut-off frequency of the high-pass (dc="highpass")
     harmonics: Tuple[int, ...] = (1, 3, 5, 7)            # assessed orders of the fault current
     export_orders: Tuple[int, ...] = tuple(range(1, 26))  # phasors in the result file (1…25, equivalent sources)
@@ -713,6 +731,19 @@ def load_blocks(rec: Recording, intervals: Dict[str, Optional[Interval]],
     return out
 
 
+def condition_blocks(blocks: Dict[str, Tuple[int, np.ndarray]], rec: Recording,
+                     settings: "Settings") -> Dict[str, Tuple[int, np.ndarray]]:
+    """The intervals of [`load_blocks`][groundfault.evaluation.load_blocks] as the windows see them: with
+    ``settings.dc`` in [`HIGHPASS_FILTERS`][groundfault.dsp.HIGHPASS_FILTERS] (``"highpass"``, the default, or
+    ``"highpass_median"``) every interval passes the zero-phase high-pass
+    [`groundfault.dsp.highpass`][groundfault.dsp.highpass] (cut-off ``settings.dc_cutoff_hz``, mirror padding); with a
+    DC removal per window only, the intervals are returned unchanged. The evaluation, the scan for disturbed states
+    and the suggestion of the steady-state interval use the same signals."""
+    if settings.dc not in dsp.HIGHPASS_FILTERS:
+        return blocks
+    return {k: (i0, dsp.highpass(x, rec.fs, settings.dc_cutoff_hz, axis=0)) for k, (i0, x) in blocks.items()}
+
+
 def _reference_signal(block: np.ndarray, roles: RoleAssignment):
     """Reference signal of the frequency estimation and its display name: U_L1-L2 (from the line-to-earth
     voltages), a measured line-to-line voltage, U_L1-L2 of the HV side, U_NE, U_GEN, U_E, I_RES or channel 1."""
@@ -780,7 +811,7 @@ def _analyse(name: str, i0: int, block: np.ndarray, rec: Recording, roles: RoleA
     rms = np.empty((len(starts), k))
     for j in range(k):
         seg = dsp.window_view(block[:, j], nwin, nhop)
-        Xj, rj = dsp.dft_phasors(seg, fs, freqs, e.window, "median" if e.dc == "highpass" else e.dc)
+        Xj, rj = dsp.dft_phasors(seg, fs, freqs, e.window, dsp.window_dc(e.dc))
         X[:, j, :] = Xj; rms[:, j] = rj
     nanf = ~np.isfinite(rms).all(axis=1)
     t_mid = (i0 + starts + nwin / 2.0) / fs
@@ -1036,8 +1067,7 @@ def evaluate(rec: Recording, intervals: Intervals, settings: Optional[Settings] 
     shift_ = _shift(rec, roles, alignment)
     bl = load_blocks(rec, {"steady_state": intervals.steady_state, "pre_fault": intervals.pre_fault,
                             "post_fault": intervals.post_fault}, shift_)
-    if e.dc == "highpass":                 # high-pass on every interval (mirror padding), then the median per window
-        bl = {k: (i0, dsp.highpass(x, rec.fs, e.dc_cutoff_hz, axis=0)) for k, (i0, x) in bl.items()}
+    bl = condition_blocks(bl, rec, e)      # high-pass on every interval (mirror padding), then the mean per window
     st = _analyse("steady_state", *bl["steady_state"], rec, roles, e)
     vf = _analyse("pre_fault", *bl["pre_fault"], rec, roles, e) if "pre_fault" in bl else None
     nf = _analyse("post_fault", *bl["post_fault"], rec, roles, e) if "post_fault" in bl else None
@@ -1809,22 +1839,24 @@ def _plausibility(res: Result, rec: Recording, bl) -> None:
                         res.hints.append(tr("evaluation.coil_balance_hint", comment=comment_,
                                             path=_corrections_file(rec)))
     # low-frequency component in the max window (decaying DC component after fault inception – e.g. from the coil
-    # current with a time constant L/R in the range of seconds – or drift of an integrator/clamp): the median
-    # removal only removes a constant offset; the remainder increases the true RMS value without belonging to the
-    # steady-state residual current. Moving average over one period = components < f1/2. With the high-pass the
-    # window as evaluated (filtered) is checked.
+    # current with a time constant L/R in the range of seconds – or drift of an integrator/clamp): a DC estimate per
+    # window only removes a constant offset; the remainder increases the true RMS value without belonging to the
+    # steady-state residual current. Moving average over one period = components < f1/2, after removing the DC
+    # estimate of the evaluation (the mean after the high-pass: a stationary waveform with even harmonics gives no
+    # remainder). With the high-pass the window as evaluated (filtered) is checked.
     if ires_k is not None:
         nwin = int(round(e.T_win * rec.fs))
         i0 = int(round((float(st.t_mid[wi]) - e.T_win / 2.0) * rec.fs))
         irms = float(st.rms[wi, ires_k.index])
         i0b, blk = bl["steady_state"]
         x = None
-        if e.dc == "highpass" and 0 <= i0 - i0b and i0 - i0b + nwin <= blk.shape[0]:
+        hp = e.dc in dsp.HIGHPASS_FILTERS
+        if hp and 0 <= i0 - i0b and i0 - i0b + nwin <= blk.shape[0]:
             x = np.asarray(blk[i0 - i0b:i0 - i0b + nwin, ires_k.index], dtype=np.float64)
         elif 0 <= i0 and i0 + nwin <= rec.n:
             x = rec.read(i0, i0 + nwin, [ires_k.index])[:, 0].astype(np.float64)
         if x is not None and irms > 0 and np.isfinite(x).all():
-            x = x - np.median(x)
+            x = dsp.remove_dc(x, dsp.window_dc(e.dc))
             nper = max(1, int(round(rec.fs / float(st.f1["f1_used"]))))
             if x.size > 2 * nper:
                 x_lf = np.convolve(x, np.ones(nper) / nper, mode="valid")
@@ -1833,13 +1865,15 @@ def _plausibility(res: Result, rec: Recording, bl) -> None:
                 without = math.sqrt(max(irms ** 2 - lf_rms ** 2, 0.0))
                 res.values["ires_low_frequency_A"] = lf_rms
                 res.values["IRES_without_lf"] = without
+                fc = float(e.dc_cutoff_hz)
                 p(tr("evaluation.check_low_frequency"), "OK" if share < 0.01 else "WARNING",
                   tr("evaluation.value_low_frequency", lf=lf_rms, share=100 * share),
-                  tr("evaluation.low_frequency_comment", without=without)
+                  (tr("evaluation.low_frequency_comment_hp", without=without, fc=fc) if hp
+                   else tr("evaluation.low_frequency_comment", without=without))
                   if share >= 0.01 else tr("evaluation.low_frequency_ok"))
                 if share >= 0.01:
-                    res.hints.append(tr("evaluation.low_frequency_hint", lf=lf_rms, t=float(st.t_mid[wi]),
-                                        share=100 * share, without=without))
+                    res.hints.append(tr("evaluation.low_frequency_hint_hp" if hp else "evaluation.low_frequency_hint",
+                                        lf=lf_rms, t=float(st.t_mid[wi]), share=100 * share, without=without, fc=fc))
     margin = res.values.get("polarity_margin_deg", np.nan)
     extra_ = tr("evaluation.value_margin", margin=margin) if np.isfinite(margin) else ""
     if res.polarity < 0:
@@ -1990,7 +2024,7 @@ def _result_set(res: Result, rec: Recording, z_fault_ohm, metadata: dict, alignm
                     "steady_state_s": _b(res.intervals.steady_state), "pre_fault_s": _b(res.intervals.pre_fault),
                     "post_fault_s": _b(res.intervals.post_fault), "T_win_s": e.T_win,
                     "T_hop_s": e.T_hop or e.T_win, "harmonics": list(e.current_orders()),
-                    "window": e.window, "dc_method": e.dc, "f1_hz": float(st.f1["f1_used"]),
+                    "window": e.window, "dc_method": e.dc, "dc_window": dsp.window_dc(e.dc), "f1_hz": float(st.f1["f1_used"]),
                     "f1": {k: (v if not isinstance(v, float) or np.isfinite(v) else None) for k, v in st.f1.items()},
                     "window_t_s": float(st.t_mid[wi]), "z_fault_ohm": z_fault_ohm,
                     "polarity_i_res": res.polarity, "phi_LL1_deg": (float(np.degrees(phi_ll))

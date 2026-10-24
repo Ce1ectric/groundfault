@@ -37,7 +37,7 @@ print({key: tuple(round(t, 3) for t in span) for key, span in ex.times.items()})
 
 ```text
 <SignalExplorer SUB_0_10_000kHz.cfg | 7 channels | 89 windows of 200 ms>
-{'pre-fault': (0.9, 1.1), 'fault inception': (1.96, 2.16), 'max window': (4.2, 4.4), 'fault clearance': (5.84, 6.04), 'post-fault': (7.8, 8.0)}
+{'pre-fault': (0.9, 1.1), 'fault inception': (1.96, 2.16), 'max window': (4.0, 4.2), 'fault clearance': (5.84, 6.04), 'post-fault': (7.8, 8.0)}
 ```
 
 As the last expression of a cell the object shows the interface. Given the evaluation result `res`, it takes the
@@ -72,7 +72,7 @@ max window.
 
 | Column | Meaning |
 |---|---|
-| RMS value | true RMS value over all frequencies, DC component removed (median), as in the evaluation |
+| RMS value | true RMS value over all frequencies, DC component removed (mean per window, as in the evaluation; without its high-pass) |
 | DC component | mean value of the excerpt |
 | Peak value, Crest factor | largest magnitude of the instantaneous values; peak value / RMS value (√2 ≈ 1.41 for a sine) |
 | H1, Angle H1 in ° | fundamental component (RMS value) and its angle, referred to the fundamental of the **first selected channel** |
@@ -97,14 +97,14 @@ print("evaluation: IRES = %.3f A, IH1 = %.3f A" % (res.values["IRES"], abs(res.p
 
 ```text
 channel unit       rms     dc      peak  crest_factor        H1  H1_angle_deg      H5  THD_pct
-     V1    V 20001.515  3.954 28676.449         1.434 19999.928         0.000 381.170    2.163
-     V2    V 20008.587 11.284 28675.189         1.433 20000.039       -59.999 381.079    2.162
-     V3    V     2.965  0.113    10.661         3.596     0.134        -8.750   0.053  468.083
-    IF1    A    56.526  2.026   114.946         2.034    32.015       -81.341  42.737  145.502
-    IF2    A    56.961  0.025   113.590         1.994    32.333       -81.839  43.056  145.028
-  ISp21    A   299.993  0.108   424.009         1.413   300.000      -119.999   1.140    0.411
-  ISp22    A   249.995  0.089   353.312         1.413   250.002      -119.999   0.951    0.412
-evaluation: IRES = 56.526 A, IH1 = 32.015 A
+     V1    V 20001.738  3.933 28679.137         1.434 20000.084         0.000 381.046    2.162
+     V2    V 20008.742 11.260 28677.018         1.433 20000.083       -60.000 381.105    2.162
+     V3    V     3.064  0.030     9.407         3.070     0.069      -148.963   0.090 1086.776
+    IF1    A    56.525  2.026   114.889         2.033    32.017       -81.342  42.738  145.497
+    IF2    A    56.960  0.023   113.637         1.995    32.332       -81.843  43.056  145.038
+  ISp21    A   299.988  0.105   423.991         1.413   299.999      -120.000   1.141    0.412
+  ISp22    A   249.990  0.087   353.358         1.413   250.000      -120.000   0.954    0.413
+evaluation: IRES = 56.525 A, IH1 = 32.017 A
 ```
 
 What to look for in and around the max window:
@@ -138,7 +138,7 @@ print(w[(w["t_s"] > 4.0) & (w["t_s"] < 4.5)].round(3).to_string(index=False))
  4.4 56.526 32.015 4.040 42.738 14.056  145.504 2.028 114.946
 ```
 
-The window centred at 4.3 s is the max window. Without `ipywidgets` the notebook shows only the overview (with a
+The window centred at 4.1 s is the max window. Without `ipywidgets` the notebook shows only the overview (with a
 warning); `ex.overview()`, `ex.instantaneous(t0, t1)` and `ex.spectrum(t0, t1)` return the single Plotly figures.
 
 ## The HTML file

@@ -47,8 +47,19 @@ Detection, per window of the steady-state interval:
    interval is the reference, so it should lie in the undisturbed state after the transient. Transition windows
    belong to the disturbed one of their neighbours and are never part of the reference.
 
-[`scan`][groundfault.disturbances.scan] applies the same detection to the whole fault (from the settled fault
-current after inception to the clearance) and suggests the undisturbed part as the steady-state interval.
+[`scan`][groundfault.disturbances.scan] applies the same detection to the whole fault and suggests the undisturbed
+part as the steady-state interval. The scan starts once the fault state has **settled** after the inception: the RMS
+value of the fault current first ([`groundfault.station.settled_from`][groundfault.station.settled_from]), then –
+[`settled_index`][groundfault.disturbances.settled_index] – Iw and Iv (|I_H1| without U0) and the share of the even
+harmonics in the RMS value of the fault current, which may take seconds after a metallic fault (a saturating clamp or
+transformer, the DC component of the coil current): from the first window on which the medians of two consecutive
+blocks of [`STEP_WINDOWS`][groundfault.disturbances.STEP_WINDOWS] windows differ by less than
+[`SETTLE_SHARE`][groundfault.disturbances.SETTLE_SHARE] times the step threshold for every one of these quantities,
+at the latest [`SETTLE_MAX_S`][groundfault.disturbances.SETTLE_MAX_S] after the inception. The odd harmonics follow the
+harmonic voltage of the network and take no part. Without it, a gradual
+settling may look like a step (its few windows before the step hide the ramp), and the start of the interval – the
+reference of the network state – would lie in the transient. The suggestion is the first undisturbed range of at least
+[`MIN_SUGGESTION_S`][groundfault.disturbances.MIN_SUGGESTION_S] (else the longest one).
 
 Examples
 --------
@@ -83,8 +94,9 @@ import pandas as pd
 from . import i18n
 from .i18n import tr
 
-__all__ = ["Disturbances", "detect", "scan", "window_phasors", "STATES", "EVENTS", "REFERENCE", "NO_FAULT",
-           "STEP_WINDOWS", "STEP_FLATNESS", "STEP_MIN_A", "COIL_SHARE", "ACTIVE_REACTIVE", "THRESHOLD", "FAULT_SHARE"]
+__all__ = ["Disturbances", "detect", "scan", "settled_index", "window_phasors", "STATES", "EVENTS", "REFERENCE",
+           "NO_FAULT", "STEP_WINDOWS", "STEP_FLATNESS", "STEP_MIN_A", "COIL_SHARE", "ACTIVE_REACTIVE", "THRESHOLD",
+           "FAULT_SHARE", "SETTLE_SHARE", "SETTLE_MAX_S", "SETTLE_ORDERS", "MIN_SUGGESTION_S"]
 
 REFERENCE = "reference"
 """State code of the undisturbed windows."""
@@ -125,6 +137,20 @@ FAULT_SHARE = 0.1
 """A window whose RMS value of the fault current (|I_H1| without RMS values) is below this share of the largest value
 in the interval – median of three consecutive windows, so that a single outlier does not count – has no fault
 current: it lies before the fault inception or after the clearance."""
+SETTLE_SHARE = 0.5
+"""Settling of the fault state ([`settled_index`][groundfault.disturbances.settled_index]): the medians of two
+consecutive blocks of [`STEP_WINDOWS`][groundfault.disturbances.STEP_WINDOWS] windows may differ by less than this share
+of the step threshold (Iw and Iv or |I_H1|, and the change of the RMS value from the even harmonics, in A)."""
+SETTLE_MAX_S = 4.0
+"""Latest start in s after the fault inception that the settling test of
+[`scan`][groundfault.disturbances.scan] sets; a state that has not settled by then is scanned from the settled RMS
+value on, with a note."""
+SETTLE_ORDERS = (2, 4, 6, 8, 10)
+"""Even orders of the fault current whose RMS sum takes part in the settling test (they decay after a metallic fault
+inception, e.g. from a saturating clamp or transformer)."""
+MIN_SUGGESTION_S = 1.0
+"""Shortest undisturbed range in s that [`Disturbances.suggestion`][groundfault.disturbances.Disturbances.suggestion]
+proposes as the steady-state interval when a longer one exists."""
 
 i18n.register({
     "disturbances.excluded": {
@@ -188,6 +214,22 @@ i18n.register({
                                  "de": "vom Beginn der Aufzeichnung bis {t_off} s"},
     "disturbances.summary_states": {"en": "Disturbed: {parts}", "de": "Gestört: {parts}"},
     "disturbances.summary_none": {"en": "No disturbed state found.", "de": "Kein gestörter Zustand gefunden."},
+    "disturbances.summary_settled": {
+        "en": "Settling after the fault inception until {t} s (change of {quantities}: {drift} A per {block} s; "
+              "tolerance {tol:.2f} A) – the scan starts there.",
+        "de": "Einschwingen nach dem Fehlereintritt bis {t} s (Änderung von {quantities}: {drift} A je {block} s; "
+              "Toleranz {tol:.2f} A) – die Suche beginnt dort."},
+    "disturbances.summary_not_settled": {
+        "en": "The fault state has not settled by {t} s (change of {quantities}: still {drift} A per {block} s; "
+              "tolerance {tol:.2f} A) – scanned from the settled RMS value on; check the start of the steady-state "
+              "interval in the trend.",
+        "de": "Der Fehlerzustand ist bis {t} s nicht eingeschwungen (Änderung von {quantities}: noch {drift} A je "
+              "{block} s; Toleranz {tol:.2f} A) – durchsucht ab dem eingeschwungenen Effektivwert; Beginn des "
+              "stationären Bereichs im Verlauf prüfen."},
+    "disturbances.q_iw": {"en": "Iw", "de": "Iw"},
+    "disturbances.q_iv": {"en": "Iv", "de": "Iv"},
+    "disturbances.q_ih1": {"en": "|I_H1|", "de": "|I_H1|"},
+    "disturbances.q_even": {"en": "RMS share of the even harmonics", "de": "Anteil der geraden Ordnungen am Effektivwert"},
     "disturbances.summary_estimated": {
         "en": "Fault current estimated from the negative-sequence current of the transformer (fault in {phase}); its "
               "steps are reliable, its level is an estimate.",
@@ -293,13 +335,19 @@ class Disturbances:
                 if r["state"] != REFERENCE]
 
     def suggestion(self) -> Optional[Tuple[float, float]]:
-        """The first undisturbed time range (t0, t1) in s (rounded inwards to 0.1 s) – a proposal for the
-        steady-state interval; None without one."""
+        """The first undisturbed time range (t0, t1) in s of at least
+        [`MIN_SUGGESTION_S`][groundfault.disturbances.MIN_SUGGESTION_S] (rounded inwards to 0.1 s) – a proposal for
+        the steady-state interval; without one the longest undisturbed range of at least one window; None without
+        any."""
+        ranges = []
         for t0, t1 in self.reference_intervals():
             a, b = np.ceil(t0 * 10.0 - 1e-6) / 10.0, np.floor(t1 * 10.0 + 1e-6) / 10.0
-            if b - a >= self.T_win:
-                return float(round(a, 1)) + 0.0, float(round(b, 1)) + 0.0
-        return None
+            if b - a >= self.T_win - 1e-9:
+                ranges.append((float(round(a, 1)) + 0.0, float(round(b, 1)) + 0.0))
+        for a, b in ranges:
+            if b - a >= MIN_SUGGESTION_S - 1e-9:
+                return a, b
+        return max(ranges, key=lambda r: r[1] - r[0]) if ranges else None
 
     def parts_text(self) -> str:
         """The disturbances as text in the output language, e.g. ``"active residual current increase 35.3–37.8 s
@@ -351,6 +399,13 @@ class Disturbances:
                     suggestion=("(%.1f, %.1f)" % s) if s else "–")]
         lines.append(tr("disturbances.summary_states", parts=self.parts_text()) if self.found
                      else tr("disturbances.summary_none"))
+        st = m.get("settling") or {}
+        if st.get("shifted") or st.get("settled") is False:
+            q = ", ".join(tr("disturbances.q_" + k) for k in st.get("limiting", []))
+            drift = "/".join(i18n.format_number(float(v), digits=1, mode="fixed") for v in st.get("drift_A", []))
+            key = "disturbances.summary_settled" if st.get("settled") else "disturbances.summary_not_settled"
+            lines.append(tr(key, t=_seconds(st.get("t_s")), quantities=q or "–", drift=drift or "–",
+                            block=_seconds(st.get("block_s")), tol=float(st.get("tol_A", float("nan")))))
         if m.get("estimated"):
             lines.append(tr("disturbances.summary_estimated", phase=m.get("faulted_phase", "–")))
         lines += self.notes()
@@ -526,6 +581,82 @@ def _runs(mask: np.ndarray) -> List[Tuple[int, int]]:
         elif not v and start is not None:
             out.append((start, j - 1))
             start = None
+    return out
+
+
+def settled_index(features: Dict[str, Sequence[float]], tol: float, windows: int = STEP_WINDOWS,
+                  last: Optional[int] = None) -> Tuple[Optional[int], Dict[str, float]]:
+    """First window from which a series of windows has settled: for every quantity the medians of the ``windows``
+    windows from there and of the ``windows`` windows after them differ by less than ``tol``.
+
+    A transient after the fault inception (the DC component of the coil current, a clamp or a transformer that
+    saturates and recovers) changes the quantities monotonically and slower and slower; two consecutive blocks show
+    the remaining drift, and the medians make the test insensitive to a single disturbed window.
+
+    Parameters
+    ----------
+    features : dict of str → sequence of float
+        The quantities per window (e.g. ``"iw"``, ``"iv"``, ``"rms"``, ``"even"`` in A), all of the same length.
+    tol : float
+        Largest drift between the medians of two consecutive blocks (same unit as the quantities).
+    windows : int, optional
+        Windows per block.
+    last : int, optional
+        Last window that may be the settled one (default: the last with two blocks after it).
+
+    Returns
+    -------
+    (int or None, dict)
+        The first settled window (None if none up to ``last``) and the drift per quantity at that window (at
+        ``last`` if none is settled).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> t = 0.2 * np.arange(30)
+    >>> iv = -6.5 - 9.5 * np.exp(-t / 0.7)                    # settles with a time constant of 0.7 s
+    >>> k, drift = settled_index({"iv": iv}, tol=0.67)
+    >>> k, round(float(t[k]), 1)
+    (7, 1.4)
+    """
+    xs = {k: np.asarray(v, float) for k, v in features.items()}
+    n = min((x.size for x in xs.values()), default=0)
+    m = max(1, int(windows))
+    stop = n - 2 * m if last is None else min(int(last), n - 2 * m)
+
+    def drift(k: int) -> Dict[str, float]:
+        out = {}
+        for name, x in xs.items():
+            a, b = x[k:k + m], x[k + m:k + 2 * m]
+            out[name] = (float(abs(np.median(b) - np.median(a))) if np.isfinite(a).all() and np.isfinite(b).all()
+                         else float("inf"))
+        return out
+    for k in range(0, stop + 1):
+        d = drift(k)
+        if all(v < tol for v in d.values()):
+            return k, d
+    return None, (drift(stop) if stop >= 0 else {name: float("nan") for name in xs})
+
+
+def _settling_features(st, roles, I1, U0, rms=None) -> Dict[str, np.ndarray]:
+    """Quantities of the settling test per window, in A: Iw and Iv (|I_H1| without U0) and the share of the even
+    harmonics [`SETTLE_ORDERS`][groundfault.disturbances.SETTLE_ORDERS] of the fault current in its RMS value,
+    E²/(2·I_RES) with E their RMS sum and I_RES the median RMS value – a change of it is the change of the RMS value
+    that the even harmonics cause. The odd harmonics are left out: they follow the harmonic voltage of the network,
+    which changes by a few per cent within seconds without any transient of the fault."""
+    out: Dict[str, np.ndarray] = {}
+    mag = np.abs(I1)
+    if U0 is not None:
+        dphi = np.angle(U0) - np.angle(I1)
+        out["iw"], out["iv"] = mag * np.cos(dphi), mag * np.sin(dphi)
+    else:
+        out["ih1"] = mag
+    ires = roles.main("i_res")
+    even = [m for m in SETTLE_ORDERS if m in st.orders]
+    level = float(np.nanmedian(rms)) if rms is not None and np.isfinite(rms).any() else float(np.nanmedian(mag))
+    if ires is not None and even and np.isfinite(level) and level > 0:
+        e2 = sum(np.abs(st.X[:, ires.index, st.ix(m)]) ** 2 for m in even)
+        out["even"] = e2 / (2.0 * level)
     return out
 
 
@@ -776,7 +907,7 @@ def scan(rec, roles=None, settings=None, *, threshold: Optional[float] = None) -
         or if no fault is found in the recording.
     """
     from .channels import detect_roles
-    from .evaluation import Settings, _analyse, load_blocks
+    from .evaluation import Settings, _analyse, condition_blocks, load_blocks
     from .station import fault_times, settled_from
     roles = roles or detect_roles(rec.channel_names, rec.units)
     e = settings or Settings()
@@ -792,12 +923,37 @@ def scan(rec, roles=None, settings=None, *, threshold: Optional[float] = None) -
     t_to = (t_off - 0.1) if t_off is not None else rec.duration_s
     if t_to - t_from < 2 * e.T_win:
         raise ValueError(tr("disturbances.no_fault"))
-    bl = load_blocks(rec, {"steady_state": (t_from, t_to)}, None)
+    bl = condition_blocks(load_blocks(rec, {"steady_state": (t_from, t_to)}, None), rec, e)
     st = _analyse("steady_state", *bl["steady_state"], rec, roles, e)
     I1, U0, rms, coil = window_phasors(st, roles)
-    d = detect(st.t_mid, I1, U0, rms, coil,
-               threshold=threshold if threshold is not None else e.disturbance_threshold, T_win=e.T_win)
-    d.meta.update(t_fault_inception_s=t_on, t_fault_clearance_s=t_off, t_from_s=float(t_from), t_to_s=float(t_to))
+    thr_share = threshold if threshold is not None else e.disturbance_threshold
+    # settling of the fault state after the inception: Iw, Iv and the share of the even harmonics
+    k0, settling = 0, {}
+    feats = _settling_features(st, roles, I1, U0, rms)
+    mag = np.abs(I1)
+    if feats and np.isfinite(mag).any():
+        tol = SETTLE_SHARE * max(STEP_MIN_A, thr_share * float(np.nanmedian(mag)))
+        t_limit = (t_on if t_on is not None else t_from) + SETTLE_MAX_S
+        last = int(np.searchsorted(st.t_mid, t_limit, side="right")) - 1
+        k, drift = settled_index(feats, tol, STEP_WINDOWS, last=max(0, last))
+        settled = k is not None
+        if settled and st.t_mid.size - k >= 2 * STEP_WINDOWS:
+            k0 = int(k)
+        limiting = [name for name, v in drift.items() if not v < tol] if not settled else []
+        if settled and k0 > 0:                       # the quantities that settled last: their drift one window earlier
+            j, m = k0 - 1, STEP_WINDOWS
+            prev = {name: float(abs(np.median(x[j + m:j + 2 * m]) - np.median(x[j:j + m]))) for name, x in feats.items()}
+            limiting = [name for name, v in prev.items() if not v < tol]
+            drift = {name: prev[name] for name in limiting}
+        settling = dict(settled=settled, shifted=k0 > 0, tol_A=float(tol), block_s=float(STEP_WINDOWS * e.T_win),
+                        t_s=float(st.t_mid[k0] - e.T_win / 2.0) if settled else float(st.t_mid[max(0, last)]),
+                        limiting=limiting, drift_A=[float(drift[n]) for n in limiting])
+    sl = slice(k0, None)
+    d = detect(st.t_mid[sl], I1[sl], None if U0 is None else U0[sl], None if rms is None else rms[sl],
+               None if coil is None else coil[sl], threshold=thr_share, T_win=e.T_win)
+    d.meta.update(t_fault_inception_s=t_on, t_fault_clearance_s=t_off,
+                  t_from_s=float(st.t_mid[k0] - e.T_win / 2.0) if k0 else float(t_from), t_to_s=float(t_to),
+                  settling=settling)
     return d
 
 
@@ -807,7 +963,7 @@ def _scan_transformer(rec, roles, e, threshold: Optional[float]) -> Disturbances
     transformer ([`groundfault.transformer`][groundfault.transformer]) against the pre-fault (else the post-fault)
     state; the scan starts once the estimate has settled."""
     from . import transformer as trafo
-    from .evaluation import _analyse, load_blocks
+    from .evaluation import _analyse, condition_blocks, load_blocks
     from .station import T_TRANSIENT_S
     t_on, t_off = trafo.fault_times(rec, roles)
     if t_on is None and t_off is None:
@@ -821,7 +977,7 @@ def _scan_transformer(rec, roles, e, threshold: Optional[float]) -> Disturbances
         base = (t_off + 0.5, min(rec.duration_s, t_off + 10.5))
     if base is None or t_to - t_from < 3 * e.T_win:
         raise ValueError(tr("disturbances.no_fault"))
-    bl = load_blocks(rec, {"steady_state": (t_from, t_to), "base": base}, None)
+    bl = condition_blocks(load_blocks(rec, {"steady_state": (t_from, t_to), "base": base}, None), rec, e)
     st = _analyse("steady_state", *bl["steady_state"], rec, roles, e)
     bb = _analyse("base", *bl["base"], rec, roles, e)
     first = trafo.fault_current_estimate(st, bb, roles, 1.0)

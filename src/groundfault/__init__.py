@@ -50,7 +50,7 @@ forecast           forecast of the harmonic residual current: a learnable networ
                    checks, faults behind a line – built on the result files of the evaluation
                    (``from groundfault import forecast``)
 """
-__version__ = "3.4.0"
+__version__ = "3.5.0"
 """Version of the package."""
 
 from .comtrade import Recording, ComtradeError, open_recording, write_comtrade  # noqa: E402

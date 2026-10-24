@@ -47,10 +47,10 @@ filter, the Goertzel algorithm and the zero-crossing frequency estimate use SciP
 are used."""
 
 __all__ = [
-    "hann", "window_function", "coherent_gain", "remove_dc", "highpass", "true_rms",
+    "hann", "window_function", "coherent_gain", "remove_dc", "window_dc", "highpass", "true_rms",
     "window_grid", "window_view", "dft_phasors", "window_phasors", "goertzel",
     "goertzel_phasor", "f1_phase_method", "f1_regression", "f1_spectral", "f1_zero_crossing", "estimate_f1",
-    "decimate", "thd", "HAS_SCIPY", "WINDOWS", "DC_METHODS", "DC_FILTERS", "F1_METHODS",
+    "decimate", "thd", "HAS_SCIPY", "WINDOWS", "DC_METHODS", "DC_FILTERS", "HIGHPASS_FILTERS", "F1_METHODS",
 ]
 
 WINDOWS = ("hann", "hann_periodic", "rectangular")
@@ -59,9 +59,14 @@ WINDOWS = ("hann", "hann_periodic", "rectangular")
 _WINDOW_ALIASES = ("hanning", "hann_p", "rect", "none")
 DC_METHODS = ("median", "mean", "none")
 """Methods of the DC removal per window (``remove_dc``); None counts as ``"none"``."""
-DC_FILTERS = DC_METHODS + ("highpass",)
-"""DC removal of an evaluation (``Settings.dc``): a method per window, or ``"highpass"`` – the zero-phase high-pass
-[`highpass`][groundfault.dsp.highpass] on every interval before the windows, then the median per window."""
+HIGHPASS_FILTERS = ("highpass", "highpass_median")
+"""DC removals of an evaluation (``Settings.dc``) with the zero-phase high-pass [`highpass`][groundfault.dsp.highpass]
+on every interval before the windows: ``"highpass"`` – then the mean per window (the default of
+[`Settings`][groundfault.evaluation.Settings]) – and ``"highpass_median"`` – then the median per window (the
+``"highpass"`` of groundfault 3.4)."""
+DC_FILTERS = DC_METHODS + HIGHPASS_FILTERS
+"""DC removal of an evaluation (``Settings.dc``): a method per window (``"median"``, ``"mean"``, ``"none"``) or one of
+[`HIGHPASS_FILTERS`][groundfault.dsp.HIGHPASS_FILTERS]."""
 HIGHPASS_ORDER = 4
 """Order of the Butterworth high-pass of [`highpass`][groundfault.dsp.highpass] (applied forwards and backwards)."""
 F1_METHODS = ("phase", "spectral")
@@ -153,7 +158,9 @@ def remove_dc(x: np.ndarray, method: str = "median", axis: int = -1) -> np.ndarr
     x : array_like
         Signal (one window, or several windows along ``axis``).
     method : {"median", "mean", "none"}, optional
-        Estimate of the DC component. The median (recommended) is robust against spikes and transients.
+        Estimate of the DC component. The median is robust against spikes and transients, but for a waveform with
+        even harmonics it lies beside the mean, and the RMS value of x0 comes out too high; over whole periods the
+        mean is exact – the evaluation uses it after its high-pass ([`window_dc`][groundfault.dsp.window_dc]).
     axis : int, optional
         Axis along which the DC component is estimated.
 
@@ -174,6 +181,23 @@ def remove_dc(x: np.ndarray, method: str = "median", axis: int = -1) -> np.ndarr
     if method == "mean":
         return x - np.mean(x, axis=axis, keepdims=True)
     return x
+
+
+def window_dc(dc: Optional[str]) -> str:
+    """The DC estimate per window of a DC removal of an evaluation (``Settings.dc``): after the high-pass the mean
+    (``"highpass"``) or the median (``"highpass_median"``), otherwise the method itself.
+
+    After the high-pass hardly any DC component is left in a window, and over a window of whole periods the mean is
+    the DC component of a periodic signal exactly. The median of a waveform that is not symmetric (even harmonics,
+    e.g. after a fault inception) lies beside it: subtracting it shifts the waveform, and the true RMS value counts the
+    shift.
+
+    Examples
+    --------
+    >>> window_dc("highpass"), window_dc("highpass_median"), window_dc("median")
+    ('mean', 'median', 'median')
+    """
+    return {"highpass": "mean", "highpass_median": "median"}.get(dc, "none" if dc is None else dc)
 
 
 def highpass(x: np.ndarray, fs: float, cutoff_hz: float = 5.0, order: int = HIGHPASS_ORDER,

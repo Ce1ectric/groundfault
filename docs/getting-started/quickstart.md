@@ -67,8 +67,8 @@ short   role main_channel
 ISp21 i_coil            ✓
 ISp22 i_coil
 Measurement: SUB_0_10_000kHz  (SUB_0_10_000kHz.cfg)
-Max window: 4.300 s  | f1 = 50.0200 Hz (phase)
-IRES = 56.53 A | IG = 32.01 A | Iw = 20.00 A | Iv = 25.00 A | IH = 46.59 A
+Max window: 4.100 s  | f1 = 50.0200 Hz (phase)
+IRES = 56.53 A | IG = 32.02 A | Iw = 20.00 A | Iv = 25.00 A | IH = 46.58 A
 ```
 
 The channel roles follow from the channel names (line-to-earth voltages, two fault-current CTs, two coil currents);
@@ -80,7 +80,7 @@ without fault before and after it:
 ![RMS trend of the demo recording SUB_0_10_000kHz with the analysis intervals and the max window](../assets/substation_rms_trend.png)
 
 `evaluate` divides the steady-state interval into 200-ms windows, computes RMS values and harmonic phasors of all
-channels and assesses the window with the largest residual current, the *max window* (here centred at 4.3 s); see
+channels and assesses the window with the largest residual current, the *max window* (here centred at 4.1 s); see
 [Signal processing](../methods/signal-processing.md).
 
 ## 3 · Read the result
@@ -99,13 +99,13 @@ quantity  measured_value  assessment unit
     IRES           56.53       56.53    A
       Iw           20.00       20.00    A
       Iv           25.00       25.00    A
-     IH1           32.01       32.01    A
+     IH1           32.02       32.02    A
      IH3            4.04        4.04    A
      IH5           42.74       42.74    A
      IH7           14.06       14.06    A
-IH_total           46.59       46.59    A
+IH_total           46.58       46.58    A
   IH_sum           46.58       46.58    A
-    UH1n        11547.07    11547.07    V
+    UH1n        11547.05    11547.05    V
 true: IRES 56.52 A | IG 32.02 A | Iw 20.00 A | Iv 25.00 A | IH 46.58 A
                                         check status                                         value
          Windows in the steady-state interval     OK                                             9
@@ -160,15 +160,15 @@ print("I_RES(2.5 Ω) = %.2f A, within the tested range: %s" % (r["IRES"], r["int
 ```
 
 ```text
-SUB_0_10_000kHz    Z_F = 0.0 Ω  IRES = 56.53 A  IH = 46.59 A
+SUB_0_10_000kHz    Z_F = 0.0 Ω  IRES = 56.53 A  IH = 46.58 A
 SUB_2_5_10_000kHz  Z_F = 2.5 Ω  IRES = 47.97 A  IH = 35.72 A
 SUB_5_10_000kHz    Z_F = 5.0 Ω  IRES = 39.69 A  IH = 23.45 A
  order   f_Hz    Uq_V  Rq_Ohm  Xq_Ohm  residual_pct
-     3 150.06  18.470   3.638  -1.886        16.563
-     5 250.10 219.971   4.499  -2.501         0.006
-     7 350.14 109.997   7.001  -3.498         0.011
-    11 550.22  35.056   2.507  -2.199         0.023
-    13 650.26  24.994   4.999  -2.793         0.080
+     3 150.06  18.528   3.651  -1.892        16.473
+     5 250.10 220.004   4.500  -2.501         0.004
+     7 350.14 109.895   6.997  -3.489         0.003
+    11 550.22  35.047   2.505  -2.200         0.009
+    13 650.26  24.985   4.991  -2.808         0.072
 I_RES(2.5 Ω) = 45.59 A, within the tested range: True
 ```
 
@@ -202,18 +202,18 @@ print(lv[["channel", "probe", "I_LV_eff_A", "Z_E_LV_eff_Ohm", "parallel_check"]]
 channel  distance_m                            remark
      UT         1.0 touch-voltage probe at 1 m (demo)
 Measurement: Station_Elm_Road_10_000kHz  (Station_Elm_Road_10_000kHz.cfg)
-Max window: 2.600 s  | f1 = 49.9800 Hz (phase)
-IRES = 46.66 A | IG = 35.00 A | Iw = 33.21 A | Iv = 11.07 A | IH = 30.85 A
+Max window: 2.800 s  | f1 = 49.9800 Hz (phase)
+IRES = 46.66 A | IG = 35.00 A | Iw = 33.20 A | Iv = 11.07 A | IH = 30.86 A
 ⚠ No extrapolation of the station voltages to limits of the residual current: Settings.ires_limits is empty (the limits are defined by the user).
  order   f_Hz  I_F_A  Z_direct_Ohm  Z_fault_Ohm  Z_fault_angle_deg  uncertain
-     1  49.98 35.001         0.466        0.466             -5.428      False
+     1  49.98 34.999         0.466        0.466             -5.428      False
      5 249.90 30.000         0.401        0.401              1.799      False
-     7 349.86  6.001         0.373        0.373              4.245      False
-    11 549.78  3.999         0.372        0.372             11.339      False
+     7 349.86  6.002         0.373        0.373              4.245      False
+    11 549.78  4.001         0.372        0.372             11.339      False
 channel  probe  I_LV_eff_A  Z_E_LV_eff_Ohm parallel_check
-max(UE) UE_70m       5.268           3.883      satisfied
- UE_70m UE_70m       5.268           3.883      satisfied
-  UE_5m  UE_5m       5.268           2.505      satisfied
+max(UE) UE_70m       5.267           3.883      satisfied
+ UE_70m UE_70m       5.267           3.883      satisfied
+  UE_5m  UE_5m       5.267           2.505      satisfied
 ```
 
 `station_frequency` gives, per probe and harmonic order, the earth potential rise per ampere of fault current – as
@@ -341,7 +341,7 @@ To try them, put the example notebooks into an empty folder – copy them, or ge
 The first cell prints the version, the work folder it found and the detected folder layout:
 
 ```text
-groundfault 3.4.0 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
+groundfault 3.5.0 · work folder: /home/user/groundfault-demo · layout: en · font of the figures: Liberation Sans
 ```
 
 For your own campaigns use the reference copies in `notebooks/en/templates/` (placeholders instead of the demo

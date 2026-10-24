@@ -97,6 +97,7 @@ def test_campaign_figures_and_table_with_the_measured_source(demo_results):
     comparison), source_plane adds the single tests (+), and the report table names the source per order and gives
     the current at Z_E with both sources."""
     import matplotlib.pyplot as plt
+    plt.close("all")                                      # figures left open by earlier tests
     entry = [dict(file=p, Z=Z, name="%g Ω" % Z) for Z, (_, _, p, _) in sorted(demo_results.items())]
     fitted = equivalent_source.fit_equivalent_source(equivalent_source.load_series(entry))
     measured = equivalent_source.measured_source(fitted)
@@ -540,9 +541,28 @@ def test_campaign_consistency_coil_current_zero():
     assert rows.at["Coil current ISp2", "status"] == "OK"                    # 15.0/15.2/15.1 A, the 0 A left out
     assert "ISp1 in M2" not in " ".join(k["check"]) and "ISp2 in M0" not in " ".join(k["check"])
     assert rows.at["Coil current ISp1 in M3", "status"] == "WARNING"       # 200 A against 20 A: factor 10
-    assert "factor ≈ 10: check the measuring range/CT ratio" in rows.at["Coil current ISp1 in M3", "comment"]
+    assert "factor ≈ 10: a typical error" in rows.at["Coil current ISp1 in M3", "comment"]
+    assert "correction 1/10 in the corrections file" in rows.at["Coil current ISp1 in M3", "comment"]
     only_zero = campaign.consistency({"M0": result(0.0), "M1": result(0.0)})
     assert not any(str(c).startswith(("Coil current", "Spulenstrom")) for c in only_zero["check"])
+
+
+def test_campaign_consistency_names_typical_factors():
+    """A coil channel that shows 3 times (a third of) the current of the other tests – a clamp around one of the three
+    conductors of a star-point former, or a channel set for it – is named with the factor and its correction; a ratio
+    that is no typical error points to a changed coil state."""
+    def result(h1):
+        return SimpleNamespace(values={"IG": 30.0}, tables={"coil_currents": pd.DataFrame([dict(channel="ISp1", H1_A=h1)])},
+                               z_fault_ohm=None)
+    with i18n.language("en"):
+        three = campaign.consistency({"M0": result(81.4), "M1": result(27.1), "M2": result(27.2)}).set_index("check")
+        third = campaign.consistency({"M0": result(9.1), "M1": result(27.1), "M2": result(27.2)}).set_index("check")
+        other = campaign.consistency({"M0": result(40.0), "M1": result(27.1), "M2": result(27.2)}).set_index("check")
+    assert "factor ≈ 3:" in three.at["Coil current ISp1 in M0", "comment"]
+    assert "correction 1/3" in three.at["Coil current ISp1 in M0", "comment"]
+    assert "factor ≈ 1/3:" in third.at["Coil current ISp1 in M0", "comment"]
+    assert "correction 3 in" in third.at["Coil current ISp1 in M0", "comment"]
+    assert "coil position/network state changed?" in other.at["Coil current ISp1 in M0", "comment"]
 
 
 def test_rms_comparison_notes(tmp_path):
