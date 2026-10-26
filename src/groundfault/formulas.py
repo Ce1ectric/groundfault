@@ -68,10 +68,18 @@ __all__ = [
     "sequence_voltage_from_ll", "limit_resistance", "resistive_assessment", "max_residual_current",
     "earth_return_depth", "z0_overhead_line", "r0_overhead_line", "limit_distance", "source_from_two_measurements",
     "residual_current_from_sources", "fundamental_from_network_data", "zero_sequence_impedance", "MU0",
-    "typical_factor", "TYPICAL_FACTORS",
+    "typical_factor", "TYPICAL_FACTORS", "standard_voltage_kV", "STANDARD_VOLTAGES_KV",
 ]
 
+#: nominal system voltages of 1 kV to 35 kV in kV (IEC 60038, series I) usual for resonant-earthed networks; the
+#: values 3.3, 6.6, 11, 22 and 33 kV lie only 10 % above 3, 6, 10, 20 and 30 kV – for such a network give the
+#: nominal voltage instead of choosing it with ``standard_voltage_kV``
+STANDARD_VOLTAGES_KV = (3.0, 6.0, 10.0, 15.0, 20.0, 30.0, 35.0)
+
 i18n.register({
+    "formulas.voltage_positive": {
+        "en": "The voltage must be positive and finite, not {value!r}.",
+        "de": "Die Spannung muss positiv und endlich sein, nicht {value!r}."},
     "formulas.too_few_points": {
         "en": "At least 3 points of the resonance curve are needed.",
         "de": "Mindestens 3 Punkte der Resonanzkurve nötig."},
@@ -413,6 +421,40 @@ def fundamental_from_network_data(I_CE: Number, d: Number, v: Number) -> Number:
     return float(r) if np.ndim(r) == 0 else r
 
 
+def standard_voltage_kV(U_kV: float, candidates: Sequence[float] = STANDARD_VOLTAGES_KV) -> float:
+    """The nominal system voltage nearest to a voltage: the standard value with the smallest relative deviation
+    (a tie: the lower one).
+
+    Parameters
+    ----------
+    U_kV : float
+        Line-to-line voltage in kV, e.g. √3 times the measured zero-sequence voltage of an earth fault.
+    candidates : sequence of float, optional
+        The nominal voltages in kV (default ``STANDARD_VOLTAGES_KV``, IEC 60038 series I).
+
+    Returns
+    -------
+    float
+        The nominal voltage in kV.
+
+    Raises
+    ------
+    ValueError
+        For a voltage that is not positive.
+
+    Examples
+    --------
+    >>> standard_voltage_kV(19.8)
+    20.0
+    >>> standard_voltage_kV(10.6)
+    10.0
+    """
+    u = float(U_kV)
+    if not (math.isfinite(u) and u > 0):
+        raise ValueError(tr("formulas.voltage_positive", value=U_kV))
+    return float(min(sorted(float(c) for c in candidates), key=lambda c: abs(math.log(u / c))))
+
+
 def zero_sequence_impedance(m: int, I_C: float, U_LE: float, I_L: Optional[float] = None, d: float = 0.0) -> complex:
     """Zero-sequence impedance of the network with its coils at the harmonic order m, seen from the busbar:
     Z_0,m = 1/(j·(m/X_C0 − 1/(m·X_L0))) + d·X_C0 with X_C0 = 3·U_LE/I_C and X_L0 = 3·U_LE/I_L.
@@ -595,8 +637,8 @@ def harmonic_category(m: int) -> str:
     * ``"pos_neg"`` – odd orders that are not a multiple of 3 (5, 7, 11, 13, 17, 19 …): positive or negative sequence;
       the current of such an order follows its own voltage and is scaled with it (the 250-Hz current with the 250-Hz
       voltage), without a value of its own with the THD.
-    * ``"zero"`` – odd multiples of 3 (3, 9, 15 …): zero sequence; not scaled – the zero sequence arises in the earth
-      fault and does not follow the voltage of undisturbed operation.
+    * ``"zero"`` – odd multiples of 3 (3, 9, 15 …): zero sequence; not scaled – the zero sequence is assumed to arise
+      in the earth fault and not to follow the voltage of undisturbed operation.
     * ``"even"`` – even orders (2, 4, 6, 8 …, the even multiples of 3 included): not scaled and listed separately –
       atypical for the voltage of a network, they may point to another cause (e.g. a DC component or saturation at
       the fault inception, current clamps).

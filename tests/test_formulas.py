@@ -262,3 +262,14 @@ def test_order_scaling_with_a_quantile_of_zero():
     assert fml.order_scaling(17, -5.0, 2.0, f_thd=1.3) == (1.3, "THD")
     assert fml.order_scaling(17, 4.0, 2.0)[1] == "own voltage"
 
+
+def test_standard_voltage():
+    """The nominal voltage nearest to a measured one (IEC 60038, series I of resonant-earthed networks) by the relative
+    deviation; a voltage that is not positive raises."""
+    assert fml.standard_voltage_kV(19.82) == 20.0 and fml.standard_voltage_kV(21.4) == 20.0
+    assert fml.standard_voltage_kV(10.6) == 10.0 and fml.standard_voltage_kV(6.3) == 6.0
+    assert fml.standard_voltage_kV(11.2, candidates=(10.0, 11.0)) == 11.0
+    for bad in (0.0, -20.0, float("nan")):
+        with pytest.raises(ValueError):
+            fml.standard_voltage_kV(bad)
+

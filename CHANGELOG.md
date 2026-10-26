@@ -4,6 +4,83 @@ All notable changes to groundfault are documented in this file. The format is ba
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and groundfault adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2026-10-26
+
+A minor version for the reader of the Word report: its typography, the reference of the power-quality measurement,
+clearer texts where a reader stumbled, and new optional settings of `ReportInfo`. The numbers of the evaluation do
+not change, except for a PQ export with both line-to-earth and line-to-line harmonic voltages (now the line-to-line
+ones, see below) and the network expansion of the report (U_LE of the nominal voltage instead of the measured one).
+
+### Changed
+
+- **Non-breaking spaces in the report** (`document.nbsp`): in the text and in the tables a line no longer breaks
+  between a number and its unit (2,5 Ω, 95 %, 30,0 Tage), a label and its number or name (Messung 1, Tabelle 10,
+  UW 2,5 Ω, Fall 4, Abschnitt 3.1), an ordinal and its noun (5. Ordnung) or around the operators of a calculation
+  (ΔI_v = 1,8 × ΔI (1,6 … 2,0), I = 200 V/(1·2,5 Ω)); the label of a caption and its number stay together as well.
+- **Line-to-line reference of the power-quality measurement.** In a three-wire medium-voltage network the
+  line-to-line voltages are the usual reference of the voltage quality (EN 50160): `PQData.reference` is now `"LL"`
+  when the export contains line-to-line harmonic voltages – also when it has line-to-earth ones as well (before:
+  `"LE"` whenever line-to-earth values were contained) – and `"LE"` only for an export with line-to-earth values
+  alone; `pq.assess(…, reference="LE")` keeps the line-to-earth values of such an export. A hint names the reference
+  (`pq.ll_chosen`, `pq.le_chosen`, `pq.le_only`: line-to-earth values contain the zero sequence and lie above – on
+  the safe side). The Word report follows the reference of the data – the method, the caption of the table of the
+  quantiles, the note on the pre-fault voltages of the tests, step 2 with k_m = k_s·U_95,m/(√3·U_m) and the source
+  voltage of the equivalent sources k_s·U_95,m/√3 (before, it said line-to-earth for line-to-line data as well) –
+  and adds a note for an export with line-to-earth values only.
+- Word report, **factor on the quantile**: "Because of the measuring window (… days of gapless values) the
+  uncertainty factor k_s is applied to the 95 % quantile of the measurement to estimate the 95 % quantile of a whole
+  year (rule …)" – the span follows the longest duration of your rule.
+- Word report, **tests in the distribution of the PQ measurement**: without the time window of the week (±1 h) and
+  its percentile – it is right only when the clocks of the recorder and of the PQ instrument agree, and the times of
+  the tests are at the beginning of the report; the percentile is explained as the share of the 10-min values below
+  the value of the test. `PQAssessment.comparability` keeps both.
+- Word report, **voltage per ampere** of the fault current (r·Z_E of a station) in V/A, or in V/kA when every value is
+  below 0.1 V/A (a station far from the fault), instead of V per 100 A – the table of the station, the figure
+  `report.station_voltages` and the table `epr_<measurement>` of the campaign tables (`report.per_current_unit`,
+  `PER_KA_BELOW`); the hover of the interactive station figure gives V/kA. The result tables keep `V_per_100A_…`.
+- Word report, **touch voltage**: the prospective (open-circuit) touch voltage U_vT throughout (condition, formula,
+  table, figure axis, summary); the measured cases are named after their probe and its distance ("4 gemessen an der
+  Sonde in 20 m (…)", "Sonde 1 m") instead of the normative terms earth potential rise and touch voltage, which a
+  measuring point does not always fit; a touch-voltage probe farther than 1 m gives U_vT "estimated from the nearest
+  possible measuring point" in the table and in the caption of the figure. The sentence and the check on a nearer
+  probe with the larger voltage give both distances. `touch_voltage_cases` stores the probes and their distances in
+  `attrs` (`probe_distance_m`, `probe_ut`, `probe_ut_distance_m`).
+- Word report, **coil controller**: a deviation of the measured values from the display names its possible causes –
+  the displacement voltage of the tests against the rated voltage of the coils to which their scales refer (new key
+  `coil_controller["rated_voltage_kV"]`: the expected deviation in %), the reading accuracy of the scales at the coils
+  (marks at full 10 A or 20 A) and the measurement uncertainty of the transducers and clamps.
+- Word report, **equivalent sources**: for the orders of the zero sequence the voltage before the fault "is not
+  relevant – the quantities of the zero sequence are assumed to arise only in the earth fault"; the legend of the
+  figure of the currents over the additional impedance names the model (lines) and the measured values of the tests
+  (circles); the effect of the scaling at Z_E is explained in words (only the harmonic content changes, the
+  fundamental depends on capacitance, detuning and damping). The **leave-one-out** is assessed with the orders of the
+  positive and negative sequence, whose sources are the harmonic voltages of the network; the orders of the zero
+  sequence follow for information – their source presumably arises in the fault and depends on the operating point of
+  the coils (text, check in appendix B, table of uncertainties).
+- Word report, forecast: a series resonance of the capacitive source impedances with an inductive fault impedance is
+  "a rather theoretical case of little practical importance" – with a fault in the network the resistances of the
+  cables and lines in the positive and zero sequence damp the current.
+- Word report, **network expansion**: the section explains why the split of Z_q into Z_0 and Z_1 is needed and how it
+  is taken before using it – split 1 (network data) and split 2 (busbar voltages), so named in the tables –; U_LE of
+  the network data is U_n/√3 of the nominal voltage (new key `expansion["U_n_kV"]`, default the standard voltage
+  nearest to √3·U_0 of the tests, `formulas.standard_voltage_kV`) instead of the measured zero-sequence voltage; an
+  order with a negative resistance of Z_0 or Z_1 is named as one uncertainty of the conversion, with the reason.
+- Word report, **limits**: the sentence of the applying limit gives the residual current that keeps the permissible
+  touch voltage at its Z_E, F·U_Tp/(r·Z_E); the summary names the margin as that of the measurement uncertainties
+  (+m_I %), the test of the largest scaled value, and compares the permissible earthing impedance with Z_E of the
+  assessment and its basis (`Z_E_basis`).
+- Hints and docstrings on the zero sequence say what is assumed ("presumably arises in the fault") instead of stating
+  it as a fact.
+
+### Added
+
+- `ReportInfo.specified_by`: who specifies the limits and parameters, e.g. the network operator – "specifications of
+  …" in the texts; without it the neutral "specifications" (before: always "of the network operator").
+- `limit_cases` keys `origin` (where a limit comes from, e.g. the standard behind it) and `remark` (a remark of the
+  author) – after the result of the limit that applies; the section of the limits names the origin of the others.
+- `pq.assess(…, reference=…)`, `PQData.has_harmonics`, `formulas.standard_voltage_kV` and `STANDARD_VOLTAGES_KV`,
+  `report.per_current_unit` and `PER_KA_BELOW`, `document.nbsp`; `ires_at_impedance` returns `u95_reference`.
+
 ## [3.5.0] - 2026-10-24
 
 A minor version with a new default of the DC removal, a suggestion of the steady-state interval that waits for the

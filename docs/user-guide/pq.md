@@ -103,9 +103,17 @@ Freq: 10min
 ## Quantile and factor
 
 `pq.assess(data, quantile=0.95, factor=None, factors=None)` takes per 10-min interval the **largest of the three
-phases** – line-to-earth, per order – and the **largest of the three loops** of the line-to-line THD, and of these
-values the quantile over the whole measurement. This is the quantile of the "worst" phase per interval; it is at least
-the largest of the quantiles of the single phases.
+loops** – line-to-line, per order – or, if the export has the line-to-earth values only, the **largest of the three
+phases**, and the **largest of the three loops** of the line-to-line THD, and of these values the quantile over the
+whole measurement. This is the quantile of the "worst" loop or phase per interval; it is at least the largest of the
+quantiles of the single ones.
+
+In a medium-voltage network – a three-wire system – the line-to-line voltages are the usual reference of the voltage
+quality (EN 50160). With both in the export, `assess` takes the line-to-line harmonic voltages (`a.reference ==
+"LL"`; `reference="LE"` takes the line-to-earth ones, with a hint). Line-to-earth values also contain the zero
+sequence – the displacement of the neutral – and lie above the positive- or negative-sequence component of the order:
+a scaling with them errs on the safe side, and a hint (and the Word report) recommends exporting the line-to-line
+harmonic voltages per order as well. The orders of the zero sequence (3, 9, 15 …) are not scaled in either case.
 
 The factor on the quantile is yours: groundfault contains none. `factor=k` sets it directly; `factors={D: k, …}` is a
 rule by the duration of the measurement: the factor of the longest minimum duration D (in days) the measurement
@@ -261,10 +269,12 @@ The scaling assumes that the tests and the PQ measurement see the same network: 
 harmonic sources. `pq.pre_fault_levels(result, kind=a.reference)` gives the pre-fault voltage of a test per order
 (largest phase line-to-earth, or largest loop for line-to-line data) and its start time; `a.comparability(levels,
 times)` shows where these levels lie in the distribution of the PQ measurement – over the whole measurement
-(`percentile_all`) and in the time window of the test: the same time of the week, ± `window_h` hours
-(`percentile_window`, `window_min_V`, `window_max_V`; the recorder time stamps are taken as UTC, `times_timezone`; a
-PQ clock without a time zone is named in `attrs["hints"]`). `factor_to_test` is the quantile divided by the level of
-the test.
+(`percentile_all`: the share of the 10-min values below the level of the test) and in the time window of the test: the
+same time of the week, ± `window_h` hours (`percentile_window`, `window_min_V`, `window_max_V`; the recorder time
+stamps are taken as UTC, `times_timezone`; a PQ clock without a time zone is named in `attrs["hints"]`).
+`factor_to_test` is the quantile divided by the level of the test. The Word report shows the percentile over the whole
+measurement only: the time window is right only when the clocks of the recorder and of the PQ instrument agree, and
+the times of the tests are given at the beginning of the report.
 
 ```python
 import groundfault as gf
@@ -479,9 +489,12 @@ such order of the model.
 * **Even harmonics** – in the fault current they are unusual: a hint names them, and they are never scaled.
 * **Orders of the export** – the remainder can only be scaled with its own voltage up to the highest order of the
   export (WinPQ mobil: choose the orders of the export); higher orders get the THD factor.
-* **Reference of the voltages** – the quantile per order is a line-to-earth value of the largest phase; the level of
-  the tests in the equivalent-source method is the natural-sequence voltage at the faulted phase. The largest phase
-  contains the other sequences of the order as well, so U95 divided by this level is at least the factor of the
-  largest phases themselves (`factor_to_test`) – the scaling errs on the safe side in this respect.
+* **Reference of the voltages** – the quantile per order is a line-to-line value of the largest loop (divided by √3
+  in the scaling) or, for line-to-earth data, the value of the largest phase; the level of the tests in the
+  equivalent-source method is the natural-sequence voltage at the faulted phase. The largest loop or phase contains
+  the other sequences of the order as well, so U95 divided by this level is at least the factor of the largest values
+  themselves (`factor_to_test`) – the scaling errs on the safe side in this respect, with line-to-earth data by the
+  zero sequence in addition.
 * **Instrument clock** – without `timezone` the time window of the comparison is only right if the instrument clock
-  and the recorder clock agree.
+  and the recorder clock agree; a recorder without time synchronisation can be off by minutes or by the change to
+  summer time – events of the PQ measurement near the tests are then not to be matched with them by the clock.

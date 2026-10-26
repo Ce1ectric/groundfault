@@ -16,8 +16,8 @@ abstract: >-
 authors:
   - family-names: Ehlert
     given-names: Christian
-version: "3.5.0"
-date-released: "2026-10-24"
+version: "3.6.0"
+date-released: "2026-10-26"
 license: MIT
 repository-code: "https://github.com/Ce1ectric/groundfault"
 url: "https://ce1ectric.github.io/groundfault/"

@@ -614,7 +614,7 @@ Harmonic content           35.7         23.4         46.6         30.9
 | `voltages` | positive- and negative-sequence voltage of the orders 1, 5, 7, 11, 13 and the largest line-to-line THD before and after each fault |
 | `residual_current` | RMS value, the orders of `orders` (default 1, 3, 5, 7) and the harmonic content of the fault current |
 | `split_50hz` | active and detuning current, coil currents |
-| `epr_<measurement>` | stations: largest measured earth potential rise and r·Z_E per 100 A per order |
+| `epr_<measurement>` | stations: largest measured earth potential rise and r·Z_E per order (in V/A, or in V/kA when every value is below 0.1 V/A) |
 | `shield_current_<measurement>` | stations with a shield current: shield current and the reduction factor from it per order |
 | `transformer` | with line currents: harmonic power and sequence currents at the transformer |
 | `transformer_summary` | with line currents: polarity of the currents, upstream impedance X_up/m (with HV voltages split into transformer and HV network) and change of the fundamental power during the fault – one column per measurement, to compare the tests of a site |

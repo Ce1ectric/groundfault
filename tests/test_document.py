@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from groundfault import demo, document, equivalent_source, evaluation, i18n, pq, report
+from groundfault import demo, document, equivalent_source, evaluation, formulas, i18n, pq, report
 
 docx = pytest.importorskip("docx")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -70,9 +70,14 @@ def _kwargs(ns, **extra):
     return kw
 
 
+def _sp(text):
+    """A text of the document with its non-breaking spaces as plain spaces (the report keeps "2,5 Ω" together)."""
+    return str(text).replace("\u00a0", " ")
+
+
 def _headings(path):
     d = docx.Document(str(path))
-    return [p.text.strip() for p in d.paragraphs if p.style.name.startswith("Heading") and p.text.strip()]
+    return [_sp(p.text).strip() for p in d.paragraphs if p.style.name.startswith("Heading") and p.text.strip()]
 
 
 def _text(path):
@@ -85,7 +90,7 @@ def _text(path):
     for s in d.sections:
         for hf in (s.header, s.footer, s.first_page_header, s.first_page_footer):
             parts.extend(p.text for p in hf.paragraphs)
-    return "\n".join(parts)
+    return _sp("\n".join(parts))
 
 
 def _order_violations(path):
@@ -126,7 +131,7 @@ def _notes(path):
         if not parts:
             return []
         root = etree.fromstring(z.read(parts[0]))
-    return [(int(f.get(w + "id")), "".join(t.text or "" for t in f.iter(w + "t")).strip())
+    return [(int(f.get(w + "id")), _sp("".join(t.text or "" for t in f.iter(w + "t"))).strip())
             for f in root.iter(w + "footnote") if f.get(w + "type") in (None, "normal")]
 
 
@@ -140,8 +145,8 @@ def _note_refs(path):
 def _table_with(path, first_cell):
     d = docx.Document(str(path))
     for t in d.tables:
-        if t.rows and t.rows[0].cells[0].text.strip() == first_cell:
-            return [[c.text.strip() for c in r.cells] for r in t.rows]
+        if t.rows and _sp(t.rows[0].cells[0].text).strip() == first_cell:
+            return [[_sp(c.text).strip() for c in r.cells] for r in t.rows]
     raise AssertionError(first_cell)
 
 
@@ -204,6 +209,16 @@ def test_numbers_come_from_the_results(campaign):
     plain = lambda s: re.sub(r"_\[([^\]]*)\]", r"\1", s)
     assert "Je Ordnung skaliert auf die PQ-Messung (%s; %s wie gemessen)" % (plain(how), plain(kept)) in text
     assert "und Rest wie gemessen" not in text                       # the remainder is scaled order by order
+    # neutral without `specified_by`; the leave-one-out with the positive and negative sequence, the zero sequence apart
+    assert "gesetzten Vorgaben." in text and "Netzbetreiber" not in text
+    assert "der Ordnungen des Mit- und Gegensystems – ihre Quellen sind die Oberschwingungsspannungen" in text
+    assert ("Bei den Ordnungen des Nullsystems (" in text or "(Nullsystem) weicht die Vorhersage" in text) and \
+        "vermutlich erst im Erdschluss" in text
+    # the PQ export of the demo has line-to-earth harmonic voltages only: a note on the line-to-line reference
+    assert "Der Export enthält die Oberschwingungsspannungen je Ordnung nur Leiter-Erde" in text
+    assert any(x in text for x in ("Aufgrund des Messfensters (", "vorgegebene Faktor ks", "wird kein Faktor angewendet"))
+    assert "Zeitfenster" not in text
+    assert "Modell (Linien) und Messwerte der Versuche (Kreise)" in text
 
 
 def test_placeholders_and_photos(campaign, tmp_path):
@@ -250,7 +265,7 @@ def test_english_report_with_a_template(campaign, tmp_path):
     h = _headings(path)
     assert "Assessment" in h and "Equivalent-source method and forecast" in h and "Summary" in h
     assert not {"Bewertung", "Zusammenfassung", "Ergebnisse"} & set(h)
-    captions = [p.text for p in d.paragraphs if p.style.name == "Caption"]
+    captions = [_sp(p.text) for p in d.paragraphs if p.style.name == "Caption"]
     assert captions and all(c.startswith(("Figure ", "Table ")) for c in captions), captions[:3]
     text = _text(path)
     assert "Header of the organisation" in text and "Old content" not in text
@@ -474,9 +489,9 @@ def test_probe_above_the_earth_potential_rise_is_reported(campaign, tmp_path):
     finally:
         res.tables["station_voltages"] = old
     text = _text(path)
-    assert "Die Spannung gegen den Spieß UT_test" in text and "Sondenmaximum" in text
-    rows_all = [[c.text.strip() for c in r.cells] for t in docx.Document(str(path)).tables for r in t.rows]
-    check = next(r for r in rows_all if r[0].startswith("Berührungsspannung (Spieß) ≤ Erdungsspannung"))
+    assert "Die Spannung an der Sonde UT_test" in text and "Sondenmaximum" in text
+    rows_all = [[_sp(c.text).strip() for c in r.cells] for t in docx.Document(str(path)).tables for r in t.rows]
+    check = next(r for r in rows_all if r[0].startswith("Spannung an der näheren Sonde ≤ an der ferneren Sonde"))
     assert check[1] == "Warnung"
     rows = {r[0]: r for r in _table_with(path, "Größe")}
     assert rows["Erdschlussversuche"][4] == "1.1"
@@ -488,11 +503,12 @@ def test_limits_with_conditions_controller_and_compact_station(campaign, tmp_pat
     the coil controller (I_CE = I_L/(1 + v)), a compact station, own names of quantities, no transducer column,
     where Z_E comes from – and the checks of the new keys."""
     ns = campaign
-    cases = [dict(limit_A=60.0, Z_E=2.5), dict(limit_A=90.0, Z_E=1.7, condition="alle Z_E < 1,7 Ω"),
+    cases = [dict(limit_A=60.0, Z_E=2.5, origin="aus einer Norm", remark="eine Anmerkung des Bearbeiters"),
+             dict(limit_A=90.0, Z_E=1.7, condition="alle Z_E < 1,7 Ω", origin="aus einer Richtlinie"),
              dict(limit_A=120.0, Z_E=2.5, r=0.5, condition="volle Verkabelung")]
     info = dict(ns["REPORT"], limit_cases=cases, Z_E_basis="Dimensionierungswert", station_detail="compact",
                 coil_controller=dict(coils_A={"C1": 300.0, "C2": 320.0}, detuning_pct=4.0, active_A=20.0,
-                                     when="vor Messung 1"),
+                                     when="vor Messung 1", rated_voltage_kV=21.0), specified_by="Netzbetreiber X",
                 quantity_labels={"i_shield": "Schirmstrom eines Abgangs"}, r_flat=0.5, reference_frequency_Hz=50.0)
     path = tmp_path / "limits.docx"
     kw = _kwargs(ns, info=info)
@@ -518,7 +534,16 @@ def test_limits_with_conditions_controller_and_compact_station(campaign, tmp_pat
     assert "Anzeige des Spulenreglers (vor Messung 1): Spulen C1 300 A, C2 320 A (zusammen 620 A)" in text
     assert "≈ %s A (v > 0: Überkompensation)" % _n(620 / 1.04) in text
     assert "Die Messwerte (Median der Versuche mit Zusatzimpedanz) weichen von der Anzeige ab" in text
+    # the possible causes: the rated voltage of the coils against U0 of the tests, the reading of the scales
+    assert "Mögliche Ursachen: die Skalen der Spulen beziehen sich auf ihre Bemessungsspannung 21 kV/√3 = 12,1 kV" in text
+    assert "die Ablesegenauigkeit der Skalen an den Spulen" in text and "Messunsicherheit der Wandler" in text
     assert key["Kapazitiver Erdschlussstrom ICE"][1] == "≈ %s A" % _n(620 / 1.04)
+    # who specifies the limits, where a limit comes from, the current that keeps F·U_Tp, Z_E against Z_E,perm
+    assert "gesetzten Vorgaben von Netzbetreiber X." in text and "Vorgaben von Netzbetreiber X: UTp" in text
+    assert "Die Grenzwerte von Netzbetreiber X gelten unter Bedingungen" in text
+    assert "halten Erdschlussrestströme bis F·UTp/(r·ZE) = 160 V/(1·2,50 Ω) = 64,0 A die zulässige" in text
+    assert "Aus einer Norm. Eine Anmerkung des Bearbeiters." in text and "Grenzwert 90 A: Aus einer Richtlinie." in text
+    assert "Die Erdungsimpedanz der Bewertung, ZE = 2,50 Ω (Dimensionierungswert), liegt" in text
     assert "ZE = 2,50 Ω (ohmsch)" in text and "ohmsch;" not in text
     assert "Dimensionierungswert." in [t for _, t in _notes(path)]            # where Z_E comes from: a footnote
     assert "Schirmstrom eines Abgangs" in text
@@ -532,6 +557,26 @@ def test_limits_with_conditions_controller_and_compact_station(campaign, tmp_pat
         with pytest.raises(ValueError):
             document.campaign_report(ns["RESULTS"], str(tmp_path / "bad.docx"), raw=False, bootstrap=0,
                                      **_kwargs(ns, info=dict(ns["REPORT"], **bad)))
+
+
+def test_non_breaking_spaces():
+    """A line does not break between a number and its unit, a label and its number, an ordinal and its noun or
+    around the operators of a calculation; other spaces stay; the mark-up is kept."""
+    nb = "\u00a0"
+    t = document.nbsp
+    assert t("2,5 Ω und 60 A bei 95 %") == "2,5" + nb + "Ω und 60" + nb + "A bei 95" + nb + "%"
+    assert t("vor Messung 1 (UW 2,5 Ω)") == "vor Messung" + nb + "1 (UW" + nb + "2,5" + nb + "Ω)"
+    assert t("ΔI_[v] = 1,8 × ΔI (1,6 … 2,0)") == ("ΔI_[v]" + nb + "=" + nb + "1,8" + nb + "×" + nb + "ΔI" + nb +
+                                                  "(1,6" + nb + "…" + nb + "2,0)")
+    assert t("die 5. Ordnung in Tabelle 9") == "die 5." + nb + "Ordnung in Tabelle" + nb + "9"
+    assert t("Regel: ≥ 365 Tage 1") == "Regel: ≥" + nb + "365" + nb + "Tage 1"
+    assert t("eine Ordnung, die Versuche (13,0 A)") == "eine Ordnung, die Versuche (13,0" + nb + "A)"
+    assert t("I = 200 V/(1·2,5 Ω)") == "I" + nb + "=" + nb + "200" + nb + "V/(1·2,5" + nb + "Ω)"
+    assert t("ohne Zahl") == "ohne Zahl" and t("**I_[RES]** 3 A") == "**I_[RES]** 3" + nb + "A"
+    # a long calculation may break after its relation signs – the sign stays at the end of the line
+    assert t("Daraus I_[CE] = I_[L]/(1 + v) = 650 A/1,040 ≈ 625 A.") == (
+        "Daraus I_[CE]" + nb + "= I_[L]/(1" + nb + "+" + nb + "v)" + nb + "= 650" + nb + "A/1,040" + nb + "≈ 625" + nb
+        + "A.")
 
 
 def test_word_equations():
@@ -759,8 +804,8 @@ def test_pq_measurement_in_several_periods(campaign, tmp_path):
 
 def _tables_with(path, first_cell):
     d = docx.Document(str(path))
-    return [[[c.text.strip() for c in r.cells] for r in t.rows] for t in d.tables
-            if t.rows and t.rows[0].cells[0].text.strip() == first_cell]
+    return [[[_sp(c.text).strip() for c in r.cells] for r in t.rows] for t in d.tables
+            if t.rows and _sp(t.rows[0].cells[0].text).strip() == first_cell]
 
 
 def test_network_expansion(campaign, tmp_path):
@@ -787,16 +832,19 @@ def test_network_expansion(campaign, tmp_path):
     S = ns["MAIN"]
     splits = ("sources", "busbar") if not equivalent_source.busbar_impedances(S).empty else ("sources",)
     assert splits == ("sources", "busbar")
+    # the line-to-earth voltage of the network data: U_n/√3 with the standard voltage nearest to the tests
+    un = formulas.standard_voltage_kV(3 ** 0.5 * equivalent_source._expansion_ule(S) / 1000)
+    assert un == 20.0 and "ULE = Un/√3 = 20 kV/√3 = 11547 V mit der Normspannung Un" in text
     common = dict(IG=ns["IG_CHOICE"], uncertainty_I=kw["uncertainty_I"], uncertainty_U=kw["uncertainty_U"],
-                  **ns["SCALING"], I_L=il, damping=d)
+                  **ns["SCALING"], I_L=il, damping=d, U_LE=1000 * un / 3 ** 0.5)
     planned = {sp: equivalent_source.expansion_curve(S, ns["Z_E"], ice, [ice, 700.0], split=sp, **common)
                for sp in splits}
     col = "IRES_scaled_assessed_A"
     tab = next(t for t in _tables_with(path, "") if t[1][0] == "Kapazitiver Erdschlussstrom ICE in A")
     rows = {r[0]: r[1:] for r in tab[1:]}
     assert rows["Strom der Spulen IL in A"] == [_n(il), _n(il * 700.0 / ice)]
-    assert rows["IRES,Bew in A – Netzdaten"] == [_n(v) for v in planned["sources"][col]]
-    assert rows["IRES,Bew in A – Sammelschiene"] == [_n(v) for v in planned["busbar"][col]]
+    assert rows["IRES,Bew in A – Aufteilung 1"] == [_n(v) for v in planned["sources"][col]]
+    assert rows["IRES,Bew in A – Aufteilung 2"] == [_n(v) for v in planned["busbar"][col]]
     now = planned["sources"][col].iloc[0]
     assert rows["IRES,Bew in A – proportional zu ICE"][1] == _n(now * 700.0 / ice)
     decisive = max(planned[sp][col].iloc[1] for sp in splits)
@@ -806,7 +854,7 @@ def test_network_expansion(campaign, tmp_path):
     # where the limits are reached: the curves of both splits, the larger value deciding
     grid = np.linspace(ice, max(4 * ice, 1.1 * 700.0), 241)
     limits = _tables_with(path, "Grenzwert in A")[-1]
-    assert limits[0][5:7] == ["ICE in A – Netzdaten", "ICE in A – Sammel\u00adschiene"]   # a soft hyphen
+    assert limits[0][5:7] == ["ICE in A – Aufteilung 1", "ICE in A – Aufteilung 2"]
     for case, line in zip(cases, limits[1:]):
         curves = {sp: equivalent_source.expansion_curve(S, case["Z_E"], ice, grid, split=sp, **common)
                   for sp in splits}

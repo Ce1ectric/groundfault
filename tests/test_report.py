@@ -155,6 +155,16 @@ def test_slug_one_rule_for_names():
     assert "slug" in report.__all__
 
 
+def test_voltage_per_ampere_unit():
+    """r·Z_E in V/A, or in V/kA when every value is below 0.1 V/A; NaN does not count."""
+    assert report.per_current_unit([0.35, 0.02, float("nan")]) == (1.0, "V/A")
+    assert report.per_current_unit([0.04, 0.012, None]) == (1000.0, "V/kA")
+    assert report.per_current_unit([]) == (1.0, "V/A")
+    # the RMS value decides: one uncertain value of a higher order does not keep a small station at V/A
+    assert report.per_current_unit([0.0188, 0.21, 0.0191], reference=0.0188) == (1000.0, "V/kA")
+    assert report.per_current_unit([0.3, 0.02], reference=[float("nan")]) == (1.0, "V/A")
+
+
 def test_numbers_decimal_comma():
     assert report.number(1234.5678, 3) == "1235"
     assert report.number(0.012345, 3) == "0,0123"

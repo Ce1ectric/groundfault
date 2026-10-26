@@ -250,7 +250,8 @@ R_TYPICAL         = None    # range (low, high) of the reduction factor at 50 Hz
 
 # ---------------------------------------------------------------- power-quality (PQ) measurement of the busbar
 # With PQ_FILES the quantiles of the PQ measurement scale the harmonic content in section 4: every order of the
-# positive or negative sequence (5, 7, 11, 13 …) with its own quantile (largest phase per 10-min interval), without one
+# positive or negative sequence (5, 7, 11, 13 …) with its own quantile (largest loop per 10-min interval – largest phase
+# for an export with line-to-earth values only), without one
 # with the quantile of the THD (largest line-to-line loop); the zero sequence (3, 9, 15 …) and the even orders stay as
 # measured (table harmonic_scaling, rows IH_zero, IH_even, IH_other, IH_scaled and IRMS_forecast).
 PQ_FILES          = ''' + pq_files + '''
@@ -320,7 +321,8 @@ R_TYPICAL         = None    # erwarteter Bereich (unten, oben) des Reduktionsfak
 
 # ---------------------------------------------------------------- Netzqualitätsmessung (PQ) der Sammelschiene
 # Mit PQ_FILES skalieren die Quantile der PQ-Messung den Oberschwingungsanteil in Abschnitt 4: jede Ordnung des Mit-
-# oder Gegensystems (5, 7, 11, 13 …) mit ihrem eigenen Quantil (größter Leiter je 10-min-Intervall), ohne eines mit dem
+# oder Gegensystems (5, 7, 11, 13 …) mit ihrem eigenen Quantil (größte Leiter-Leiter-Spannung je 10-min-Intervall –
+# größter Leiter bei einem Export nur mit Leiter-Erde-Werten), ohne eines mit dem
 # Quantil des THD (größte Leiter-Leiter-Schleife); Nullsystem (3, 9, 15 …) und gerade Ordnungen bleiben wie gemessen
 # (Tabelle harmonic_scaling, Zeilen IH_null, IH_gerade, IH_sonstige, IH_skaliert und IRMS_prognose).
 PQ_FILES          = ''' + pq_files + '''
@@ -1046,10 +1048,12 @@ MEASUREMENTS = [
                      '''None               # Export(e) eines PQ-Messgeräts an der Sammelschiene, z. B. ["…/Export.csv"] (relativ zum Kampagnenordner oder absolut)''')
         report = t('''dict(network="",     # line under the title, e.g. "20 kV network of substation …"
               authors=[],     # names on the title page
+              specified_by="",  # who specifies limits and factors, e.g. the network operator ("" = neutral: "specifications")
               expansion=True, # network expansion (section 3.3): True = 1.25/1.5/2 × I_CE of today, dict(I_CE=800.0) = the planned I_CE in A, False = none
               places={})      # name of every site in the text, e.g. {"SUB": "Substation …", "<station folder>": "…"}''',
                    '''dict(network="",     # Zeile unter dem Titel, z. B. "20-kV-Netzbereich UW …"
               authors=[],     # Namen auf der Titelseite
+              specified_by="",  # wer Grenzwerte und Faktoren vorgibt, z. B. der Netzbetreiber ("" = neutral: "Vorgaben")
               expansion=True, # Netzausbau (Abschnitt 3.3): True = 1,25/1,5/2 × heutiger I_CE, dict(I_CE=800.0) = geplanter I_CE in A, False = keiner
               places={})      # Name jedes Messorts im Text, z. B. {"UW": "Umspannwerk …", "<Stationsordner>": "…"}''')
     report_conf_en = '''
@@ -1148,7 +1152,8 @@ IG_CHOICE     = "max"              # fundamental component: "max" (conservative)
 U95 = None                         # per order in V, e.g. {5: U_5, 7: U_7}
 U95_REFERENCE = "LL"               # "LL" = line-to-line (PQ device) | "seq" = sequence voltage (line-to-earth)
 THD95_PERCENT = None               # flat: 95 % quantile of the THD in % (line-to-line), alone or together with U95
-# With PQ_FILES section 4 takes U95 (line-to-earth, largest phase per 10-min interval) and THD95_PERCENT (largest loop)
+# With PQ_FILES section 4 takes U95 (line-to-line, largest loop per 10-min interval – line-to-earth, largest phase, for
+# an export without line-to-line values) and THD95_PERCENT (largest loop)
 # from the export(s) of a PQ instrument at the busbar – the values above are then replaced.
 PQ_FILES      = ''' + pq_files + '''
 PQ_TIMEZONE   = None               # time zone of the instrument clock, e.g. "Europe/Berlin" (None = time stamps as exported)
@@ -1202,7 +1207,8 @@ IG_CHOICE     = "max"              # Grundschwingung: "max" (konservativ) | "med
 U95 = None                         # je Ordnung in V, z. B. {5: U_5, 7: U_7}
 U95_REFERENCE = "LL"               # "LL" = Leiter-Leiter (PQ-Gerät) | "seq" = Sequenzspannung (L-E)
 THD95_PERCENT = None               # pauschal: THD-95-%-Quantil in % (L-L), allein oder zusammen mit U95
-# Mit PQ_FILES übernimmt Abschnitt 4 U95 (Leiter-Erde, größter Leiter je 10-min-Intervall) und THD95_PERCENT (größte
+# Mit PQ_FILES übernimmt Abschnitt 4 U95 (Leiter-Leiter, größte Schleife je 10-min-Intervall – Leiter-Erde, größter
+# Leiter bei einem Export ohne Leiter-Leiter-Werte) und THD95_PERCENT (größte
 # Schleife) aus dem Export bzw. den Exporten eines PQ-Messgeräts an der Sammelschiene – die Werte oben werden ersetzt.
 PQ_FILES      = ''' + pq_files + '''
 PQ_TIMEZONE   = None               # Zeitzone der Geräteuhr, z. B. "Europe/Berlin" (None = Zeitstempel wie exportiert)
@@ -1487,8 +1493,8 @@ if PQ_FILES:
     PQ_COMPARISON = PQ.comparability(PQ_LEVELS, times, orders=orders or None)
     for h in PQ_COMPARISON.attrs.get("hints", []):
         print("ℹ", h)
-    display(Markdown("''' + t("**Fault tests in the distribution of the PQ measurement** – share of the 10-min values below the pre-fault voltage of the test (largest phase) over the whole measurement and in its time window; `factor_to_test` = quantile/level of the test",
-                              "**Erdschlussversuche in der Verteilung der PQ-Messung** – Anteil der 10-min-Werte unter der Vorfehlerspannung des Versuchs (größter Leiter) über die ganze Messung und im Zeitfenster des Versuchs; `Faktor_zu_Versuch` = Quantil/Pegel des Versuchs") + '''"))
+    display(Markdown("''' + t("**Fault tests in the distribution of the PQ measurement** – share of the 10-min values below the pre-fault voltage of the test (largest loop or phase) over the whole measurement and in its time window (only right with synchronised clocks of the recorder and the PQ instrument); `factor_to_test` = quantile/level of the test",
+                              "**Erdschlussversuche in der Verteilung der PQ-Messung** – Anteil der 10-min-Werte unter der Vorfehlerspannung des Versuchs (größte Schleife bzw. größter Leiter) über die ganze Messung und im Zeitfenster des Versuchs (nur bei synchronisierten Uhren von Rekorder und PQ-Gerät aussagekräftig); `Faktor_zu_Versuch` = Quantil/Pegel des Versuchs") + '''"))
     show(PQ_COMPARISON)
     report.pq_series(PQ)
     report.pq_duration(PQ, levels={n: lv[PQ.dominant_order] for n, lv in PQ_LEVELS.items() if PQ.dominant_order in lv})
@@ -1956,7 +1962,7 @@ VOLTAGES          = ''' + voltages + '''
 VOLTAGE_REFERENCE = "LE"          # "LE" = line-to-earth | "LL" = line-to-line (divided by √3; no zero sequence)
 CSV_OPTIONS       = dict(sep=";", decimal=",", index_col=0)   # reading a CSV file (pandas.read_csv): one column per order
 QUANTILE          = 0.95          # quantile of a time series (and of the 10-min values of PQ_FILES)
-PQ_FILES          = None          # export(s) of a PQ instrument at the busbar → VOLTAGES = quantile per order (line-to-earth, largest phase) × factor; relative to the work folder or absolute
+PQ_FILES          = None          # export(s) of a PQ instrument at the busbar → VOLTAGES = quantile per order (largest loop/√3, or largest phase line-to-earth) × factor; relative to the work folder or absolute
 PQ_TIMEZONE       = None          # time zone of the instrument clock, e.g. "Europe/Berlin" (None = time stamps as exported)
 PQ_SERIES         = False         # True: every 10-min value of PQ_FILES (time series) → quantile QUANTILE of I_H and I_RES
 Z_F               = 0.0           # fault impedance in Ω (0 = fault without resistance)
@@ -1987,7 +1993,7 @@ VOLTAGES          = ''' + voltages + '''
 VOLTAGE_REFERENCE = "LE"          # "LE" = Leiter-Erde | "LL" = Leiter-Leiter (durch √3 geteilt; ohne Nullsystem)
 CSV_OPTIONS       = dict(sep=";", decimal=",", index_col=0)   # Lesen einer CSV-Datei (pandas.read_csv): eine Spalte je Ordnung
 QUANTILE          = 0.95          # Quantil einer Zeitreihe (und der 10-min-Werte von PQ_FILES)
-PQ_FILES          = None          # Export(e) eines PQ-Messgeräts an der Sammelschiene → VOLTAGES = Quantil je Ordnung (Leiter-Erde, größter Leiter) × Faktor; relativ zum Arbeitsordner oder absolut
+PQ_FILES          = None          # Export(e) eines PQ-Messgeräts an der Sammelschiene → VOLTAGES = Quantil je Ordnung (größte Schleife/√3 bzw. größter Leiter Leiter-Erde) × Faktor; relativ zum Arbeitsordner oder absolut
 PQ_TIMEZONE       = None          # Zeitzone der Geräteuhr, z. B. "Europe/Berlin" (None = Zeitstempel wie exportiert)
 PQ_SERIES         = False         # True: jeder 10-min-Wert von PQ_FILES (Zeitreihe) → Quantil QUANTILE von I_H und I_RES
 Z_F               = 0.0           # Fehlerimpedanz in Ω (0 = Fehler ohne Widerstand)
@@ -2749,8 +2755,8 @@ m/m_r < `V0_RATIO`. Die Zeilen `I_H` sind √Σ I_m² über die Ordnungen der Ta
 ''')),
         code('''COMPARISON = None
 PQ = None
-if PQ_FILES:                           ''' + t("# PQ measurement of the busbar: quantile per order (line-to-earth, largest phase) × factor",
-                                           "# PQ-Messung der Sammelschiene: Quantil je Ordnung (Leiter-Erde, größter Leiter) × Faktor") + '''
+if PQ_FILES:                           ''' + t("# PQ measurement of the busbar: quantile per order (largest loop/√3 or largest phase) × factor",
+                                           "# PQ-Messung der Sammelschiene: Quantil je Ordnung (größte Schleife/√3 bzw. größter Leiter) × Faktor") + '''
     files = [WORK_FOLDER / p for p in ([PQ_FILES] if isinstance(PQ_FILES, (str, Path)) else PQ_FILES)]
     PQ = pq.assess(pq.read(files, timezone=PQ_TIMEZONE), quantile=PQ_QUANTILE,
                    **(dict(factors=PQ_FACTORS) if PQ_FACTORS else dict(factor=PQ_SAFETY_FACTOR)))
@@ -2759,8 +2765,8 @@ if PQ_FILES:                           ''' + t("# PQ measurement of the busbar: 
         print("ℹ", h)
     if PQ.valid:
         VOLTAGES = PQ.voltages() if PQ.reference == "LE" else {m: u / 3 ** 0.5 for m, u in PQ.voltages().items() if m % 3}
-        print(i18n.format_text("''' + t("VOLTAGES from the PQ measurement (quantile × {:g}, line-to-earth): {}",
-                                         "VOLTAGES aus der PQ-Messung (Quantil × {:g}, Leiter-Erde): {}") + '''", PQ.factor,
+        print(i18n.format_text("''' + t("VOLTAGES from the PQ measurement (quantile × {:g}, line-to-earth or line-to-line/√3): {}",
+                                         "VOLTAGES aus der PQ-Messung (Quantil × {:g}, Leiter-Erde bzw. Leiter-Leiter/√3): {}") + '''", PQ.factor,
                                ", ".join(i18n.format_text("{}: {:.1f} V", m, VOLTAGES[m]) for m in ORDERS if m in VOLTAGES)))
     else:
         print("''' + t("⚠ The PQ measurement is not valid for the assessment (gapless values shorter than every duration of PQ_FACTORS) – no voltages from it; VOLTAGES of section 1 stays.",

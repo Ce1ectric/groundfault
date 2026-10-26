@@ -331,7 +331,8 @@ the other tests check it in `forecast_table()`. `loo_table(limit_pct)` checks ei
 forecast with the model of the others and compared with its measured current; the permissible deviation – in per
 cent and, for the small currents of the higher orders, in ampere – is yours to set (none by default).
 
-* **Zero sequence:** the orders 3, 9, 15 … keep the fitted equivalent, with a hint – their source arises in the fault.
+* **Zero sequence:** the orders 3, 9, 15 … keep the fitted equivalent, with a hint – their source is assumed to arise
+  in the fault (the measurements suggest it; the voltage before the fault is not relevant for them).
   So do orders without a complex level and, with `orders=[…]`, the orders not listed.
 * **One test is enough:** `measured_source` also takes the measurements themselves (`load_series(…)`). With two or
   more different additional impedances they are fitted first; with a single test – often only the test without
@@ -339,7 +340,7 @@ cent and, for the small currents of the higher orders, in ampere – is yours to
   remainder I_rest with their measured current, independent of Z_E (on the safe side, since their current falls with
   Z_E).
 * **R_q < 0:** a median Z_q with a negative real part is no pure network impedance (the network changed between the
-  tests, or a source arises in the fault). With `rq_non_negative` (the setting of the series, default) R_q = 0 is used
+  tests, or a source presumably arises in the fault). With `rq_non_negative` (the setting of the series, default) R_q = 0 is used
   with |Z_q| kept: the current at Z_E = 0 stays the measured one, and for an ohmic Z_E the current becomes
   \(\lvert\underline{U}_q\rvert/\sqrt{\lvert\underline{Z}_q\rvert^2 + Z_\text{E}^2}\) – a bound on the safe side.
 * **Tables and functions:** every method of the series works with it – `ires_at_impedance`, `ires_over_line`,
@@ -451,9 +452,9 @@ the same network and switching state
   least `settings["min_level_V"]` (1 V) – gets the flat factor
   \( k = k_\text{s}\,\mathrm{THD}_{95}/\mathrm{THD}_\text{series} \) if `thd95_percent` and the THD of the series are
   given, otherwise it stays as measured (hint). Without `u95` the flat THD factor applies to all of these orders.
-* **Zero sequence** (odd multiples of 3: 3, 9, 15 …) – as measured (k = 1). Its source arises in the earth fault – the
-  displaced neutral and the loads on the healthy phases –, so the PQ measurement of undisturbed operation says nothing
-  about it.
+* **Zero sequence** (odd multiples of 3: 3, 9, 15 …) – as measured (k = 1). Its source is assumed to arise in the
+  earth fault – the displaced neutral and the nonlinear elements of the zero sequence –, so the PQ measurement of
+  undisturbed operation says nothing about it.
 * **Even orders** (2, 4, 6, 8 …) – as measured and listed separately; a hint names them from 5 % of the harmonic
   content: unusual for the voltage of a network, they may point to another cause.
 
@@ -532,7 +533,7 @@ The expansion changes its parts
 * **Source** – the harmonic voltage of the busbar comes from sources outside the new cables (HV network, loads) and
   acts on the busbar impedance, \( \underline{U}_{q,\text{new}} = \underline{U}_q\,\underline{Z}_{1,\text{new}}/\underline{Z}_1 \)
   – for a source behind the upstream impedance (U = E·Z_1/Z_up) and for a current source of the MV network
-  (U = Z_1·I) alike. At the orders of the zero sequence the source arises in the fault, U_s = Z_0·I_Nh/3 with the
+  (U = Z_1·I) alike. At the orders of the zero sequence the source is assumed to arise in the fault, U_s = Z_0·I_Nh/3 with the
   nonlinear current I_Nh of the coils; it grows with Z_0 and, taken proportional to the current of the coils, with
   I_L,new/I_L (`zero_sequence="network"`: without that factor).
 * **Fundamental** – the active current grows with the damping of the new cables, the detuning current with I_C:
@@ -550,16 +551,23 @@ differently. `split` takes it in one of two ways:
 | `"sources"` (default) | from network data ([`zero_sequence_impedance`](../reference/formulas.md#groundfault.formulas.zero_sequence_impedance)): 1/(j·(m/X_C0 − 1/(m·X_L0))) + d·X_C0 with X_C0 = 3·U_LE/I_C, X_L0 = 3·U_LE/I_L | (3·Z_q − Z_0)/2 |
 | `"busbar"` | from the busbar voltages of the tests ([`busbar_impedances`](../reference/equivalent_source.md#groundfault.equivalent_source.busbar_impedances), the [B method](../forecast/model.md#calibration-with-a-staged-fault-test)): 3·p_0·ΔU_0/I, median of the tests; at the orders of the zero sequence 3·Z_q − 2·Z_1 | 3·p_s·ΔU_s/I in the sequence that is not the natural one of the order (positive at the 5th, negative at the 7th) |
 
-At the orders of the zero sequence the source that arises in the fault changes ΔU_0 as well; the equivalent sources
+At the orders of the zero sequence the source that presumably arises in the fault changes ΔU_0 as well; the equivalent sources
 separate it, so Z_0 = 3·Z_q − 2·Z_1 there. `Z0` and `Z1` give the split per order instead. The two ways rest on
 different data – the network data on I_C, I_L and the damping, the busbar split on small voltage changes at the
 harmonic frequencies –; where the data are consistent they lie close, and their difference shows how well the split is
-known. The [report](../user-guide/document.md) computes both and takes the larger residual current.
+known. The [report](../user-guide/document.md) computes both – split 1 (network data) and split 2 (busbar voltages),
+explained before they are used – and takes the larger residual current. U_LE of the network data is the argument
+`U_LE` (default: the median zero-sequence voltage of the fundamental in the tests); the report takes U_n/√3 of the
+nominal voltage (`U_n_kV`, default the standard voltage nearest to √3·U_0 of the tests), so that no error of the
+measured voltage enters the network data.
 
 An order the tests hardly excite may give a busbar split with a negative real part, Re Z_0 < 0 or Re Z_1 < 0. That is
 no passive network: added in parallel with the capacitance of the new cables, it can produce a parallel resonance that
 does not exist, and with it an implausibly large current of that order. Such an order takes the split from the
 network data instead, with a hint (column `busbar_rejected` of the table per order); `split="sources"` is unchanged.
+The small resistance next to the large reactance of such an order is only roughly known from the measurements – a
+small phase error at the harmonic frequency or a change of the harmonic sources between the tests spoils it –, and
+the report names these orders as an uncertainty of the conversion.
 
 **Validation.** `tests/test_forecast_physics.py` checks the conversion against the nodal calculation of a synthetic
 20-kV network – three phases per order, the upstream impedance, earth capacitances with losses, loads, a coil with a

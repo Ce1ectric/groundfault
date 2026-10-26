@@ -166,9 +166,9 @@ i18n.register({
     # ---- station
     "evaluation.angle_atypical": {
         "en": "Angle U_E/I_F ({channel}, 50 Hz) = {angle:.0f}° – atypical for an earthing impedance (expected "
-              "≈ −30…+60°): check the polarity of probe/clamp; the magnitudes (V per 100 A) are not affected.",
+              "≈ −30…+60°): check the polarity of probe/clamp; the magnitudes (V/A) are not affected.",
         "de": "Winkel U_E/I_F ({channel}, 50 Hz) = {angle:.0f}° – für eine Erdungsimpedanz untypisch (erwartet "
-              "≈ −30…+60°): Polung von Sonde/Zange prüfen; Beträge (V je 100 A) sind davon unabhängig."},
+              "≈ −30…+60°): Polung von Sonde/Zange prüfen; Beträge (V/A) sind davon unabhängig."},
     "evaluation.shield_reversed": {
         "en": "Shield current {channel} in phase opposition to the fault current → polarity reversed.",
         "de": "Schirmstrom {channel} gegenphasig zum Fehlerstrom → Polarität gedreht."},

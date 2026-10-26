@@ -112,7 +112,8 @@ negative for m mod 3 = 2 (5, 11 …), zero for m mod 3 = 0 (3, 9 …).
 
 SI units throughout: A, V, Ω, Hz and s; probe distances in m, line lengths in km, per-unit-length impedances in Ω/km,
 soil resistivity in Ωm. A voltage per ampere of fault current is given in V/A (= Ω) – for a remote probe it is the
-transfer impedance r·Z_E – or in V per 100 A. Column names carry their unit (`_A`, `_V`, `_Ohm`, `_Hz`, `_pct`,
+transfer impedance r·Z_E –; the tables of the result keep it in V per 100 A as well (`V_per_100A_…`), the report and
+its figures show V/A, or V/kA for small values. Column names carry their unit (`_A`, `_V`, `_Ohm`, `_Hz`, `_pct`,
 `_deg`, `_m`, `_s`); angles are in degrees, ratios such as r, `share_…` and `F_…` are pure numbers. Values from
 groundmeas are converted to the base units when they are read. The output language changes only the display (decimal
 comma in German), never the values.

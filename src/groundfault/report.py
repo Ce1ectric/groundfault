@@ -67,7 +67,7 @@ __all__ = ["ReportStyle", "STYLE", "set_style", "used_font", "activate_style", "
            "pq_series", "pq_duration", "pq_profile", "touch_voltage_cases",
            "v_curve", "station_voltages", "station_frequency", "station_background", "station_colors", "probe_label",
            "earthing_comparison", "reduction_factor", "typical_band", "lv_network", "transformer_power",
-           "transformer_impedance", "number",
+           "transformer_impedance", "number", "per_current_unit", "PER_KA_BELOW",
            "format_table", "export_table", "export_tables", "docx_tables", "report_tables", "table_title",
            "all_figures", "slug"]
 
@@ -128,7 +128,7 @@ i18n.register({
     # ---- axis labels, legend entries and annotations
     "report.rms": {"en": "RMS value", "de": "Effektivwert"},
     "report.rms_short": {"en": "RMS", "de": "Eff."},
-    "report.touch_voltage_axis": {"en": "$U_\\mathrm{{T}}$ in V", "de": "$U_\\mathrm{{T}}$ in V"},
+    "report.touch_voltage_axis": {"en": "$U_\\mathrm{{vT}}$ in V", "de": "$U_\\mathrm{{vT}}$ in V"},
     "report.permissible_touch_voltage": {"en": "permissible touch voltage $U_\\mathrm{{Tp}}$ = {value} V",
                                          "de": "zulässige Berührungsspannung $U_\\mathrm{{Tp}}$ = {value} V"},
     "report.harmonic": {"en": "H{order} ({f} Hz)", "de": "{order}. Harm. ({f} Hz)"},
@@ -138,6 +138,9 @@ i18n.register({
     "report.assessed_curve": {"en": "$I_\\mathrm{{RES,ass}}$ (with margins)",
                               "de": "$I_\\mathrm{{RES,Bew}}$ (mit Zuschlägen)"},
     "report.source_measured": {"en": "measured source", "de": "gemessene Quelle"},
+    "report.source_fit_model": {"en": "model $U_\\mathrm{{q}}/|Z_\\mathrm{{q}}+Z|$",
+                                "de": "Modell $U_\\mathrm{{q}}/|Z_\\mathrm{{q}}+Z|$"},
+    "report.source_fit_tests": {"en": "tests (measured, normalised)", "de": "Versuche (Messwerte, normiert)"},
     "report.source_fitted": {"en": "fitted source", "de": "geschätzte Quelle"},
     "report.with_source": {"en": "{symbol} ({source})", "de": "{symbol} ({source})"},
     "report.single_tests": {"en": "single tests", "de": "einzelne Versuche"},
@@ -157,7 +160,7 @@ i18n.register({
     "report.pq_workdays": {"en": "Mon–Fri", "de": "Mo–Fr"},
     "report.pq_saturday": {"en": "Saturday", "de": "Samstag"},
     "report.pq_sunday": {"en": "Sunday", "de": "Sonntag"},
-    "report.per_100_a": {"en": "{symbol} in V per 100 A", "de": "{symbol} in V je 100 A"},
+    "report.per_current": {"en": "{symbol} in {unit}", "de": "{symbol} in {unit}"},
     "report.epr": {"en": "earth potential rise", "de": "Erdungsspannung"},
     "report.touch_voltage": {"en": "touch voltage", "de": "Berührungsspannung"},
     "report.fault_component_span": {"en": "fault-related component (span of the methods)",
@@ -239,7 +242,7 @@ i18n.register({
     "report.active_current": {"en": "Active current Iw", "de": "Wirkstrom Iw"},
     "report.detuning_current": {"en": "Detuning current Iv", "de": "Verstimmungsstrom Iv"},
     "report.coil_current": {"en": "Coil current {channel}", "de": "Spulenstrom {channel}"},
-    "report.rze_per_100_a": {"en": "r·Z_E in V per 100 A", "de": "r·Z_E in V je 100 A"},
+    "report.rze_per_current": {"en": "r·Z_E in {unit}", "de": "r·Z_E in {unit}"},
     "report.label_pre_fault": {"en": "pre-fault", "de": "Vorfehler"},
     "report.label_fault": {"en": "fault", "de": "Fehler"},
     "report.label_post_fault": {"en": "post-fault", "de": "Nachfehler"},
@@ -1128,8 +1131,8 @@ def phasor_diagram(res, width="full", height_cm: float = 7.0, coils: bool = Fals
 
 def source_fit(series, orders: Optional[Sequence[int]] = None, Z_max: Optional[float] = None,
                width="full", height_cm: float = 6.5, Z_E: Optional[float] = None, comparison=None):
-    """|I_m| over the additional impedance: measuring points (normalised) and the two-terminal (Thevenin) model
-    |U_q/(Z_q + Z)| per order.
+    """|I_m| over the additional impedance: measuring points (normalised, circles) and the two-terminal (Thevenin)
+    model |U_q/(Z_q + Z)| per order (lines); the legend names the orders (colours), the model and the tests.
 
     Parameters
     ----------
@@ -1171,10 +1174,14 @@ def source_fit(series, orders: Optional[Sequence[int]] = None, Z_max: Optional[f
                 ax.plot(zg, np.abs(G.Uq / (G.Zq + zg)), color=c, lw=0.8 * STYLE.line_width, ls="--")
             ax.plot(np.abs(F.Z), np.abs(F.I_fit), ls="none", marker="o", ms=4, mfc="white", mec=c, mew=1.0)
         n = len(ords)
-        if comparison is not None:
-            from matplotlib.lines import Line2D
-            for label, ls in ((_source_label(series), "-"), (_source_label(comparison), "--")):
-                ax.add_line(Line2D([], [], color="#333333", lw=STYLE.line_width, ls=ls, label=label)); n += 1
+        from matplotlib.lines import Line2D
+        # what the lines and the circles are – the colours stand for the orders
+        lines = ((_source_label(series), "-"), (_source_label(comparison), "--")) if comparison is not None else \
+            ((tr("report.source_fit_model"), "-"),)
+        for label, ls in lines:
+            ax.add_line(Line2D([], [], color="#333333", lw=STYLE.line_width, ls=ls, label=label)); n += 1
+        ax.add_line(Line2D([], [], color="#333333", ls="none", marker="o", ms=4, mfc="white", mec="#333333", mew=1.0,
+                           label=tr("report.source_fit_tests"))); n += 1
         ax.set_xlim(0, Z_max); ax.set_ylim(bottom=0)
         if Z_E is not None:
             ax.axvline(Z_E, color=GREY, lw=0.7, ls="--")
@@ -1694,8 +1701,37 @@ def v_curve(t, ires, result=None, i_coil=None, width="full", height_cm: float = 
     return _finish(fig, axes)
 
 
+#: below this voltage per ampere (V/A) the report shows r·Z_E in V/kA – small values at a station far from the fault
+PER_KA_BELOW = 0.1
+
+
+def per_current_unit(values, reference=None) -> Tuple[float, str]:
+    """Factor and unit of a voltage per ampere of fault current (r·Z_E in Ω) for tables and figures.
+
+    Parameters
+    ----------
+    values : iterable of float
+        The values in V/A (Ω).
+    reference : float or iterable of float, optional
+        The value(s) that decide – e.g. the RMS ratio of the probes, so that a single uncertain value of a higher
+        order does not keep a small station at V/A; default: ``values``.
+
+    Returns
+    -------
+    tuple of (float, str)
+        ``(1.0, "V/A")``, or ``(1000.0, "V/kA")`` when every finite deciding value is below ``PER_KA_BELOW``.
+    """
+    ref = values if reference is None else ([reference] if np.ndim(reference) == 0 else reference)
+    v = pd.to_numeric(pd.Series(list(ref), dtype=object), errors="coerce").abs().dropna()
+    if not len(v) and reference is not None:                # no deciding value: all values
+        v = pd.to_numeric(pd.Series(list(values), dtype=object), errors="coerce").abs().dropna()
+    if len(v) and float(v.max()) < PER_KA_BELOW:
+        return 1000.0, "V/kA"
+    return 1.0, "V/A"
+
+
 def station_voltages(res, width="full", height_cm: float = 6.0):
-    """Earth potential rise/touch voltages per harmonic and r·Z_E in V per 100 A (two panels).
+    """Earth potential rise/touch voltages per harmonic and r·Z_E in V/A or V/kA (two panels).
 
     Parameters
     ----------
@@ -1722,17 +1758,20 @@ def station_voltages(res, width="full", height_cm: float = 6.0):
     f1 = res.steady_state.f1["f1_used"]
     fig, axes = figure(width, height_cm, ncols=2)
     x = np.arange(len(ords) + 1); n = len(df); b = 0.8 / max(n, 1)
+    zs = [[r.get("V_per_100A_RMS", np.nan) / 100.0] + [r.get("rZE_H%d_Ohm" % m, np.nan) for m in ords]
+          for _, r in df.iterrows()]
+    k, unit = per_current_unit([z for row in zs for z in row], reference=[row[0] for row in zs])
     with _rc():
         for i, (_, r) in enumerate(df.iterrows()):
             v = [r["RMS_V"]] + [r["H%d_V" % m] for m in ords]
             axes[0, 0].bar(x - 0.4 + b * (i + 0.5), v, width=b * 0.92, color=COLORS[i % 8], label=r["channel"])
-            z = [r.get("V_per_100A_RMS", np.nan)] + [100 * r.get("rZE_H%d_Ohm" % m, np.nan) for m in ords]
-            axes[0, 1].bar(x - 0.4 + b * (i + 0.5), z, width=b * 0.92, color=COLORS[i % 8], label=r["channel"])
+            axes[0, 1].bar(x - 0.4 + b * (i + 0.5), [k * z for z in zs[i]], width=b * 0.92, color=COLORS[i % 8],
+                           label=r["channel"])
         for ax in axes[0]:
             ax.set_xticks(x); ax.set_xticklabels([tr("report.rms_short")] + ["%g" % round(m * f1) for m in ords])
             ax.set_xlabel("$f$ in Hz"); ax.grid(axis="x", visible=False)
         axes[0, 0].set_ylabel(r"$U$ in V")
-        axes[0, 1].set_ylabel(tr("report.per_100_a", symbol=r"$r\,Z_\mathrm{E}$"))
+        axes[0, 1].set_ylabel(tr("report.per_current", symbol=r"$r\,Z_\mathrm{E}$", unit=unit))
         _legend(axes[0, 0], n, loc="lower left", bbox_to_anchor=(0.0, 1.0))
     return _finish(fig, axes)
 
@@ -3211,7 +3250,7 @@ def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[floa
           and after the fault,
         * ``residual_current`` – residual earth-fault current: RMS value, harmonics and harmonic content,
         * ``split_50hz`` – active and detuning current, coil currents,
-        * ``epr_<measurement>`` – largest measured earth potential rise and r·Z_E per 100 A (stations),
+        * ``epr_<measurement>`` – largest measured earth potential rise and r·Z_E in V/A or V/kA (stations),
         * ``shield_current_<measurement>`` – shield current and reduction factor per harmonic (stations),
         * ``transformer`` – harmonic power and sequence currents at the transformer,
         * ``transformer_summary`` – transformer node: polarity of the currents, upstream impedance X_up/m (with HV
@@ -3281,12 +3320,15 @@ def report_tables(results: Mapping[str, object], series=None, Z_E: Optional[floa
         ue_df = df[df["role"] == "u_e"] if (df["role"] == "u_e").any() else df
         r = ue_df.loc[ue_df["RMS_V"].idxmax()]      # "max. U_E measured" (as in earlier test reports)
         ords = [int(c[1:-2]) for c in df.columns if c.startswith("H") and c.endswith("_V")]
-        zz = [dict(quantity=tr("report.rms"), UE_V=r["RMS_V"], rZE_V_per_100A=r.get("V_per_100A_RMS", np.nan))]
+        zz = [dict(quantity=tr("report.rms"), UE_V=r["RMS_V"], rZE=r.get("V_per_100A_RMS", np.nan) / 100.0)]
         for m in ords:
             zz.append(dict(quantity="%d Hz" % round(m * e.settings.f_nominal), UE_V=r["H%d_V" % m],
-                           rZE_V_per_100A=100 * r.get("rZE_H%d_Ohm" % m, np.nan)))
-        tab["epr_" + slug(nm)] = pd.DataFrame(zz).rename(
-            columns={"UE_V": "U_E max. in V (%s)" % r["channel"], "rZE_V_per_100A": tr("report.rze_per_100_a")})
+                           rZE=r.get("rZE_H%d_Ohm" % m, np.nan)))
+        zz = pd.DataFrame(zz)
+        k, unit = per_current_unit(zz["rZE"], reference=zz["rZE"].iloc[0])
+        zz["rZE"] = k * pd.to_numeric(zz["rZE"], errors="coerce")
+        tab["epr_" + slug(nm)] = zz.rename(
+            columns={"UE_V": "U_E max. in V (%s)" % r["channel"], "rZE": tr("report.rze_per_current", unit=unit)})
         ds = e.tables.get("station_currents")
         if ds is not None and not ds.empty:
             for _, s in ds[ds["role"] == "i_shield"].iterrows():

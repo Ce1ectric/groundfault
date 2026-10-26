@@ -88,8 +88,8 @@ i18n.register({
         "en": "U during the fault {during} V · background before the fault {background} V · fault-related {fault} V",
         "de": "U im Fehler {during} V · Grundlast vor dem Fehler {background} V · fehlerbedingt {fault} V"},
     "interactive.hover_fault_quotient": {
-        "en": "<b>U/I<sub>F</sub> fault-related {z} V/A</b> ({angle}°) = {z100} V per 100 A",
-        "de": "<b>U/I<sub>F</sub> fehlerbedingt {z} V/A</b> ({angle}°) = {z100} V je 100 A"},
+        "en": "<b>U/I<sub>F</sub> fault-related {z} V/A</b> ({angle}°) = {zk} V/kA",
+        "de": "<b>U/I<sub>F</sub> fehlerbedingt {z} V/A</b> ({angle}°) = {zk} V/kA"},
     "interactive.hover_methods": {
         "en": "  fault inception {inception} · fault clearance {clearance} · voltage reference {voltage} V/A · "
               "spread {spread} %",
@@ -726,7 +726,7 @@ def _station_hover(r) -> str:
             tr("interactive.hover_voltages", during=_z(g("U_during_fault_V")), background=_z(g("U_background_V")),
                fault=_z(g("U_fault_V"))),
             tr("interactive.hover_fault_quotient", z=_z(g("Z_fault_Ohm")), angle=_z(g("Z_fault_angle_deg"), 3),
-               z100=_z(100 * g("Z_fault_Ohm"), 3)),
+               zk=_z(1000 * g("Z_fault_Ohm"), 3)),
             tr("interactive.hover_methods", inception=_z(g("Z_inception_Ohm")), clearance=_z(g("Z_clearance_Ohm")),
                voltage=_z(g("Z_voltage_Ohm")), spread=_z(g("method_spread_pct"), 2)),
             tr("interactive.hover_direct_quotient", z=_z(g("Z_direct_Ohm")), angle=_z(g("Z_direct_angle_deg"), 3))]

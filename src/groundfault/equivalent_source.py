@@ -37,7 +37,7 @@ from the currents, U_q is taken as measured – the pre-fault voltage of the fau
 follows from the tests (one test suffices, the others check it). Within the range of the additional impedances both
 give the same currents; beyond it (larger Z_E, fault behind a line) the measured source is the more reliable one,
 because the fitted U_q rests on the small differences between the currents of the tests. The orders of the zero
-sequence keep the fitted equivalent: their source arises in the fault.
+sequence keep the fitted equivalent: their source is assumed to arise in the fault (the measurements suggest it).
 """
 from __future__ import annotations
 
@@ -222,18 +222,20 @@ i18n.register({
         "de": "Gemessene Quelle für keine Ordnung – sie braucht den komplexen Pegel des Fehlerleiters (komplexe "
               "Normierung) und eine Ordnung außerhalb des Nullsystems; die geschätzten Ersatzquellen bleiben"},
     "equivalent_source.measured_zero_sequence": {
-        "en": "zero-sequence order: the source arises in the fault, the pre-fault voltage does not drive the current "
-              "→ fitted equivalent source kept",
-        "de": "Nullsystem-Ordnung: die Quelle entsteht im Fehler, die Vorfehlerspannung treibt den Strom nicht → "
-              "geschätzte Ersatzquelle beibehalten"},
+        "en": "zero-sequence order: the source is assumed to arise in the fault, the pre-fault voltage is not "
+              "relevant → fitted equivalent source kept",
+        "de": "Nullsystem-Ordnung: angenommen wird, dass die Quelle erst im Fehler entsteht, die Vorfehlerspannung ist "
+              "nicht relevant → geschätzte Ersatzquelle beibehalten"},
     "equivalent_source.measured_no_complex_level": {
         "en": "no complex level of the faulted phase → fitted equivalent source kept",
         "de": "kein komplexer Pegel des Fehlerleiters → geschätzte Ersatzquelle beibehalten"},
     "equivalent_source.measured_in_rest": {
-        "en": "Orders {orders} without a measured source (zero sequence – the source arises in the fault – or no "
+        "en": "Orders {orders} without a measured source (zero sequence – the source presumably arises in the fault – "
+              "or no "
               "complex level): without a fitted equivalent they stay in the remainder I_rest, with their largest "
               "current of the tests and independent of Z_E (on the safe side)",
-        "de": "Ordnungen {orders} ohne gemessene Quelle (Nullsystem – die Quelle entsteht im Fehler – oder kein "
+        "de": "Ordnungen {orders} ohne gemessene Quelle (Nullsystem – die Quelle entsteht vermutlich im Fehler – oder "
+              "kein "
               "komplexer Pegel): ohne geschätzte Ersatzquelle bleiben sie im Rest I_rest, mit ihrem größten Strom der "
               "Versuche und unabhängig von Z_E (auf der sicheren Seite)"},
     "equivalent_source.no_measurement": {
@@ -273,9 +275,9 @@ i18n.register({
         "en": "as measured (factor 1) – give thd95_percent as well if needed",
         "de": "wie gemessen (Faktor 1) – ggf. thd95_percent zusätzlich angeben"},
     "equivalent_source.scaling_zero_measured": {
-        "en": "Orders of the zero sequence {orders} as measured (not scaled) – the zero sequence arises in the earth "
-              "fault and does not follow the voltage of undisturbed operation.",
-        "de": "Ordnungen des Nullsystems {orders} wie gemessen (nicht skaliert) – das Nullsystem entsteht im "
+        "en": "Orders of the zero sequence {orders} as measured (not scaled) – assumption: the zero sequence arises in "
+              "the earth fault and does not follow the voltage of undisturbed operation.",
+        "de": "Ordnungen des Nullsystems {orders} wie gemessen (nicht skaliert) – Annahme: das Nullsystem entsteht im "
               "Erdschluss und folgt nicht der Spannung des ungestörten Betriebs."},
     "equivalent_source.scaling_other": {
         "en": "{current:.2f} A of the remainder are not assigned to an order (e.g. orders without a phasor in the "
@@ -1630,8 +1632,8 @@ def measured_source(series: Union[SourceSeries, Sequence[SourceMeasurement]], im
     1/I_k over Z_k; when the additional impedances are small compared with |Z_q|, a small change of the network
     between the tests changes this slope noticeably. Within the tested range both give the same currents (the fitted
     Z_q compensates the error of U_q), beyond it – larger Z_E, fault behind a line – the measured source is the more
-    reliable one. The orders of the zero sequence keep the fitted equivalent: their source arises in the fault, the
-    pre-fault voltage does not drive their current.
+    reliable one. The orders of the zero sequence keep the fitted equivalent: their source is assumed to arise in the
+    fault, the pre-fault voltage is not relevant for their current.
 
     Parameters
     ----------
@@ -1988,7 +1990,8 @@ def _ires(series: SourceSeries, Z_E: complex, IG: Union[str, float], u95: Option
     out = dict(Z_E=Z_E, IG=ig, IH=IH, IRES=IRES, parts=parts, factors=k, rules=rules, IH_rest=r, IH_rest_scaled=r_s,
                IH_scaled=IHs, IRES_scaled=IRESs, IRES_assessed=IRES * mi, IH_scaled_assessed=mi * math.sqrt(s2a),
                IRES_scaled_assessed=mi * math.sqrt(ig ** 2 + s2a), uncertainty_I=float(uncertainty_I),
-               uncertainty_U=float(uncertainty_U), interpolation=bool(zmin - 1e-9 <= abs(Z_E) <= zmax + 1e-9))
+               uncertainty_U=float(uncertainty_U), interpolation=bool(zmin - 1e-9 <= abs(Z_E) <= zmax + 1e-9),
+               u95_reference="LL" if ll else "seq")
     if not table:
         return out
     # ---- the result per order: the orders of the model at Z_E and the remainder of the test with the largest one
@@ -2054,7 +2057,8 @@ def ires_at_impedance(series: SourceSeries, Z_E: complex, IG: Union[str, float] 
       k_m = safety_factor·U_95,m/U_level,m (U_level,m = level of the natural sequence of m in the tests); an order
       without its own value (no ``u95`` value, no level of at least ``settings["min_level_V"]``) with the flat THD
       factor safety_factor·THD_95/THD_test, without a THD as measured (with a hint);
-    * orders of the zero sequence (3, 9, 15 …): as measured – the zero sequence arises in the earth fault;
+    * orders of the zero sequence (3, 9, 15 …): as measured – the zero sequence is assumed to arise in the earth
+      fault;
     * even orders (2, 4, 6 …): as measured, listed separately (a hint if they carry 5 % of the harmonic content or
       more – atypical, they may point to another cause);
     * the remainder I_rest outside the orders of the model: the same rules for each of its orders, with the levels of
@@ -2441,9 +2445,9 @@ def busbar_impedances(series: SourceSeries, min_current_A: float = 0.3) -> pd.Da
     tests. Z_1 is taken from the sequence that is not the natural one of the order – at the 5th the positive, at the
     7th the negative sequence: their change is not the small difference of the large pre-fault voltage and the voltage
     in the fault, which a drifting background spoils – at the orders of the zero sequence from both (Z_2 = Z_1 in a
-    passive network). At the orders of the zero sequence a source arises in the fault (the nonlinear current of the
-    coils) and changes ΔU_0 as well; there Z_0 = 3·Z_q − 2·Z_1 with Z_q of the equivalent sources, which separate
-    that source.
+    passive network). At the orders of the zero sequence a source presumably arises in the fault (e.g. the nonlinear
+    current of the coils) and changes ΔU_0 as well; there Z_0 = 3·Z_q − 2·Z_1 with Z_q of the equivalent sources,
+    which separate that source.
 
     Parameters
     ----------
@@ -2510,9 +2514,9 @@ def network_expansion(series: SourceSeries, I_C: float, I_C_new: float, *, I_L: 
       with a screen per core); this shifts the parallel resonance of the busbar;
     * **source** – the harmonic voltage of the busbar is that of sources outside the added cables (HV network,
       loads) on the busbar impedance, U_q,new = U_q·Z_1,new/Z_1 – for a source behind the upstream impedance and for
-      a current source of the MV network alike; at the orders of the zero sequence the source arises in the fault,
-      U_s = Z_0·I_Nh/3, and grows with Z_0 and with the nonlinear current of the coils, taken proportional to their
-      current (``zero_sequence="coil"``; ``"network"``: the current of the coils unchanged);
+      a current source of the MV network alike; at the orders of the zero sequence the source is assumed to arise in
+      the fault, U_s = Z_0·I_Nh/3, and to grow with Z_0 and with the nonlinear current of the coils, taken
+      proportional to their current (``zero_sequence="coil"``; ``"network"``: the current of the coils unchanged);
     * **fundamental** – I_w,new = I_w + d_a·ΔI_C, I_v,new = I_v·I_C,new/I_C: with the damping of the network
       (default) the fundamental grows with I_C.
 

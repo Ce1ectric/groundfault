@@ -575,8 +575,8 @@ def test_measured_source_keeps_zero_sequence_and_options(series):
     measured = equivalent_source.measured_source(fitted)
     assert measured.fits[3].method == fitted.fits[3].method != "measured"
     assert measured.fits[3].Zq == fitted.fits[3].Zq
-    assert any("Quelle entsteht im Fehler" in h for h in measured.fits[3].hints)
-    assert not any("Quelle entsteht im Fehler" in h for h in fitted.fits[3].hints)      # the fitted series unchanged
+    assert any("Quelle erst im Fehler entsteht" in h for h in measured.fits[3].hints)
+    assert not any("Quelle erst im Fehler entsteht" in h for h in fitted.fits[3].hints)  # the fitted series unchanged
     assert measured.single_test_table()["order"].unique().tolist() == [5, 7, 11, 13]
     only5 = equivalent_source.measured_source(fitted, orders=[5])
     assert only5.fits[5].method == "measured" and only5.fits[7].method != "measured"

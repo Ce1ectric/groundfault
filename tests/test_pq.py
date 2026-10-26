@@ -609,6 +609,30 @@ def test_line_to_line_data():
     assert t.iloc[0]["position_in_range"] == "inside" and t.iloc[0]["factor_to_test"] == pytest.approx(1.0)
 
 
+def test_line_to_line_reference_of_an_export_with_both():
+    """An export with line-to-earth and line-to-line harmonic voltages: the line-to-line ones are the reference (the
+    usual one of a three-wire network, EN 50160); reference="LE" keeps the line-to-earth ones; each with its hint;
+    the data of the caller are not changed."""
+    idx = pd.date_range("2026-01-05 00:10", periods=50, freq="10min")
+    le = _frame(idx, h5=250.0)
+    ll = _frame(idx, h5=400.0, phases=("L12", "L23", "L31"), h1=20000.0, thd=None)
+    d = pq.from_frame(pd.concat([le, ll], axis=1))
+    assert d.has_harmonics("LE") and d.has_harmonics("LL") and d.reference == "LL"
+    a = pq.assess(d)
+    assert a.reference == "LL" and a.scaling()["u95_reference"] == "LL"
+    assert a.u95()[5] == pytest.approx(400.0 * 1.1)                     # the largest loop
+    assert any("Leiter-Leiter-Oberschwingungsspannungen verwendet" in h or "Line-to-line harmonic voltages used" in h
+               for h in a.hints)
+    b = pq.assess(d, reference="LE")
+    assert b.reference == "LE" and b.scaling()["u95_reference"] == "seq" and d.reference == "LL"
+    assert b.u95()[5] == pytest.approx(250.0 * 1.1)
+    assert any("reference='LE'" in h for h in b.hints)
+    only = pq.assess(pq.from_frame(le))
+    assert only.reference == "LE" and any("EN 50160" in h for h in only.hints)
+    with pytest.raises(ValueError):
+        pq.assess(d, reference="LN")
+
+
 def test_thd_from_the_orders_and_without_thd():
     """Without the THD of the loops the THD comes from the line-to-earth orders without the zero sequence; without
     any THD the settings do not scale."""

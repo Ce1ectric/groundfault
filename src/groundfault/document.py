@@ -52,7 +52,7 @@ from . import formulas as fml
 from .i18n import tr
 
 __all__ = ["ReportInfo", "PHOTO_SLOTS", "campaign_report", "touch_voltage_cases", "make_template",
-           "to_pdf", "docx_available", "omml", "REFERENCE_TOLERANCE_HZ"]
+           "to_pdf", "docx_available", "omml", "nbsp", "REFERENCE_TOLERANCE_HZ"]
 
 #: photo slots of the report and the section they belong to (``photos={slot: path}``; None = placeholder)
 PHOTO_SLOTS = ("setup_impedance", "recorder", "station")
@@ -125,9 +125,10 @@ i18n.register({
     "document.key_results": {"en": "Summary of results", "de": "Kurzfassung"},
     "document.key_results_intro": {
         "en": "Characteristic values of the tests and of the assessment (details in the section given). Limits and "
-              "factors are those of the network operator as set for this evaluation.",
+              "factors are the specifications{by} set for this evaluation.",
         "de": "Kennwerte der Versuche und der Bewertung (Einzelheiten im angegebenen Abschnitt). Grenzwerte und "
-              "Faktoren sind die für diese Auswertung gesetzten Vorgaben des Netzbetreibers."},
+              "Faktoren sind die für diese Auswertung gesetzten Vorgaben{by}."},
+    "document.specified_by": {"en": " of {name}", "de": " von {name}"},
     "document.kr_quantity": {"en": "Quantity", "de": "Größe"},
     "document.kr_value": {"en": "Value", "de": "Wert"},
     "document.kr_reference": {"en": "Limit / reference", "de": "Grenzwert / Bezug"},
@@ -144,8 +145,8 @@ i18n.register({
     "document.kr_ires_ze": {
         "en": "I_[RES,ass] at Z_[E] = {Z} Ω (equivalent sources)",
         "de": "I_[RES,Bew] an Z_[E] = {Z} Ω (Ersatzquellen)"},
-    "document.kr_ut": {"en": "Touch voltage U_[T] ({station}), largest approach: {case}",
-                       "de": "Berührungsspannung U_[T] ({station}), größter Ansatz: {case}"},
+    "document.kr_ut": {"en": "Prospective touch voltage U_[vT] ({station}), largest approach: {case}",
+                       "de": "Leerlauf-Berührungsspannung U_[vT] ({station}), größter Ansatz: {case}"},
     "document.kr_decisive": {"en": " – decisive", "de": " – maßgeblich"},
     "document.probe": {"en": "probe", "de": "Sonde"},
     "document.kr_pq": {"en": "Power-quality measurement", "de": "PQ-Messung"},
@@ -406,12 +407,13 @@ i18n.register({
         "de": "Die Erdungsspannung U_[E] wurde gegen die Erdungsspieße {probes} gemessen; die Tabelle zeigt den mit dem "
               "größten Wert."},
     "document.tab_epr": {
-        "en": "Earth potential rise per order ({probe}): value during the fault and r·Z_[E] per 100 A",
-        "de": "Harmonische Komponenten der Erdungsspannung ({probe}): Messwert im Fehler und r·Z_[E] hochgerechnet auf "
-              "100 A"},
+        "en": "Earth potential rise per order ({probe}): value during the fault and voltage per ampere of fault "
+              "current r·Z_[E]",
+        "de": "Harmonische Komponenten der Erdungsspannung ({probe}): Messwert im Fehler und Spannung je Ampere "
+              "Fehlerstrom r·Z_[E]"},
     "document.col_ue_max": {"en": "U_[E] during the fault in V", "de": "U_[E] im Fehler in V"},
-    "document.col_per_100": {"en": "r·Z_[E]·100 A direct in V", "de": "r·Z_[E]·100 A direkt in V"},
-    "document.col_per_100_fault": {"en": "r·Z_[E]·100 A fault-related in V", "de": "r·Z_[E]·100 A fehlerbedingt in V"},
+    "document.col_per_a": {"en": "r·Z_[E] direct in {unit}", "de": "r·Z_[E] direkt in {unit}"},
+    "document.col_per_a_fault": {"en": "r·Z_[E] fault-related in {unit}", "de": "r·Z_[E] fehlerbedingt in {unit}"},
     "document.col_if": {"en": "I_[F] in A", "de": "I_[F] in A"},
     "document.row_rms_plain": {"en": "RMS value", "de": "Effektivwert"},
     "document.epr_note": {
@@ -426,14 +428,17 @@ i18n.register({
         "de": "; * unsicher (die Überlagerungsverfahren weichen voneinander ab oder die Spannung vor dem Fehler ist "
               "groß)"},
     "document.probe_inverted": {
-        "en": "The voltage against the probe {ut_probe} ({ut} V) is larger than the earth potential rise against "
-              "{ue_probe} ({ue} V), whereas U_[T] ≤ U_[E] is expected. Either {ue_probe} does not capture the full "
-              "earth potential rise – then U_[E] and the cases 3, 4 and 4b are too small – or {ut_probe} does not "
-              "measure a touch voltage; the reduction factor therefore uses the probe maximum.",
-        "de": "Die Spannung gegen den Spieß {ut_probe} ({ut} V) ist größer als die Erdungsspannung gegen {ue_probe} "
-              "({ue} V), erwartet ist U_[T] ≤ U_[E]. Entweder erfasst {ue_probe} nicht die volle Erdungsspannung – dann "
-              "sind U_[E] und die Fälle 3, 4 und 4b zu klein – oder {ut_probe} misst keine Berührungsspannung; der "
+        "en": "The voltage at the probe {ut_probe} ({ut} V) is larger than at the probe {ue_probe} ({ue} V), whereas "
+              "the nearer probe is expected to show the smaller voltage. Either the farther probe does not capture the "
+              "full earth potential rise – then the cases 3, 4 and 4b are too small – or the nearer probe does not "
+              "give the prospective touch voltage (e.g. its position or its contact); the reduction factor therefore "
+              "uses the probe maximum.",
+        "de": "Die Spannung an der Sonde {ut_probe} ({ut} V) ist größer als an der Sonde {ue_probe} ({ue} V); "
+              "erwartet ist an der näheren Sonde die kleinere Spannung. Entweder erfasst die fernere Sonde nicht die "
+              "volle Erdungsspannung – dann sind die Fälle 3, 4 und 4b zu klein – oder die nähere Sonde gibt die "
+              "Leerlauf-Berührungsspannung nicht wieder (z. B. ihre Lage oder ihr Übergangswiderstand); der "
               "Reduktionsfaktor verwendet deshalb das Sondenmaximum."},
+    "document.probe_in": {"en": "{probe} at {d} m", "de": "{probe} in {d} m"},
     "document.fig_station_frequency": {
         "en": "Voltage per ampere of fault current over the frequency – {station}",
         "de": "Spannung je Ampere Fehlerstrom über der Frequenz – {station}"},
@@ -522,13 +527,60 @@ i18n.register({
               "(Oberschwingungsspannung Leiter-Erde je Ordnung) bzw. die größte Schleife (THD Leiter-Leiter); bewertet "
               "wird ihr {q}-%-Quantil. Intervalle mit Erdschluss oder Spannungseinbruch (unsymmetrische "
               "Grundschwingung) bleiben unberücksichtigt{excluded}."},
+    "document.pq_method_ll": {
+        "en": "Per 10-min interval[^Intervals aligned to the clock; shorter values of the export are combined per "
+              "interval into their root mean square (as in IEC 61000-4-30).^] the largest of the three line-to-line "
+              "voltages is taken (harmonic voltage per order and THD); the assessment uses its {q} % quantile. "
+              "Intervals with an earth fault or a dip (unbalanced fundamental) are left out{excluded}.",
+        "de": "Je 10-min-Intervall[^Uhrzeitsynchrone Intervalle; aus kürzeren Werten des Exports wird je Intervall "
+              "der quadratische Mittelwert gebildet (wie in IEC 61000-4-30).^] zählt die größte der drei "
+              "Leiter-Leiter-Spannungen (Oberschwingungsspannung je Ordnung und THD); bewertet wird ihr "
+              "{q}-%-Quantil. Intervalle mit Erdschluss oder Spannungseinbruch (unsymmetrische Grundschwingung) "
+              "bleiben unberücksichtigt{excluded}."},
+    "document.pq_le_only": {
+        "en": "The export gives the harmonic voltages per order line-to-earth only. In a medium-voltage network (a "
+              "three-wire system) the line-to-line voltages are the usual reference of the voltage quality; the "
+              "line-to-earth values also contain parts of the zero sequence (displacement of the neutral) and lie "
+              "rather above the positive- or negative-sequence component – the factors k_[m] are on the safe side. "
+              "An export with the line-to-line voltages per order avoids this.",
+        "de": "Der Export enthält die Oberschwingungsspannungen je Ordnung nur Leiter-Erde. In Mittelspannungsnetzen "
+              "(Dreileiternetz) sind die Leiter-Leiter-Spannungen die übliche Bezugsgröße der Spannungsqualität; die "
+              "Leiter-Erde-Werte enthalten zusätzlich Anteile des Nullsystems (Verlagerung des Sternpunkts) und "
+              "liegen eher über der Mit- bzw. Gegensystemkomponente – die Faktoren k_[m] liegen damit auf der "
+              "sicheren Seite. Ein Export mit den Leiter-Leiter-Spannungen je Ordnung vermeidet das."},
     "document.pq_excluded": {"en": " ({n} intervals)", "de": " ({n} Intervalle)"},
     "document.pq_excluded_none": {"en": " (none in this measurement)", "de": " (in dieser Messung keine)"},
     "document.pq_factor": {
-        "en": "Factor on the quantile by the duration of the gapless values: k_[s] = {k} ({hint}).",
-        "de": "Faktor auf das Quantil nach der Dauer der lückenlosen Werte: k_[s] = {k} ({hint})."},
-    "document.pq_factor_rule": {
-        "en": "{days} days gapless; rule: {rule}", "de": "{days} Tage lückenlos; Regel: {rule}"},
+        "en": "Because of the measuring window ({days} days of gapless values), the uncertainty factor k_[s] = {k} is "
+              "applied to the {q} % quantile of the measurement to estimate the {q} % quantile {span} (rule: {rule}).",
+        "de": "Aufgrund des Messfensters ({days} Tage lückenloser Werte) wird für die Abschätzung des {q}-%-Quantils "
+              "{span} der Unsicherheitsfaktor k_[s] = {k} auf das {q}-%-Quantil der Messung angewendet "
+              "(Regel: {rule})."},
+    "document.pq_factor_one": {
+        "en": "The measurement covers {days} days of gapless values – long enough for the {q} % quantile of {span}: "
+              "no uncertainty factor, k_[s] = {k} (rule: {rule}).",
+        "de": "Die Messung umfasst {days} Tage lückenloser Werte – genug für das {q}-%-Quantil {span}: kein "
+              "Unsicherheitsfaktor, k_[s] = {k} (Regel: {rule})."},
+    "document.pq_factor_given": {
+        "en": "The factor k_[s] = {k} set for this evaluation is applied to the {q} % quantile of the measurement "
+              "({days} days of gapless values).",
+        "de": "Auf das {q}-%-Quantil der Messung wird der für diese Auswertung vorgegebene Faktor k_[s] = {k} "
+              "angewendet ({days} Tage lückenloser Werte)."},
+    "document.pq_factor_none": {
+        "en": "No factor is applied to the {q} % quantile of the measurement (k_[s] = 1; {days} days of gapless "
+              "values).",
+        "de": "Auf das {q}-%-Quantil der Messung wird kein Faktor angewendet (k_[s] = 1; {days} Tage lückenloser "
+              "Werte)."},
+    "document.pq_span_year": {"en": "of a whole year", "de": "eines ganzen Jahres"},
+    "document.pq_le_chosen": {
+        "en": "The assessment uses the line-to-earth harmonic voltages of the export, although it also contains the "
+              "line-to-line values, the usual reference in a medium-voltage network (a three-wire system); the "
+              "line-to-earth values also contain parts of the zero sequence – the factors k_[m] are on the safe side.",
+        "de": "Die Bewertung verwendet die Leiter-Erde-Oberschwingungsspannungen des Exports, obwohl er auch die "
+              "Leiter-Leiter-Werte enthält, die übliche Bezugsgröße in Mittelspannungsnetzen (Dreileiternetz); die "
+              "Leiter-Erde-Werte enthalten zusätzlich Anteile des Nullsystems – die Faktoren k_[m] liegen damit auf "
+              "der sicheren Seite."},
+    "document.pq_span_days": {"en": "of {days} days", "de": "über {days} Tage"},
     "document.pq_rule_item": {"en": "≥ {days} days {k}", "de": "≥ {days} Tage {k}"},
     "document.pq_invalid": {
         "en": "The measurement is not valid for the assessment (gapless values shorter than every duration of the "
@@ -541,8 +593,11 @@ i18n.register({
         "de": "Die {order}. Ordnung ({f} Hz) dominiert die Oberschwingungsspannung – im Median der Intervalle {share} % "
               "von U_[H] = √(Σ U_[m]²); ihr Quantil beträgt {u} V (Maximum {umax} V)."},
     "document.tab_pq": {
-        "en": "Quantiles of the power-quality measurement (largest phase per interval)",
-        "de": "Quantile der Power-Quality-Messung (größter Leiter je Intervall)"},
+        "en": "Quantiles of the power-quality measurement (largest line-to-earth voltage per interval)",
+        "de": "Quantile der Power-Quality-Messung (größte Leiter-Erde-Spannung je Intervall)"},
+    "document.tab_pq_ll": {
+        "en": "Quantiles of the power-quality measurement (largest line-to-line voltage per interval)",
+        "de": "Quantile der Power-Quality-Messung (größte Leiter-Leiter-Spannung je Intervall)"},
     "document.col_order": {"en": "Order", "de": "Ordnung"},
     "document.col_u_quantile": {"en": "Quantile in V", "de": "Quantil in V"},
     "document.col_u_factored": {"en": "× factor in V", "de": "× Faktor in V"},
@@ -560,25 +615,28 @@ i18n.register({
         "de": "Dauerlinie der {order}. Ordnung mit den Vorfehlerspannungen der Versuche"},
     "document.fig_pq_profile": {"en": "Weekly profile of the {order}th order", "de": "Wochengang der {order}. Ordnung"},
     "document.pq_comparability": {
-        "en": "Where the pre-fault voltages of the tests lie in the distribution of the measurement – over the whole "
-              "measurement and in the same time window of the week. The scaling assumes the same network and switching "
-              "state in the power-quality measurement and in the tests.",
-        "de": "Lage der Vorfehlerspannungen der Versuche in der Verteilung der Messung – über die ganze Messung und im "
-              "selben Zeitfenster der Woche. Die Skalierung setzt dasselbe Netz und denselben Schaltzustand in "
-              "PQ-Messung und Versuchen voraus."},
+        "en": "Where the pre-fault voltages of the tests lie in the distribution of the measurement: the percentile is "
+              "the share of the 10-min values below the value of the test. The scaling assumes the same network and "
+              "switching state in the power-quality measurement and in the tests.",
+        "de": "Lage der Vorfehlerspannungen der Versuche in der Verteilung der Messung: Das Perzentil ist der Anteil "
+              "der 10-min-Werte unter dem Wert des Versuchs. Die Skalierung setzt dasselbe Netz und denselben "
+              "Schaltzustand in PQ-Messung und Versuchen voraus."},
     "document.tab_pq_tests": {"en": "Tests in the distribution of the power-quality measurement", "de": "Erdschlussversuche in der Verteilung der PQ-Messung"},
     "document.pq_tests_note": {
         "en": "U pre-fault: the largest of the three line-to-earth voltages of the order before the fault – the "
               "quantity of the power-quality measurement.{others}",
         "de": "U vor dem Fehler: die größte der drei Leiter-Erde-Spannungen der Ordnung vor dem Fehler – die Größe der "
               "PQ-Messung.{others}"},
+    "document.pq_tests_note_ll": {
+        "en": "U pre-fault: the largest of the three line-to-line voltages of the order before the fault – the "
+              "quantity of the power-quality measurement.{others}",
+        "de": "U vor dem Fehler: die größte der drei Leiter-Leiter-Spannungen der Ordnung vor dem Fehler – die Größe "
+              "der PQ-Messung.{others}"},
     "document.pq_tests_others": {
         "en": " Not listed: {names} (voltages not measured at the busbar).",
         "de": " Nicht aufgeführt: {names} (Spannungen nicht an der Sammelschiene gemessen)."},
     "document.col_u_test": {"en": "U pre-fault in V", "de": "U vor dem Fehler in V"},
-    "document.col_percentile": {"en": "Percentile (all)", "de": "Perzentil (gesamt)"},
-    "document.col_window": {"en": "Time window", "de": "Zeitfenster"},
-    "document.col_percentile_window": {"en": "Percentile (window)", "de": "Perzentil (Fenster)"},
+    "document.col_percentile": {"en": "Percentile", "de": "Perzentil"},
     "document.col_factor_test": {"en": "Quantile/U_[test]", "de": "Quantil/U_[Versuch]"},
     "document.no_pq": {
         "en": "No power-quality measurement of the busbar was available for this evaluation.",
@@ -641,6 +699,26 @@ i18n.register({
               "Annahme: Ihr Strom entsteht mit der Verlagerung im Erdschluss und wird nicht von der Spannung vor dem "
               "Fehler getrieben; gerade Ordnungen sind für die Spannung eines Netzes ungewöhnlich und bleiben "
               "ebenfalls wie gemessen."},
+    "document.step2_ll": {
+        "en": "Step 2: scaling of the harmonic currents to the voltage of the power-quality measurement – order by "
+              "order. Each order of the positive or negative sequence is scaled with its own voltage, "
+              "k_[m] = k_[s]·U_[95,m]/(√3·U_[m]) (k_[s] = {k}): U_[95,m] is the quantile of the largest line-to-line "
+              "voltage of the PQ measurement, U_[m] the magnitude of the positive- or negative-sequence component of "
+              "the order in the test (mean of before and after the fault{u_ref}){safe} – √3·U_[m] is its "
+              "line-to-line voltage. An order without its own value is scaled with the THD factor. The orders of the "
+              "zero "
+              "sequence (3, 9, 15 …) keep their measured value – assumption: their current arises with the "
+              "displacement in the earth fault and is not driven by the voltage before the fault; even orders are "
+              "unusual for the voltage of a network and stay as measured as well.",
+        "de": "Schritt 2: Skalierung der Oberschwingungsströme auf die Spannung der Power-Quality-Messung – je "
+              "Ordnung. Jede Ordnung des Mit- oder Gegensystems wird mit ihrer eigenen Spannung skaliert, "
+              "k_[m] = k_[s]·U_[95,m]/(√3·U_[m]) (k_[s] = {k}): U_[95,m] ist das Quantil der größten "
+              "Leiter-Leiter-Spannung der PQ-Messung, U_[m] der Betrag der Mit- bzw. Gegensystemkomponente der "
+              "Ordnung im Versuch (Mittel aus vor und nach dem Fehler{u_ref}){safe} – √3·U_[m] ist ihre "
+              "Leiter-Leiter-Spannung. Eine Ordnung ohne eigenen Wert wird mit dem THD-Faktor skaliert. Die Ordnungen "
+              "des Nullsystems (3, 9, 15 …) behalten ihren Messwert – Annahme: Ihr Strom entsteht mit der Verlagerung "
+              "im Erdschluss und wird nicht von der Spannung vor dem Fehler getrieben; gerade Ordnungen sind für die "
+              "Spannung eines Netzes ungewöhnlich und bleiben ebenfalls wie gemessen."},
     "document.step2_thd_only": {
         "en": "Step 2: scaling of the harmonic currents to the voltage of the power-quality measurement. It gives the "
               "THD only, no voltage per order: each order of the positive or negative sequence is scaled with the THD "
@@ -663,6 +741,13 @@ i18n.register({
               "Leiter-Leiter-THD des Versuchs{u_ref}."},
     "document.ref_table_paren": {"en": " (table {n})", "de": " (Tabelle {n})"},
     "document.ref_table": {"en": ", table {n}", "de": ", Tabelle {n}"},
+    "document.step2_safe_ll": {
+        "en": "[^As a line-to-line voltage (√3·U_[m]) the component is never larger than the largest line-to-line "
+              "voltage, so k_[m] is on the safe side compared with the ratio of the largest line-to-line voltages "
+              "(quantile/U_[test], table {n}).^]",
+        "de": "[^Als Leiter-Leiter-Spannung (√3·U_[m]) ist die Komponente nie größer als die größte "
+              "Leiter-Leiter-Spannung; k_[m] liegt daher gegenüber dem Verhältnis der größten Leiter-Leiter-Spannungen "
+              "(Quantil/U_[Versuch], Tabelle {n}) auf der sicheren Seite.^]"},
     "document.step2_safe": {
         "en": "[^The component is never larger than the largest phase, so k_[m] is on the safe side compared with "
               "the ratio of the largest phases (quantile/U_[test], table {n}).^]",
@@ -759,13 +844,15 @@ i18n.register({
         "en": "With the measured source, U_[q,m] is the voltage of the order before the fault – the component of the "
               "natural sequence at the faulted phase, mean of before and after the fault, median of the tests – and "
               "Z_[q,m] = U_[q,m]/I_[m,k] − Z_[k] follows from the tests k with their additional impedances ({zs} Ω; "
-              "{how}). For the orders of the zero sequence the voltage before the fault is not their source "
-              "(assumption: they arise in the fault); they keep the source fitted to the currents.",
+              "{how}). For the orders of the zero sequence the voltage before the fault is not relevant: the "
+              "quantities of the zero sequence are assumed to arise only in the earth fault. These orders keep the "
+              "source fitted to the currents of the tests.",
         "de": "Mit der gemessenen Quelle ist U_[q,m] die Spannung der Ordnung vor dem Fehler – die Komponente der "
               "natürlichen Folge am Fehlerleiter, Mittel aus vor und nach dem Fehler, Median der Versuche – und "
               "Z_[q,m] = U_[q,m]/I_[m,k] − Z_[k] folgt aus den Versuchen k mit ihren Zusatzimpedanzen ({zs} Ω; {how}). "
-              "Für die Ordnungen des Nullsystems ist die Spannung vor dem Fehler nicht die Quelle (Annahme: sie "
-              "entstehen im Fehler); sie behalten die aus den Strömen geschätzte Quelle."},
+              "Für die Ordnungen des Nullsystems ist die Spannung vor dem Fehler nicht relevant: Es wird angenommen, "
+              "dass die Größen des Nullsystems erst im Erdschluss entstehen. Für diese Ordnungen gilt die aus den "
+              "Strömen der Versuche geschätzte Quelle."},
     "document.zq_median": {"en": "median over the tests", "de": "Median über die Versuche"},
     "document.zq_smallest": {"en": "from the test with the smallest additional impedance",
                              "de": "aus dem Versuch mit der kleinsten Zusatzimpedanz"},
@@ -785,8 +872,10 @@ i18n.register({
     "document.source_measured": {"en": "measured", "de": "gemessen"},
     "document.source_fitted": {"en": "fitted", "de": "geschätzt"},
     "document.fig_source_fit": {
-        "en": "Current per order over the additional impedance: model and tests (normalised to the source level)",
-        "de": "Strom je Ordnung über der Zusatzimpedanz: Modell und Versuche (auf den Quellenpegel normiert)"},
+        "en": "Current per order over the additional impedance: model (lines) and measured values of the tests "
+              "(circles), normalised to the source level",
+        "de": "Strom je Ordnung über der Zusatzimpedanz: Modell (Linien) und Messwerte der Versuche (Kreise), auf den "
+              "Quellenpegel normiert"},
     "document.es_result": {
         "en": "At the earthing impedance given for the assessment, Z_[E] = {Z} Ω{basis} (ohmic), the residual current is "
               "I_[RES] = {ires} A (I_[G] = {ig} A, I_[H] = {ih} A){assessed}. Z_[E] lies {inside} the range of the "
@@ -800,18 +889,17 @@ i18n.register({
               "I_[H,scaled] = {ih} A, I_[RES] = {ires} A, assessed I_[RES,ass] = {a} A.",
         "de": "Je Ordnung skaliert auf die PQ-Messung ({how}; {kept} wie gemessen): I_[H,skaliert] = {ih} A, "
               "I_[RES] = {ires} A, Bewertung I_[RES,Bew] = {a} A."},
-    "document.es_how_own": {"en": "U_[q,m] set to k_[s]·U_[95,m]", "de": "U_[q,m] auf k_[s]·U_[95,m] gesetzt"},
+    "document.es_how_own": {"en": "U_[q,m] set to {u}", "de": "U_[q,m] auf {u} gesetzt"},
     "document.es_how_thd": {
         "en": "U_[q,m] multiplied by the THD factor k_[THD] = {f}, there is no quantile per order",
         "de": "U_[q,m] mit dem THD-Faktor k_[THD] = {f} multipliziert, ein Quantil je Ordnung gibt es nicht"},
     "document.es_how_mixed": {
-        "en": "U_[q,m] set to k_[s]·U_[95,m], an order without its own quantile multiplied by the THD factor "
-              "k_[THD] = {f}",
-        "de": "U_[q,m] auf k_[s]·U_[95,m] gesetzt, eine Ordnung ohne eigenes Quantil mit dem THD-Faktor k_[THD] = {f} "
+        "en": "U_[q,m] set to {u}, an order without its own quantile multiplied by the THD factor k_[THD] = {f}",
+        "de": "U_[q,m] auf {u} gesetzt, eine Ordnung ohne eigenes Quantil mit dem THD-Faktor k_[THD] = {f} "
               "multipliziert"},
     "document.es_how_own_unscaled": {
-        "en": "U_[q,m] set to k_[s]·U_[95,m], an order without its own quantile as measured",
-        "de": "U_[q,m] auf k_[s]·U_[95,m] gesetzt, eine Ordnung ohne eigenes Quantil wie gemessen"},
+        "en": "U_[q,m] set to {u}, an order without its own quantile as measured",
+        "de": "U_[q,m] auf {u} gesetzt, eine Ordnung ohne eigenes Quantil wie gemessen"},
     "document.es_how_none": {"en": "no order with a quantile", "de": "keine Ordnung mit einem Quantil"},
     "document.es_kept_between": {"en": "zero sequence, even orders and the content between the orders",
                                  "de": "Nullsystem, gerade Ordnungen und Anteile zwischen den Ordnungen"},
@@ -828,14 +916,38 @@ i18n.register({
     "document.es_mc_model": {"en": ", plus the residual of the fit per order",
                              "de": ", dazu das Residuum der Anpassung je Ordnung"},
     "document.es_loo": {
-        "en": "Cross-validation[^Leave-one-out: each test is forecast from the other tests.^]: largest deviation "
-              "{dev} % ({order}th order){limit}.",
-        "de": "Kreuzvalidierung[^Leave-one-out: Jeder Versuch wird aus den übrigen Versuchen vorhergesagt.^]: größte "
-              "Abweichung {dev} % ({order}. Ordnung){limit}."},
+        "en": "Cross-validation[^Leave-one-out: each test is forecast from the other tests.^] of the orders of the "
+              "positive and negative sequence – their sources are the harmonic voltages of the network: "
+              "largest deviation {dev} % ({order}th order){limit}.",
+        "de": "Kreuzvalidierung[^Leave-one-out: Jeder Versuch wird aus den übrigen Versuchen vorhergesagt.^] der "
+              "Ordnungen des Mit- und Gegensystems – ihre Quellen sind die Oberschwingungsspannungen des Netzes: "
+              "größte Abweichung {dev} % ({order}. Ordnung){limit}."},
     "document.es_loo_limit": {
         "en": "; {bad} of {n} values outside {lim} – a hint that the network or the sources changed between the tests",
         "de": "; {bad} von {n} Werten außerhalb {lim} – ein Hinweis auf eine Änderung von Netz oder Quellen zwischen "
               "den Versuchen"},
+    "document.es_loo_ok": {"en": "; all {n} values within {lim}", "de": "; alle {n} Werte innerhalb {lim}"},
+    "document.es_loo_zero": {
+        "en": "At the orders of the zero sequence ({orders}) the forecast deviates by up to {dev} % ({order}th "
+              "order){limit}. Their source presumably arises only in the earth fault (e.g. the nonlinear current of "
+              "the coils) and then depends on the operating point – position and saturation of the coils –, which may "
+              "differ between the tests; a deviation there is no sure sign of a change of the network.",
+        "de": "Bei den Ordnungen des Nullsystems ({orders}) weicht die Vorhersage um bis zu {dev} % ab ({order}. "
+              "Ordnung){limit}. Ihre Quelle entsteht vermutlich erst im Erdschluss (z. B. nichtlinearer Strom der "
+              "Spulen) und hängt dann vom Arbeitspunkt ab – Stellung und Sättigung der Spulen –, der sich zwischen "
+              "den Versuchen unterscheiden kann; eine Abweichung ist dort kein sicheres Zeichen einer Änderung des "
+              "Netzes."},
+    "document.es_loo_zero_one": {
+        "en": "At the {order}th order (zero sequence) the forecast deviates by up to {dev} %{limit}. Its source "
+              "presumably arises only in the earth fault (e.g. the nonlinear current of the coils) and then depends on "
+              "the operating point – position and saturation of the coils –, which may differ between the tests; a "
+              "deviation there is no sure sign of a change of the network.",
+        "de": "Bei der {order}. Ordnung (Nullsystem) weicht die Vorhersage um bis zu {dev} % ab{limit}. Ihre Quelle "
+              "entsteht vermutlich erst im Erdschluss (z. B. nichtlinearer Strom der Spulen) und hängt dann vom "
+              "Arbeitspunkt ab – Stellung und Sättigung der Spulen –, der sich zwischen den Versuchen unterscheiden "
+              "kann; eine Abweichung ist dort kein sicheres Zeichen einer Änderung des Netzes."},
+    "document.es_loo_zero_limit": {"en": "; {bad} of {n} values outside {lim}",
+                                   "de": "; {bad} von {n} Werten außerhalb {lim}"},
     "document.loo_limit_unknown": {"en": "the permissible deviation", "de": "der zulässigen Abweichung"},
     "document.or": {"en": "or", "de": "bzw."},
     "document.fig_ires_ze": {
@@ -857,10 +969,16 @@ i18n.register({
               "wachsendem Widerstand.{reactive}"},
     "document.ref_figure": {"en": " (figure {n})", "de": " (Abbildung {n})"},
     "document.forecast_reactive": {
-        "en": " The source impedances are capacitive (X_[q] < 0): an inductive earthing impedance can increase the "
-              "current of an order (series resonance) – the model takes the impedance as ohmic.",
-        "de": " Die Quellenimpedanzen sind kapazitiv (X_[q] < 0): Eine induktive Erdungsimpedanz kann den Strom einer "
-              "Ordnung erhöhen (Reihenresonanz) – das Modell rechnet mit einer ohmschen Impedanz."},
+        "en": " The source impedances are capacitive (X_[q] < 0); together with an inductive fault impedance a series "
+              "resonance would be possible in theory. With a fault in the network, however, the resistances of the "
+              "cables and overhead lines in the positive and the zero sequence lie in the fault loop as well and damp "
+              "the current – a series resonance is a rather theoretical case of little practical importance. The "
+              "model takes the impedance as ohmic.",
+        "de": " Die Quellenimpedanzen sind kapazitiv (X_[q] < 0); mit einer induktiven Fehlerimpedanz wäre rechnerisch "
+              "eine Reihenresonanz möglich. Bei Fehlern im Netz liegen jedoch zusätzlich die Wirkwiderstände der "
+              "Kabel und Freileitungen im Mit- und Nullsystem im Fehlerkreis und dämpfen den Strom – eine "
+              "Reihenresonanz ist daher eher ein theoretischer Fall mit geringer praktischer Bedeutung. Das Modell "
+              "rechnet mit einer ohmschen Impedanz."},
     "document.forecast_2": {
         "en": "Network state: scaled to the quantiles of the power-quality measurement, the value holds for the "
               "unfavourable state of the measured period; the model is valid for the network and switching state of "
@@ -896,8 +1014,10 @@ i18n.register({
     # ---- station assessment
     "document.sec_station_assessment": {"en": "Assessment of the earthing – {station}", "de": "Aufbereitung Erdung – {station}"},
     "document.ut_condition": {
-        "en": "The touch voltage must not exceed the permissible touch voltage, U_[T] ≤ U_[Tp], with",
-        "de": "Die Berührungsspannung darf die zulässige Berührungsspannung nicht überschreiten, U_[T] ≤ U_[Tp], mit"},
+        "en": "The prospective (open-circuit) touch voltage must not exceed the permissible touch voltage, "
+              "U_[vT] ≤ U_[Tp], with",
+        "de": "Die Leerlauf-Berührungsspannung darf die zulässige Berührungsspannung nicht überschreiten, "
+              "U_[vT] ≤ U_[Tp], mit"},
     "document.ut_cases_note": {
         "en": "Cases 1 and 2 take the limit current of the network ({limit} A) and Z_[E] of the earthing measurement at "
               "the reference frequency {f} Hz set for the evaluation ({z} Ω{how}{z50}).",
@@ -908,10 +1028,10 @@ i18n.register({
                                      "de": ", linear interpoliert zwischen {lo} und {hi} Hz"},
     "document.ut_ref_nearest": {"en": " at {used} Hz – the earthing measurement has no value at {req} Hz",
                                 "de": " bei {used} Hz – die Erdungsmessung hat bei {req} Hz keinen Wert"},
-    "document.eq_ut": {"en": "U_[T] = r·I_[RES]·Z_[E] / F = U_[E] / F", "de": "U_[T] = r·I_[RES]·Z_[E] / F = U_[E] / F"},
+    "document.eq_ut": {"en": "U_[vT] = r·I_[RES]·Z_[E] / F = U_[E] / F", "de": "U_[vT] = r·I_[RES]·Z_[E] / F = U_[E] / F"},
     "document.ut_parameters": {
-        "en": "Parameters of the network operator: U_[Tp] = {utp} V, F = {f}{r}.",
-        "de": "Vorgaben des Netzbetreibers: U_[Tp] = {utp} V, F = {f}{r}."},
+        "en": "Specifications{by}: U_[Tp] = {utp} V, F = {f}{r}.",
+        "de": "Vorgaben{by}: U_[Tp] = {utp} V, F = {f}{r}."},
     "document.ut_r_flat": {"en": ", flat reduction factor r = {r}", "de": ", pauschaler Reduktionsfaktor r = {r}"},
     "document.ut_case2_missing": {
         "en": "Case 2 (limit current with a flat reduction factor r) is left out – no flat r is given.",
@@ -919,12 +1039,13 @@ i18n.register({
     "document.ut_missing": {
         "en": "U_[Tp] or F is not set – the touch voltage is not assessed.",
         "de": "U_[Tp] oder F ist nicht gesetzt – die Berührungsspannung wird nicht bewertet."},
-    "document.tab_ut": {"en": "Approaches to the touch voltage – {station}", "de": "Ansätze zur Beurteilung der Berührungsspannung – {station}"},
+    "document.tab_ut": {"en": "Approaches to the prospective touch voltage – {station}",
+                        "de": "Ansätze zur Beurteilung der Leerlauf-Berührungsspannung – {station}"},
     "document.col_case": {"en": "Case", "de": "Fall"},
     "document.col_i": {"en": "I in A", "de": "I in A"},
     "document.col_ze": {"en": "Z_[E] in Ω", "de": "Z_[E] in Ω"},
     "document.col_ue": {"en": "U_[E] in V", "de": "U_[E] in V"},
-    "document.col_ut": {"en": "U_[T] in V", "de": "U_[T] in V"},
+    "document.col_ut": {"en": "U_[vT] in V", "de": "U_[vT] in V"},
     "document.col_share": {"en": "of U_[Tp] in %", "de": "von U_[Tp] in %"},
     "document.case_1": {
         "en": "1 limit current, r = 1, Z_[E] at {f} Hz", "de": "1 Grenzstrom, r = 1, Z_[E] bei {f} Hz"},
@@ -933,15 +1054,24 @@ i18n.register({
     "document.case_3": {
         "en": "3 per frequency: r·Z_[E] measured, assessed current per order",
         "de": "3 je Frequenz: r·Z_[E] gemessen, Bewertungsstrom je Ordnung"},
-    "document.case_4": {"en": "4 measured earth potential rise", "de": "4 gemessene Erdungsspannung"},
-    "document.case_4b": {"en": "4b measured, extrapolated to the limit current", "de": "4b gemessen, hochgerechnet auf den Grenzstrom"},
-    "document.case_ut_measured": {"en": "measured touch voltage (probe)", "de": "gemessene Berührungsspannung (Sonde)"},
+    "document.case_4": {"en": "4 measured at the earth probe", "de": "4 gemessen am Erdungsspieß"},
+    "document.case_4_probe": {"en": "4 measured at the probe at {d} m ({probe})",
+                              "de": "4 gemessen an der Sonde in {d} m ({probe})"},
+    "document.case_4b": {"en": "4b as 4, extrapolated to the limit current", "de": "4b wie 4, hochgerechnet auf den Grenzstrom"},
+    "document.case_ut_measured": {"en": "measured at the touch-voltage probe", "de": "gemessen an der Sonde für U_[vT]"},
+    "document.case_ut_probe": {"en": "measured at the probe at {d} m ({probe}): U_[vT]",
+                               "de": "gemessen an der Sonde in {d} m ({probe}): U_[vT]"},
+    "document.case_ut_probe_far": {
+        "en": "measured at the probe at {d} m ({probe}): U_[vT] estimated from the nearest possible measuring point",
+        "de": "gemessen an der Sonde in {d} m ({probe}): U_[vT] abgeschätzt aus dem nächstmöglichen Messpunkt"},
+    "document.case_short_4_probe": {"en": "Case 4 ({d} m)", "de": "Fall 4 ({d} m)"},
+    "document.case_short_ut_probe": {"en": "Probe {d} m", "de": "Sonde {d} m"},
     "document.case_short_1": {"en": "Case 1", "de": "Fall 1"},
     "document.case_short_2": {"en": "Case 2", "de": "Fall 2"},
     "document.case_short_3": {"en": "Case 3", "de": "Fall 3"},
     "document.case_short_4": {"en": "Case 4", "de": "Fall 4"},
     "document.case_short_4b": {"en": "Case 4b", "de": "Fall 4b"},
-    "document.case_short_ut": {"en": "U_T probe", "de": "U_T Sonde"},
+    "document.case_short_ut": {"en": "U_vT probe", "de": "U_vT Sonde"},
     "document.ut_case3_note": {
         "en": "Case 3 uses the assessment currents per order of {name} – the largest assessment value, conservative; "
               "I = √(Σ I_[m]²) without the content between the orders – and r·Z_[E] of the earth-fault test per order "
@@ -952,7 +1082,11 @@ i18n.register({
               "(Spieß {probe}, fehlerbedingt; Ordnungen {orders}); Ordnungen ohne eigenen Wert erhalten den größten "
               "gemessenen Wert von r·Z_[E] ({covered} % von Σ I_[m]² liegen bei gemessenen Ordnungen)."},
     "document.fig_ut": {
-        "en": "Approaches to the touch voltage – {station}", "de": "Gegenüberstellung der Ansätze zur Beurteilung der Berührungsspannung – {station}"},
+        "en": "Approaches to the prospective touch voltage U_[vT] – {station}{note}",
+        "de": "Gegenüberstellung der Ansätze zur Beurteilung der Leerlauf-Berührungsspannung U_[vT] – {station}{note}"},
+    "document.fig_ut_far": {
+        "en": " (probe at {d} m: U_[vT] estimated from the nearest possible measuring point)",
+        "de": " (Sonde in {d} m: U_[vT] abgeschätzt aus dem nächstmöglichen Messpunkt)"},
     "document.ze_permissible": {
         "en": "Permissible earthing impedance for I_[RES,ass] = {i} A: Z_[E,perm] = F·U_[Tp]/(r·I_[RES,ass]) = {z1} Ω "
               "with r = 1{zr}{cmp}.",
@@ -994,7 +1128,9 @@ i18n.register({
     "document.u_model": {"en": "Equivalent-source model", "de": "Ersatzquellenmodell"},
     "document.u_model_value": {"en": "Monte Carlo (I_[G] fixed) P5 … P95 {p5} … {p95} A",
                                "de": "Monte Carlo (I_[G] fest) P5 … P95 {p5} … {p95} A"},
-    "document.u_loo_value": {"en": "leave-one-out up to {dev} %", "de": "Leave-one-out bis {dev} %"},
+    "document.u_loo_value": {"en": "leave-one-out (positive and negative sequence) up to {dev} %",
+                             "de": "Leave-one-out (Mit- und Gegensystem) bis {dev} %"},
+    "document.u_loo_zero": {"en": ", zero sequence up to {dev} %", "de": ", Nullsystem bis {dev} %"},
     "document.u_pq": {"en": "Sample of the PQ measurement", "de": "Stichprobe der PQ-Messung"},
     "document.u_pq_value": {
         "en": "bootstrap over days: I_[RES](Z_[E]) scaled P5 … P95 = {p5} … {p95} A",
@@ -1026,9 +1162,9 @@ i18n.register({
         "de": "Anzeige des Spulenreglers {display} A, Summe der gemessenen Spulenströme {coils} A"},
     "document.sum_ires": {
         "en": "The residual earth-fault current of the tests reaches {ires} A in {name} – {share} % of I_[CE] –, with "
-              "margin {a} A; the damping of the network is d = {d} %.",
-        "de": "Der Erdschlussreststrom der Versuche erreicht {ires} A in {name} – {share} % von I_[CE] –, mit Zuschlag "
-              "{a} A; die Dämpfung des Netzes beträgt d = {d} %."},
+              "the margin for the measurement uncertainties (+{mi} %) {a} A; the damping of the network is d = {d} %.",
+        "de": "Der Erdschlussreststrom der Versuche erreicht {ires} A in {name} – {share} % von I_[CE] –, mit dem "
+              "Zuschlag aus den Messunsicherheiten (+{mi} %) {a} A; die Dämpfung des Netzes beträgt d = {d} %."},
     "document.sum_composition": {
         "en": "As measured, {measured} predominates (I_[G] = {ig} A, I_[H] = {ih} A, mainly the {order}th order){scaled}.",
         "de": "Gemessen überwiegt {measured} (I_[G] = {ig} A, I_[H] = {ih} A, vor allem die {order}. Ordnung){scaled}."},
@@ -1041,10 +1177,10 @@ i18n.register({
     "document.the_fundamental": {"en": "the fundamental", "de": "die Grundschwingung"},
     "document.the_harmonics": {"en": "the harmonic content", "de": "der Oberschwingungsanteil"},
     "document.sum_scaled": {
-        "en": "Scaled order by order to the power-quality measurement (factor {k}), the largest test gives "
+        "en": "Scaled order by order to the power-quality measurement (factor {k}), the largest test – {name} – gives "
               "I_[RES,ass] = {ires} A; limit {limit} A: {status}.",
-        "de": "Je Ordnung auf die PQ-Messung skaliert (Faktor {k}) ergibt der größte Versuch I_[RES,Bew] = {ires} A; "
-              "Grenzwert {limit} A: {status}."},
+        "de": "Je Ordnung auf die PQ-Messung skaliert (Faktor {k}) ergibt der größte Versuch – {name} – "
+              "I_[RES,Bew] = {ires} A; Grenzwert {limit} A: {status}."},
     "document.sum_es": {
         "en": "With the equivalent sources the residual current at the earthing impedance Z_[E] = {Z} Ω is "
               "I_[RES,ass] = {ires} A{scaled}; limit {limit} A: {status}.",
@@ -1064,14 +1200,15 @@ i18n.register({
     "document.decisive_busbar": {
         "en": "the value of the largest test (fault at the busbar)", "de": "der Wert des größten Versuchs (Fehler an der Sammelschiene)"},
     "document.sum_station_ok": {
-        "en": "{station}: every approach keeps the permissible touch voltage U_[Tp] = {utp} V – at most {ut} V "
-              "({case}, {share} % of U_[Tp]){measured}.",
-        "de": "{station}: Alle Ansätze halten die zulässige Berührungsspannung U_[Tp] = {utp} V ein – höchstens "
-              "{ut} V ({case}, {share} % von U_[Tp]){measured}."},
+        "en": "{station}: in every approach the prospective touch voltage U_[vT] keeps the permissible touch voltage "
+              "U_[Tp] = {utp} V – at most {ut} V ({case}, {share} % of U_[Tp]){measured}.",
+        "de": "{station}: Die Leerlauf-Berührungsspannung U_[vT] hält in allen Ansätzen die zulässige "
+              "Berührungsspannung U_[Tp] = {utp} V ein – höchstens {ut} V ({case}, {share} % von U_[Tp]){measured}."},
     "document.sum_station_exceeded": {
-        "en": "{station}: {cases} exceed the permissible touch voltage U_[Tp] = {utp} V – up to {ut} V ({case}, "
-              "{share} % of U_[Tp]){measured}.",
-        "de": "{station}: {cases} überschreiten die zulässige Berührungsspannung U_[Tp] = {utp} V – bis {ut} V "
+        "en": "{station}: in {cases} the prospective touch voltage U_[vT] exceeds the permissible touch voltage "
+              "U_[Tp] = {utp} V – up to {ut} V ({case}, {share} % of U_[Tp]){measured}.",
+        "de": "{station}: In {cases} überschreitet die Leerlauf-Berührungsspannung U_[vT] die zulässige "
+              "Berührungsspannung U_[Tp] = {utp} V – bis {ut} V "
               "({case}, {share} % von U_[Tp]){measured}."},
     "document.sum_station_measured": {
         "en": "; with the values measured at the station ({cases}) at most {ut} V",
@@ -1090,6 +1227,13 @@ i18n.register({
               "U_[E] ≤ F·U_[Tp] = {u} V).",
         "de": "Bei I_[RES,Bew] = {i} A halten Erdungsimpedanzen bis {z} Ω die zulässige Berührungsspannung ein "
               "(r = 1: U_[E] ≤ F·U_[Tp] = {u} V)."},
+    "document.sum_ze_below": {
+        "en": " The earthing impedance of the assessment, Z_[E] = {ze} Ω{basis}, lies below it ({ze} Ω < {z} Ω).",
+        "de": " Die Erdungsimpedanz der Bewertung, Z_[E] = {ze} Ω{basis}, liegt darunter ({ze} Ω < {z} Ω)."},
+    "document.sum_ze_above": {
+        "en": " The earthing impedance of the assessment, Z_[E] = {ze} Ω{basis}, lies above it ({ze} Ω > {z} Ω).",
+        "de": " Die Erdungsimpedanz der Bewertung, Z_[E] = {ze} Ω{basis}, liegt darüber ({ze} Ω > {z} Ω)."},
+    "document.sum_ze_basis": {"en": " ({basis})", "de": " ({basis})"},
     "document.sum_hints": {"en": "Notes of the evaluation:", "de": "Hinweise der Auswertung:"},
     "document.recommendation": {"en": "Recommendation", "de": "Empfehlung"},
     "document.recommendation_placeholder": {
@@ -1171,14 +1315,19 @@ i18n.register({
                               "de": "Ersatzquellen: Residuum der Ströme je Ordnung"},
     "document.chk_residual_value": {"en": "largest {dev} % ({order}th order)",
                                     "de": "größtes {dev} % ({order}. Ordnung)"},
-    "document.chk_loo": {"en": "Equivalent sources: leave-one-out per order",
-                         "de": "Ersatzquellen: Leave-one-out je Ordnung"},
+    "document.chk_loo": {"en": "Equivalent sources: leave-one-out (positive and negative sequence)",
+                         "de": "Ersatzquellen: Leave-one-out (Mit- und Gegensystem)"},
+    "document.chk_loo_zero": {"en": "zero sequence for information: {bad} of {n} outside, up to {dev} % ({order}th order)",
+                              "de": "Nullsystem zur Information: {bad} von {n} außerhalb, bis {dev} % ({order}. Ordnung)"},
     "document.chk_loo_value": {"en": "{bad} of {n} outside {lim}; up to {dev} % ({order}th order)",
                                "de": "{bad} von {n} außerhalb {lim}; bis {dev} % ({order}. Ordnung)"},
     "document.chk_loo_value_ok": {"en": "all within {lim}; up to {dev} % ({order}th order)",
                                   "de": "alle innerhalb {lim}; bis {dev} % ({order}. Ordnung)"},
-    "document.chk_probe": {"en": "Touch voltage (probe) ≤ earth potential rise", "de": "Berührungsspannung (Spieß) ≤ Erdungsspannung"},
+    "document.chk_probe": {"en": "Voltage at the nearer probe ≤ at the farther probe",
+                           "de": "Spannung an der näheren Sonde ≤ an der ferneren Sonde"},
     "document.chk_probe_value": {"en": "{station}: {ut} V ↔ {ue} V", "de": "{station}: {ut} V ↔ {ue} V"},
+    "document.chk_probe_value_d": {"en": "{station}: {ut} V ({dt} m) ↔ {ue} V ({de} m)",
+                                   "de": "{station}: {ut} V ({dt} m) ↔ {ue} V ({de} m)"},
     "document.chk_pq": {"en": "Power-quality measurement valid", "de": "PQ-Messung gültig"},
     # ---- review round: processing, context, coil controller, limits, compact station
     "document.proc_dc_highpass": {
@@ -1203,9 +1352,27 @@ i18n.register({
         "de": "Daraus I_[CE] = I_[L]/(1 + v) = {sum} A/{den} ≈ {ice} A (v > 0: Überkompensation)."},
     "document.ctrl_compare": {
         "en": "The measured values (median of the tests with an additional impedance) differ from the display: "
-              "{items} – parameters of the coils and errors of the transducers and clamps.",
-        "de": "Die Messwerte (Median der Versuche mit Zusatzimpedanz) weichen von der Anzeige ab: {items} – "
-              "Parametrierung der Spulen und Messfehler der Wandler und Zangen."},
+              "{items}. Possible causes: {causes}.",
+        "de": "Die Messwerte (Median der Versuche mit Zusatzimpedanz) weichen von der Anzeige ab: {items}. Mögliche "
+              "Ursachen: {causes}."},
+    "document.ctrl_cause_voltage": {
+        "en": "the voltage in the earth fault can differ from the rated voltage of the coils to which their scales "
+              "refer (in 20-kV networks often 21 kV/√3) – at a smaller voltage a smaller coil current flows",
+        "de": "die Spannung im Erdschluss kann von der Bemessungsspannung der Spulen abweichen, auf die sich ihre "
+              "Skalen beziehen (in 20-kV-Netzen häufig 21 kV/√3) – bei kleinerer Spannung fließt ein kleinerer "
+              "Spulenstrom"},
+    "document.ctrl_cause_voltage_rated": {
+        "en": "the scales of the coils refer to their rated voltage {ur} kV/√3 = {up} kV; in the tests the "
+              "displacement voltage was U_[0] = {u0} kV – the coil current changes in the same ratio ({dev} %)",
+        "de": "die Skalen der Spulen beziehen sich auf ihre Bemessungsspannung {ur} kV/√3 = {up} kV; in den "
+              "Versuchen betrug die Verlagerungsspannung U_[0] = {u0} kV – der Spulenstrom ändert sich im selben "
+              "Verhältnis ({dev} %)"},
+    "document.ctrl_cause_reading": {
+        "en": "the reading accuracy of the scales at the coils (usually marks at full 10 A or 20 A only)",
+        "de": "die Ablesegenauigkeit der Skalen an den Spulen (meist nur Striche bei vollen 10 A oder 20 A)"},
+    "document.ctrl_cause_measuring": {
+        "en": "the measurement uncertainty of the transducers and clamps",
+        "de": "die Messunsicherheit der Wandler und Zangen"},
     "document.ctrl_cmp_coils": {"en": "sum of the coil currents {x} A ({dev} %)",
                                 "de": "Summe der Spulenströme {x} A ({dev} %)"},
     "document.ctrl_cmp_active": {"en": "active current {x} A ({dev} %)", "de": "Wirkstrom {x} A ({dev} %)"},
@@ -1254,11 +1421,11 @@ i18n.register({
               "nach dem Fehlereintritt, das bewertete Fenster ({t} s) liegt an seinem Anfang"},
     "document.scaling_context": {
         "en": "Classification of the factors: in the tests the {order}th order lay at the {p_all} percentile of the "
-              "power-quality measurement{window}. Its median is {u_day} V on the weekday of the tests ({day}) and "
+              "power-quality measurement{table}. Its median is {u_day} V on the weekday of the tests ({day}) and "
               "{u_lo} … {u_hi} V over the days of the week; the quantile ({q} V) stands for the times of a high "
               "harmonic voltage. Hence the factors k_[m] ({ks}).",
         "de": "Einordnung der Faktoren: In den Versuchen lag die {order}. Ordnung im {p_all} Perzentil der "
-              "PQ-Messung{window}. Ihr Median beträgt am Wochentag der Versuche ({day}) {u_day} V, über die Wochentage "
+              "PQ-Messung{table}. Ihr Median beträgt am Wochentag der Versuche ({day}) {u_day} V, über die Wochentage "
               "{u_lo} … {u_hi} V; das Quantil ({q} V) steht für die Zeiten hoher Oberschwingungsspannung. Daraus "
               "folgen die Faktoren k_[m] ({ks})."},
     "document.scaling_low": {
@@ -1270,30 +1437,34 @@ i18n.register({
               "Werten –, und ihr Faktor k_[m] = {k} hebt sie auf einen Pegel, den das Netz am Versuchstag nicht hatte. "
               "Vor der Verwendung prüfen, ob PQ-Messung und Versuche denselben Netz- und Schaltzustand haben "
               "(vorgelagertes HS-Netz, Kupplung der Sammelschienen)."},
-    "document.scaling_context_window": {
-        "en": ", within the same time window of the week at the {p} percentile (table {t})",
-        "de": ", im selben Zeitfenster der Woche im {p} Perzentil (Tabelle {t})"},
+    "document.scaling_context_table": {"en": " (table {t})", "de": " (Tabelle {t})"},
     "document.es_basis": {"en": "[^{basis}^]", "de": "[^{basis}^]"},
     "document.es_decomposition": {
-        "en": "Compared with {ires} A as measured, only the harmonic content grows ({ih} → {ihs} A); the fundamental "
-              "({ig} A) stays{ref}.",
-        "de": "Gegenüber {ires} A wie gemessen wächst allein der Oberschwingungsanteil ({ih} → {ihs} A); die "
-              "Grundschwingung ({ig} A) bleibt{ref}."},
-    "document.es_decomposition_ref": {"en": " – the factors are classified in section {sec}",
-                                      "de": " – Einordnung der Faktoren in Abschnitt {sec}"},
+        "en": "The scaling changes the harmonic content only: at Z_[E] = {Z} Ω it rises from I_[H] = {ih} A (the "
+              "harmonic voltages of the tests) to {ihs} A (the harmonic voltages of the power-quality measurement). "
+              "The fundamental I_[G] = {ig} A stays as it is – it depends on the capacitance, the detuning and the "
+              "damping of the network, not on the harmonic voltages. Hence I_[RES] rises from {ires} A to {iress} A."
+              "{ref}",
+        "de": "Die Skalierung verändert nur den Oberschwingungsanteil: An Z_[E] = {Z} Ω steigt er von I_[H] = {ih} A "
+              "(mit den Oberschwingungsspannungen der Versuche) auf {ihs} A (mit den Oberschwingungsspannungen der "
+              "PQ-Messung). Die Grundschwingung I_[G] = {ig} A bleibt unverändert – sie hängt von Kapazität, "
+              "Verstimmung und Dämpfung des Netzes ab, nicht von den Oberschwingungsspannungen. Damit steigt I_[RES] "
+              "von {ires} A auf {iress} A.{ref}"},
+    "document.es_decomposition_ref": {"en": " Section {sec} explains how large the factors k_[m] are and why.",
+                                      "de": " Wie groß die Faktoren k_[m] sind und warum, ordnet Abschnitt {sec} ein."},
     "document.lc_intro": {
-        "en": "The limits of the network operator hold under conditions on the earthing systems. Every row assesses "
+        "en": "The limits{by} hold under conditions on the earthing systems. Every row assesses "
               "I_[RES,ass] at the largest earthing impedance Z_[E] of its case – the residual current falls with "
               "Z_[E], the earth potential rise U_[E] = r·I_[RES,ass]·Z_[E] rises – and compares U_[E] with "
               "F·U_[Tp] = {u} V.",
-        "de": "Die Grenzwerte des Netzbetreibers gelten unter Bedingungen an die Erdungsanlagen. Jede Zeile bewertet "
+        "de": "Die Grenzwerte{by} gelten unter Bedingungen an die Erdungsanlagen. Jede Zeile bewertet "
               "I_[RES,Bew] an der größten Erdungsimpedanz Z_[E] ihres Falls – der Reststrom sinkt mit Z_[E], die "
               "Erdungsspannung U_[E] = r·I_[RES,Bew]·Z_[E] steigt – und vergleicht U_[E] mit F·U_[Tp] = {u} V."},
     "document.lc_intro_no_u": {
-        "en": "The limits of the network operator hold under conditions on the earthing systems. Every row assesses "
+        "en": "The limits{by} hold under conditions on the earthing systems. Every row assesses "
               "I_[RES,ass] at the largest earthing impedance Z_[E] of its case (the residual current falls with "
               "Z_[E]); U_[Tp] or F is not set.",
-        "de": "Die Grenzwerte des Netzbetreibers gelten unter Bedingungen an die Erdungsanlagen. Jede Zeile bewertet "
+        "de": "Die Grenzwerte{by} gelten unter Bedingungen an die Erdungsanlagen. Jede Zeile bewertet "
               "I_[RES,Bew] an der größten Erdungsimpedanz Z_[E] ihres Falls (der Reststrom sinkt mit Z_[E]); U_[Tp] "
               "oder F ist nicht gesetzt."},
     "document.lc_busbar": {
@@ -1317,11 +1488,17 @@ i18n.register({
         "en": "Applies: the limit {limit} A – I_[RES,ass] = {i} A exceeds it by {pct} %{u_text}.",
         "de": "Es gilt der Grenzwert {limit} A: I_[RES,Bew] = {i} A überschreitet ihn um {pct} %{u_text}."},
     "document.lc_u_ok": {
-        "en": "; the condition behind it, U_[E] ≤ F·U_[Tp], is kept with {ue} V ({share} % of {u} V)",
-        "de": "; die Bedingung dahinter, U_[E] ≤ F·U_[Tp], ist mit {ue} V eingehalten ({share} % von {u} V)"},
+        "en": "; the condition behind it, U_[E] ≤ F·U_[Tp], is kept with {ue} V ({share} % of {u} V){iu}",
+        "de": "; die Bedingung dahinter, U_[E] ≤ F·U_[Tp], ist mit {ue} V eingehalten ({share} % von {u} V){iu}"},
     "document.lc_u_exceeded": {
-        "en": "; U_[E] = {ue} V exceeds F·U_[Tp] = {u} V",
-        "de": "; U_[E] = {ue} V überschreitet F·U_[Tp] = {u} V"},
+        "en": "; U_[E] = {ue} V exceeds F·U_[Tp] = {u} V{iu}",
+        "de": "; U_[E] = {ue} V überschreitet F·U_[Tp] = {u} V{iu}"},
+    "document.lc_u_current": {
+        "en": ". At Z_[E] = {z} Ω a residual current of up to F·U_[Tp]/(r·Z_[E]) = {u} V/({r}·{z} Ω) = {i} A keeps "
+              "the permissible touch voltage",
+        "de": ". An Z_[E] = {z} Ω halten Erdschlussrestströme bis F·U_[Tp]/(r·Z_[E]) = {u} V/({r}·{z} Ω) = {i} A die "
+              "zulässige Berührungsspannung ein"},
+    "document.lc_origin": {"en": "Limit {limit} A: {origin}", "de": "Grenzwert {limit} A: {origin}"},
     "document.lc_others": {
         "en": "The other limits hold only if their condition is met: {items}.",
         "de": "Die übrigen Grenzwerte gelten nur, wenn ihre Bedingung erfüllt ist: {items}."},
@@ -1374,15 +1551,19 @@ i18n.register({
               "Lasten) und ändert sich mit der Impedanz, an der sie liegt,"},
     "document.eq_expansion_uq": {"en": "U_[q,new] = U_[q]·Z_[1,new] / Z_[1]", "de": "U_[q,neu] = U_[q]·Z_[1,neu] / Z_[1]"},
     "document.expansion_uq0_coil": {
-        "en": "at the orders of the zero sequence (3, 9, 15 …), however, the source arises in the fault (nonlinear "
-              "current of the coils) and grows with Z_[0] and with the current of the coils:",
-        "de": "bei den Ordnungen des Nullsystems (3, 9, 15 …) entsteht die Quelle dagegen im Erdschluss (nichtlinearer "
-              "Strom der Spulen) und wächst mit Z_[0] und mit dem Strom der Spulen:"},
+        "en": "at the orders of the zero sequence (3, 9, 15 …), however, the measurements suggest that the source "
+              "arises only in the earth fault (e.g. the nonlinear current of the coils); under this assumption it "
+              "grows with Z_[0] and with the current of the coils:",
+        "de": "bei den Ordnungen des Nullsystems (3, 9, 15 …) entsteht die Quelle dagegen nach den Messungen "
+              "vermutlich erst im Erdschluss (z. B. durch den nichtlinearen Strom der Spulen); unter dieser Annahme "
+              "wächst sie mit Z_[0] und mit dem Strom der Spulen:"},
     "document.expansion_uq0_network": {
-        "en": "at the orders of the zero sequence (3, 9, 15 …), however, the source arises in the fault (nonlinear "
-              "current of the coils) and grows with Z_[0] – the current of the coils taken as unchanged:",
-        "de": "bei den Ordnungen des Nullsystems (3, 9, 15 …) entsteht die Quelle dagegen im Erdschluss (nichtlinearer "
-              "Strom der Spulen) und wächst mit Z_[0] – der Strom der Spulen als unverändert angenommen:"},
+        "en": "at the orders of the zero sequence (3, 9, 15 …), however, the measurements suggest that the source "
+              "arises only in the earth fault (e.g. the nonlinear current of the coils); under this assumption it "
+              "grows with Z_[0] – the current of the coils taken as unchanged:",
+        "de": "bei den Ordnungen des Nullsystems (3, 9, 15 …) entsteht die Quelle dagegen nach den Messungen "
+              "vermutlich erst im Erdschluss (z. B. durch den nichtlinearen Strom der Spulen); unter dieser Annahme "
+              "wächst sie mit Z_[0] – der Strom der Spulen als unverändert angenommen:"},
     "document.eq_expansion_uq0_coil": {
         "en": "U_[q,new] = U_[q]·(Z_[0,new] / Z_[0])·(I_[L,new] / I_[L])",
         "de": "U_[q,neu] = U_[q]·(Z_[0,neu] / Z_[0])·(I_[L,neu] / I_[L])"},
@@ -1397,31 +1578,60 @@ i18n.register({
         "en": "I_[G,new] = √((I_[w] + d·ΔI_[CE])² + (I_[v]·I_[CE,new] / I_[CE])²)",
         "de": "I_[G,neu] = √((I_[w] + d·ΔI_[CE])² + (I_[v]·I_[CE,neu] / I_[CE])²)"},
     "document.expansion_split": {
-        "en": "The split of Z_[q] into Z_[0] and Z_[1] is not part of the equivalent sources. It is taken in two ways; "
-              "the larger residual current of the two is the result:",
-        "de": "Die Aufteilung von Z_[q] auf Z_[0] und Z_[1] ist nicht Teil der Ersatzquellen. Sie wird auf zwei Wegen "
-              "bestimmt; maßgebend ist der größere Reststrom der beiden:"},
+        "en": "The conversion needs the zero- and the positive-sequence impedance separately, because the new cables "
+              "change them differently: their earth capacitance acts in the zero sequence, their operating capacitance "
+              "in the positive and negative sequence. The equivalent sources, however, give only their combination "
+              "Z_[q] = (Z_[0] + 2·Z_[1])/3 in the fault loop. The split of Z_[q] into Z_[0] and Z_[1] is therefore "
+              "estimated in two independent ways (splits 1 and 2); the larger residual current of the two is the "
+              "result, and "
+              "their difference shows how well the split is known:",
+        "de": "Für die Umrechnung müssen Null- und Mitsystemimpedanz getrennt bekannt sein, denn die neuen Kabel "
+              "verändern beide unterschiedlich: Ihre Erdkapazität wirkt im Nullsystem, ihre Betriebskapazität im Mit- "
+              "und Gegensystem. Die Ersatzquellen liefern aber nur die Kombination Z_[q] = (Z_[0] + 2·Z_[1])/3 der "
+              "Fehlerschleife. Die Aufteilung von Z_[q] auf Z_[0] und Z_[1] wird deshalb auf zwei voneinander "
+              "unabhängigen Wegen abgeschätzt (Aufteilung 1 und 2); maßgebend ist der größere Reststrom der beiden, ihr "
+              "Unterschied zeigt, wie gut die Aufteilung bekannt ist:"},
     "document.expansion_split_one": {
-        "en": "The split of Z_[q] into Z_[0] and Z_[1] is not part of the equivalent sources; it is taken from the "
-              "network data (the busbar voltages of the tests needed for a second way are not available):",
-        "de": "Die Aufteilung von Z_[q] auf Z_[0] und Z_[1] ist nicht Teil der Ersatzquellen; sie wird aus den "
-              "Netzdaten bestimmt (die Spannungen der Sammelschiene in den Versuchen für einen zweiten Weg fehlen):"},
+        "en": "The conversion needs the zero- and the positive-sequence impedance separately, because the new cables "
+              "change them differently: their earth capacitance acts in the zero sequence, their operating capacitance "
+              "in the positive and negative sequence. The equivalent sources, however, give only their combination "
+              "Z_[q] = (Z_[0] + 2·Z_[1])/3 in the fault loop. Without the busbar voltages of the tests the split is "
+              "estimated from the network data:",
+        "de": "Für die Umrechnung müssen Null- und Mitsystemimpedanz getrennt bekannt sein, denn die neuen Kabel "
+              "verändern beide unterschiedlich: Ihre Erdkapazität wirkt im Nullsystem, ihre Betriebskapazität im Mit- "
+              "und Gegensystem. Die Ersatzquellen liefern aber nur die Kombination Z_[q] = (Z_[0] + 2·Z_[1])/3 der "
+              "Fehlerschleife. Ohne die Spannungen der Sammelschiene in den Versuchen wird die Aufteilung aus den "
+              "Netzdaten abgeschätzt:"},
     "document.expansion_split_sources": {
-        "en": "**network data** – Z_[0] = 1/(j·(m/X_[C0] − 1/(m·X_[L0]))) + d·X_[C0] with X_[C0] = 3·U_[LE]/I_[CE] and "
-              "X_[L0] = 3·U_[LE]/I_[L] (I_[CE] = {ice} A, I_[L] = {il} A, d = {d} %, U_[LE] = {ule} V), and Z_[1] = "
-              "(3·Z_[q] − Z_[0])/2;",
-        "de": "**Netzdaten** – Z_[0] = 1/(j·(m/X_[C0] − 1/(m·X_[L0]))) + d·X_[C0] mit X_[C0] = 3·U_[LE]/I_[CE] und "
-              "X_[L0] = 3·U_[LE]/I_[L] (I_[CE] = {ice} A, I_[L] = {il} A, d = {d} %, U_[LE] = {ule} V) und Z_[1] = "
-              "(3·Z_[q] − Z_[0])/2;"},
+        "en": "**Split 1 (network data)** – Z_[0] is calculated from the known data of the network as the parallel "
+              "circuit of the earth capacitance, the coils and the losses at the order m, Z_[0] = 1/(j·(m/X_[C0] − "
+              "1/(m·X_[L0]))) + d·X_[C0] with X_[C0] = 3·U_[LE]/I_[CE] and X_[L0] = 3·U_[LE]/I_[L] (I_[CE] = {ice} A, "
+              "I_[L] = {il} A, d = {d} %, {ule}); Z_[1] is the rest, Z_[1] = (3·Z_[q] − Z_[0])/2;",
+        "de": "**Aufteilung 1 (Netzdaten)** – Z_[0] wird aus den bekannten Daten des Netzes berechnet, als "
+              "Parallelschaltung von Erdkapazität, Spulen und Verlusten bei der Ordnung m, Z_[0] = "
+              "1/(j·(m/X_[C0] − 1/(m·X_[L0]))) + d·X_[C0] mit X_[C0] = 3·U_[LE]/I_[CE] und X_[L0] = 3·U_[LE]/I_[L] "
+              "(I_[CE] = {ice} A, I_[L] = {il} A, d = {d} %, {ule}); Z_[1] ist der Rest, Z_[1] = (3·Z_[q] − Z_[0])/2;"},
+    "document.expansion_ule": {"en": "U_[LE] = U_[n]/√3 = {un} kV/√3 = {ule} V",
+                               "de": "U_[LE] = U_[n]/√3 = {un} kV/√3 = {ule} V"},
+    "document.expansion_ule_std": {
+        "en": "U_[LE] = U_[n]/√3 = {un} kV/√3 = {ule} V with the standard voltage U_[n] nearest to √3·U_[0] = {ull} kV "
+              "of the tests",
+        "de": "U_[LE] = U_[n]/√3 = {un} kV/√3 = {ule} V mit der Normspannung U_[n], die √3·U_[0] = {ull} kV der "
+              "Versuche am nächsten liegt"},
+    "document.expansion_no_un": {
+        "en": "no zero-sequence voltage in the tests – give the nominal voltage U_n_kV",
+        "de": "keine Nullspannung in den Versuchen – Nennspannung U_n_kV vorgeben"},
     "document.expansion_split_busbar": {
-        "en": "**busbar voltages** – Z_[0] and Z_[1] from the change of the busbar voltages in the tests, Z_[s] = "
-              "3·ΔU_[s]/I_[F] (related to the faulted phase; median of the tests; Z_[1] from the sequence that is not "
-              "the natural one of the order; at the orders of the zero sequence Z_[0] = 3·Z_[q] − 2·Z_[1], because a "
-              "source arises there in the fault).",
-        "de": "**Sammelschienenspannungen** – Z_[0] und Z_[1] aus der Änderung der Spannungen der Sammelschiene in "
-              "den Versuchen, Z_[s] = 3·ΔU_[s]/I_[F] (bezogen auf den Fehlerleiter; Median der Versuche; Z_[1] aus dem "
-              "Symmetriesystem, das nicht das natürliche der Ordnung ist; bei den Ordnungen des Nullsystems Z_[0] = "
-              "3·Z_[q] − 2·Z_[1], da dort im Erdschluss eine Quelle entsteht)."},
+        "en": "**Split 2 (busbar voltages)** – Z_[0] and Z_[1] are measured in the tests: from the change of the "
+              "zero- and of the positive- or negative-sequence voltage of the busbar while the fault current flows, "
+              "Z_[s] = 3·ΔU_[s]/I_[F] (related to the faulted phase; median of the tests; Z_[1] from the sequence "
+              "that is not the natural one of the order; at the orders of the zero sequence Z_[0] = 3·Z_[q] − 2·Z_[1], "
+              "because a source presumably arises there in the fault).",
+        "de": "**Aufteilung 2 (Sammelschienenspannungen)** – Z_[0] und Z_[1] werden in den Versuchen gemessen: aus "
+              "der Änderung der Null- bzw. der Mit- oder Gegensystemspannung der Sammelschiene, während der "
+              "Fehlerstrom fließt, Z_[s] = 3·ΔU_[s]/I_[F] (bezogen auf den Fehlerleiter; Median der Versuche; Z_[1] "
+              "aus dem Symmetriesystem, das nicht das natürliche der Ordnung ist; bei den Ordnungen des Nullsystems "
+              "Z_[0] = 3·Z_[q] − 2·Z_[1], da dort vermutlich im Erdschluss eine Quelle entsteht)."},
     "document.expansion_assumptions": {"en": "Assumptions", "de": "Annahmen"},
     "document.expansion_a_cables": {
         "en": "The new cables are connected at the substation; their operating capacitance is C_[1] = c·C_[E] with "
@@ -1453,8 +1663,11 @@ i18n.register({
         "en": "Orders outside the model (remainder, even orders) stay as measured.",
         "de": "Ordnungen außerhalb des Modells (Rest, gerade Ordnungen) bleiben wie gemessen."},
     "document.tab_expansion": {
-        "en": "Residual current at Z_[E] = {Z} Ω after the network expansion",
-        "de": "Erdschlussreststrom an Z_[E] = {Z} Ω nach dem Netzausbau"},
+        "en": "Residual current at Z_[E] = {Z} Ω after the network expansion{splits}",
+        "de": "Erdschlussreststrom an Z_[E] = {Z} Ω nach dem Netzausbau{splits}"},
+    "document.tab_expansion_splits": {
+        "en": " (split 1: Z_[0] from the network data, split 2: from the busbar voltages)",
+        "de": " (Aufteilung 1: Z_[0] aus den Netzdaten, Aufteilung 2: aus den Sammelschienenspannungen)"},
     "document.col_today": {"en": "Today", "de": "Heute"},
     "document.col_planned": {"en": "I_[CE] = {ice} A", "de": "I_[CE] = {ice} A"},
     "document.xrow_ice": {"en": "Capacitive earth-fault current I_[CE] in A",
@@ -1466,15 +1679,15 @@ i18n.register({
     "document.xrow_ires": {"en": "I_[RES,ass] in A – {split}", "de": "I_[RES,Bew] in A – {split}"},
     "document.xrow_prop": {"en": "I_[RES,ass] in A – proportional to I_[CE]", "de": "I_[RES,Bew] in A – proportional zu I_[CE]"},
     "document.xrow_status": {"en": "Limit {limit} A", "de": "Grenzwert {limit} A"},
-    "document.split_sources": {"en": "network data", "de": "Netzdaten"},
-    "document.split_busbar": {"en": "busbar voltages", "de": "Sammelschiene"},
-    "document.split_busbar_short": {"en": "busbar voltages", "de": "Sammel\u00adschiene"},
+    "document.split_sources": {"en": "split 1", "de": "Aufteilung 1"},
+    "document.split_busbar": {"en": "split 2", "de": "Aufteilung 2"},
+    "document.split_busbar_short": {"en": "split 2", "de": "Aufteilung 2"},
     "document.tab_expansion_orders": {
         "en": "Harmonic currents at Z_[E] = {Z} Ω and factor of the source voltage at I_[CE] = {ice} A",
         "de": "Oberschwingungsströme an Z_[E] = {Z} Ω und Faktor der Quellenspannung bei I_[CE] = {ice} A"},
     "document.col_i_today": {"en": "Today in A", "de": "Heute in A"},
-    "document.col_i_split": {"en": "{split} in A", "de": "{split} in A"},
-    "document.col_u_split": {"en": "U_[q,new]/U_[q] {split}", "de": "U_[q,neu]/U_[q] {split}"},
+    "document.col_i_split": {"en": "I in A – {split}", "de": "I in A – {split}"},
+    "document.col_u_split": {"en": "U_[q,new]/U_[q] – {split}", "de": "U_[q,neu]/U_[q] – {split}"},
     "document.fig_expansion": {
         "en": "Residual current I_[RES,ass] over the capacitive earth-fault current I_[CE] after a network expansion, "
               "at the earthing impedances of the limits (line: the larger value of the two splits; band: between "
@@ -1518,8 +1731,8 @@ i18n.register({
     "document.expansion_limit_u": {"en": "; permissible {allowed} A because of U_[E] ≤ F·U_[Tp]",
                                    "de": "; zulässig {allowed} A wegen U_[E] ≤ F·U_[Tp]"},
     "document.expansion_limit_split": {
-        "en": " (network data {a} A, busbar voltages {b} A)",
-        "de": " (Netzdaten {a} A, Sammelschiene {b} A)"},
+        "en": " (split 1 {a} A, split 2 {b} A)",
+        "de": " (Aufteilung 1 {a} A, Aufteilung 2 {b} A)"},
     "document.expansion_limit_exceeded": {
         "en": "Limit {limit} A ({condition}, Z_[E] = {Z} Ω{u}): exceeded already today (I_[RES,ass] = {now} A).",
         "de": "Grenzwert {limit} A ({condition}, Z_[E] = {Z} Ω{u}): bereits heute überschritten (I_[RES,Bew] = {now} A)."},
@@ -1529,43 +1742,37 @@ i18n.register({
     "document.expansion_coils_short": {
         "en": "The range of the coils ends at I_[CE] ≈ {ice} A; beyond it a further coil is needed.",
         "de": "Der Stellbereich der Spulen endet bei I_[CE] ≈ {ice} A; darüber ist eine weitere Spule nötig."},
-    "document.expansion_negative": {
-        "en": "At the orders {orders} one split gives an impedance with a negative real part – their data do not fully "
-              "match a passive network (phase errors at the harmonic frequency, a drifting source), and their change "
-              "is uncertain.",
-        "de": "Bei den Ordnungen {orders} ergibt eine Aufteilung eine Impedanz mit negativem Realteil – ihre Daten "
-              "passen nicht ganz zu einem passiven Netz (Winkelfehler bei der Oberschwingungsfrequenz, eine driftende "
-              "Quelle), ihre Änderung ist unsicher."},
-    "document.expansion_negative_one": {
-        "en": "At the {orders}th order one split gives an impedance with a negative real part – its data do not fully "
-              "match a passive network (phase errors at the harmonic frequency, a drifting source), and its change is "
-              "uncertain.",
-        "de": "Bei der {orders}. Ordnung ergibt eine Aufteilung eine Impedanz mit negativem Realteil – ihre Daten "
-              "passen nicht ganz zu einem passiven Netz (Winkelfehler bei der Oberschwingungsfrequenz, eine driftende "
-              "Quelle), ihre Änderung ist unsicher."},
-    "document.tz_local": {"en": "local time", "de": "Ortszeit"},
-    "document.expansion_rejected_still": {
-        "en": " With the network data, too, the real part stays negative at the orders {orders} – their change is "
-              "uncertain.",
-        "de": " Auch mit den Netzdaten bleibt der Realteil bei den Ordnungen {orders} negativ – ihre Änderung ist "
+    "document.expansion_uncertain": {
+        "en": "Uncertainty of the split at the orders {orders}: there Z_[0] or Z_[1] has a negative resistance (real "
+              "part), which a passive network does not have. At these orders the resistance is small against the "
+              "reactance and therefore only roughly known from the measurements – small phase errors at the harmonic "
+              "frequency or a change of the harmonic sources between the tests already spoil it.{action} The change "
+              "of these orders by the expansion is correspondingly uncertain.",
+        "de": "Unsicherheit der Aufteilung bei den Ordnungen {orders}: Dort hat Z_[0] oder Z_[1] einen negativen "
+              "Wirkanteil (Realteil), den ein passives Netz nicht hat. Bei diesen Ordnungen ist der Wirkanteil klein "
+              "gegenüber dem Blindanteil und aus den Messungen deshalb nur ungenau bestimmbar – schon geringe "
+              "Winkelfehler bei der Oberschwingungsfrequenz oder eine Änderung der Oberschwingungsquellen zwischen den "
+              "Versuchen verfälschen ihn.{action} Die Änderung dieser Ordnungen durch den Ausbau ist entsprechend "
               "unsicher."},
-    "document.expansion_rejected_still_one": {
-        "en": " With the network data, too, its real part stays negative – its change is uncertain.",
-        "de": " Auch mit den Netzdaten bleibt ihr Realteil negativ – ihre Änderung ist unsicher."},
-    "document.expansion_rejected": {
-        "en": "At the orders {orders} the split from the busbar voltages gives an impedance with a negative real part – "
-              "no passive network, and a parallel resonance computed with it would be an artefact. For these orders "
-              "both splits use the network data.",
-        "de": "Bei den Ordnungen {orders} ergibt die Aufteilung über die Sammelschienenspannungen eine Impedanz mit "
-              "negativem Realteil – das ist kein passives Netz, und eine damit berechnete Parallelresonanz wäre ein "
-              "Rechenartefakt. Für diese Ordnungen verwenden beide Aufteilungen die Netzdaten."},
-    "document.expansion_rejected_one": {
-        "en": "At the {orders}th order the split from the busbar voltages gives an impedance with a negative real "
-              "part – no passive network, and a parallel resonance computed with it would be an artefact. For this "
-              "order both splits use the network data.",
-        "de": "Bei der {orders}. Ordnung ergibt die Aufteilung über die Sammelschienenspannungen eine Impedanz mit "
-              "negativem Realteil – das ist kein passives Netz, und eine damit berechnete Parallelresonanz wäre ein "
-              "Rechenartefakt. Für diese Ordnung verwenden beide Aufteilungen die Netzdaten."},
+    "document.expansion_uncertain_one": {
+        "en": "Uncertainty of the split at the {orders}th order: there Z_[0] or Z_[1] has a negative resistance (real "
+              "part), which a passive network does not have. At this order the resistance is small against the "
+              "reactance and therefore only roughly known from the measurements – small phase errors at the harmonic "
+              "frequency or a change of the harmonic sources between the tests already spoil it.{action} The change "
+              "of this order by the expansion is correspondingly uncertain.",
+        "de": "Unsicherheit der Aufteilung bei der {orders}. Ordnung: Dort hat Z_[0] oder Z_[1] einen negativen "
+              "Wirkanteil (Realteil), den ein passives Netz nicht hat. Bei dieser Ordnung ist der Wirkanteil klein "
+              "gegenüber dem Blindanteil und aus den Messungen deshalb nur ungenau bestimmbar – schon geringe "
+              "Winkelfehler bei der Oberschwingungsfrequenz oder eine Änderung der Oberschwingungsquellen zwischen den "
+              "Versuchen verfälschen ihn.{action} Die Änderung dieser Ordnung durch den Ausbau ist entsprechend "
+              "unsicher."},
+    "document.expansion_uncertain_b": {
+        "en": " Where split 2 gives it ({orders}), both splits use the network data of split 1 instead – a parallel "
+              "resonance computed with it would be an artefact of the calculation.",
+        "de": " Wo Aufteilung 2 ihn ergibt ({orders}), verwenden beide Aufteilungen stattdessen die Netzdaten der "
+              "Aufteilung 1 – eine damit berechnete Parallelresonanz wäre ein Rechenartefakt."},
+    "document.tz_local": {"en": "local time", "de": "Ortszeit"},
+
     "document.expansion_validity": {
         "en": "The conversion extrapolates the network model of the tests: it holds for a network built as today and "
               "for the assumptions above; the difference of the two splits shows how well the split of Z_[q] is "
@@ -1577,11 +1784,11 @@ i18n.register({
         "en": "Network expansion not computed: {error}", "de": "Netzausbau nicht berechnet: {error}"},
     "document.expansion_invalid": {
         "en": "expansion is not valid: {error} – expected True, False or a dict with I_CE (planned capacitive "
-              "earth-fault current(s) in A), damping_added (≥ 0), c1_ratio (> 0), I_L_max (A), I_CE_max (A) and "
-              "zero_sequence (\"coil\" or \"network\").",
+              "earth-fault current(s) in A), damping_added (≥ 0), c1_ratio (> 0), I_L_max (A), I_CE_max (A), "
+              "zero_sequence (\"coil\" or \"network\") and U_n_kV (nominal voltage in kV).",
         "de": "expansion ist ungültig: {error} – erwartet: True, False oder ein dict mit I_CE (geplanter kapazitiver "
-              "Erdschlussstrom in A, auch mehrere), damping_added (≥ 0), c1_ratio (> 0), I_L_max (A), I_CE_max (A) "
-              "und zero_sequence (\"coil\" oder \"network\")."},
+              "Erdschlussstrom in A, auch mehrere), damping_added (≥ 0), c1_ratio (> 0), I_L_max (A), I_CE_max (A), "
+              "zero_sequence (\"coil\" oder \"network\") und U_n_kV (Nennspannung in kV)."},
     "document.kr_expansion": {
         "en": "Network expansion to I_[CE] = {ice} A – I_[RES,ass] at Z_[E] = {Z} Ω",
         "de": "Netzausbau auf I_[CE] = {ice} A – I_[RES,Bew] an Z_[E] = {Z} Ω"},
@@ -1610,8 +1817,9 @@ i18n.register({
                                     "de": "den Grenzwert {limit} A (Z_[E] = {Z} Ω)"},
     "document.u_expansion": {"en": "Network expansion: split of Z_[q]", "de": "Netzausbau: Aufteilung von Z_[q]"},
     "document.u_expansion_value": {
-        "en": "I_[RES,ass] at I_[CE] = {ice} A: {a} A (network data), {b} A (busbar voltages)",
-        "de": "I_[RES,Bew] bei I_[CE] = {ice} A: {a} A (Netzdaten), {b} A (Sammelschiene)"},
+        "en": "I_[RES,ass] at I_[CE] = {ice} A: {a} A (split 1, network data), {b} A (split 2, busbar voltages)",
+        "de": "I_[RES,Bew] bei I_[CE] = {ice} A: {a} A (Aufteilung 1, Netzdaten), {b} A (Aufteilung 2, "
+              "Sammelschienenspannungen)"},
     "document.u_expansion_treat": {"en": "the larger value", "de": "der größere Wert"},
     "document.forecast_3_expansion": {
         "en": "Growth of the network: the active part of the fundamental grows with I_[CE] (I_[w] = d·I_[CE], d = {d} %); "
@@ -1622,9 +1830,10 @@ i18n.register({
               "Ersatzquellen auf das ausgebaute Netz um."},
     "document.limit_case_invalid": {
         "en": "Limit case {k} is not valid: {error} – expected a dict with limit_A > 0, Z_E > 0 (optional, default: "
-              "Z_E of the report), r in (0, 1] (optional, default 1) and condition (text).",
+              "Z_E of the report), r in (0, 1] (optional, default 1), condition, origin and remark (texts).",
         "de": "Grenzwertfall {k} ist ungültig: {error} – erwartet: ein dict mit limit_A > 0, Z_E > 0 (optional, "
-              "Standard: Z_E des Berichts), r in (0, 1] (optional, Standard 1) und condition (Text)."},
+              "Standard: Z_E des Berichts), r in (0, 1] (optional, Standard 1), condition, origin und remark "
+              "(Texte)."},
     "document.station_detail_invalid": {
         "en": "station_detail must be \"full\" or \"compact\" – got {value!r}.",
         "de": "station_detail muss \"full\" oder \"compact\" sein – erhalten: {value!r}."},
@@ -1692,9 +1901,11 @@ _SYMBOLS = (
     ("d, v", {"en": "damping and detuning (share of I_[CE])", "de": "Dämpfung und Verstimmung (Anteil an I_[CE])"}),
     ("U_[0]", {"en": "zero-sequence (displacement) voltage", "de": "Nullspannung (Verlagerungsspannung)"}),
     ("U_[m], U_[95,m]", {"en": "voltage of order m in the test (positive- or negative-sequence component, mean of "
-                               "before and after the fault) and the quantile of the largest phase of the PQ measurement",
+                               "before and after the fault) and its quantile in the PQ measurement (largest "
+                               "line-to-line or line-to-earth voltage per interval)",
                          "de": "Spannung der Ordnung m im Versuch (Mit- bzw. Gegensystemkomponente, Mittel aus vor und "
-                               "nach dem Fehler) und Quantil des größten Leiters der PQ-Messung"}),
+                               "nach dem Fehler) und ihr Quantil in der PQ-Messung (größte Leiter-Leiter- bzw. "
+                               "Leiter-Erde-Spannung je Intervall)"}),
     ("k_[m], k_[s]", {"en": "scaling factor of order m, factor on the quantile",
                       "de": "Skalierungsfaktor der Ordnung m, Faktor auf das Quantil"}),
     ("m_[I], m_[U]", {"en": "measurement-uncertainty margins of currents and voltages",
@@ -1706,8 +1917,9 @@ _SYMBOLS = (
                                              "de": "zulässige Erdungsimpedanz"}),
     ("r, r_[eff]", {"en": "reduction factor (per order; effective over the orders)",
                     "de": "Reduktionsfaktor (je Ordnung; wirksam über die Ordnungen)"}),
-    ("U_[E], U_[T], U_[Tp]", {"en": "earth potential rise, touch voltage, permissible touch voltage",
-                              "de": "Erdungsspannung, Berührungsspannung, zulässige Berührungsspannung"}),
+    ("U_[E], U_[vT], U_[Tp]", {"en": "earth potential rise, prospective (open-circuit) touch voltage, permissible "
+                                     "touch voltage",
+                               "de": "Erdungsspannung, Leerlauf-Berührungsspannung, zulässige Berührungsspannung"}),
     ("F", {"en": "ratio of earth potential rise to touch voltage", "de": "Verhältnis Erdungs- zu Berührungsspannung"}),
     ("I_[F], I_[S]", {"en": "fault current and shield current at the station",
                       "de": "Fehlerstrom und Schirmstrom an der Station"}),
@@ -1771,9 +1983,11 @@ class ReportInfo:
     coil_controller : mapping, optional
         Display of the coil controller (read before the tests): ``ice_A`` (capacitive earth-fault current I_CE in A),
         ``coils_A`` (current per coil in A, ``{"coil 1": 155.0, …}``), ``detuning_pct`` (detuning v in %, v > 0:
-        overcompensation), ``active_A`` (active residual current in A) and ``when`` (text, e.g. "before test 1"); all
-        optional. I_CE is ``ice_A`` or – with coil currents and detuning – I_L/(1 + v); it replaces the sum of the
-        measured coil currents as I_CE of damping and detuning.
+        overcompensation), ``active_A`` (active residual current in A), ``when`` (text, e.g. "before test 1") and
+        ``rated_voltage_kV`` (rated voltage of the coils, line-to-line, to which their scales refer, e.g. 21 for
+        21 kV/√3: the report compares it with the displacement voltage of the tests); all optional. I_CE is
+        ``ice_A`` or – with coil currents and detuning – I_L/(1 + v); it replaces the sum of the measured coil
+        currents as I_CE of damping and detuning.
     limit_A : float, optional
         Limit of the residual current of this network (default: the limit of the first of ``limit_cases``, else the
         smallest limit of the call).
@@ -1782,10 +1996,15 @@ class ReportInfo:
         "Z_E": 1.7, "condition": "all Z_E < 1.7 Ω"}, {"limit_A": 120, "Z_E": 2.5, "r": 0.5, "condition": "fully
         cabled, r ≥ 0.5 at every fault location"}]``: for every case the report assesses I_RES,ass at its Z_E (largest
         earthing impedance of the case; default: ``Z_E`` of the call) from the equivalent sources and the earth
-        potential rise U_E = r·I_RES,ass·Z_E against F·U_Tp (``r`` default 1).
+        potential rise U_E = r·I_RES,ass·Z_E against F·U_Tp (``r`` default 1) with the current F·U_Tp/(r·Z_E) that
+        keeps it. Optional texts: ``origin`` (where the limit comes from, e.g. the standard behind it) and ``remark``
+        (a remark of the author on the limit) – after the result of the limit that applies.
     Z_E_basis : str
         Where the earthing impedance Z_E of the assessment comes from, e.g. "design value of the earthing systems of
-        the network" (a footnote to the result at Z_E).
+        the network" (a footnote to the result at Z_E; in the summary with the permissible earthing impedance).
+    specified_by : str
+        Who specifies the limits and the parameters of the assessment (U_Tp, F, limits), e.g. the name of the network
+        operator or of a guideline: "specifications of …" in the texts; without: the neutral "specifications".
     assessment : {"auto", "Z_E", "busbar"}
         Decisive value: at the earthing impedance (equivalent sources) or of the largest test (busbar); ``"auto"``:
         Z_E if the equivalent sources and Z_E are given.
@@ -1798,9 +2017,11 @@ class ReportInfo:
         mapping: ``I_CE`` (planned capacitive earth-fault current in A, one value or several, e.g. ``800``),
         ``damping_added`` (damping I_w/I_C of the new cables; default: that of the network), ``c1_ratio`` (C_1/C_E of
         the new cables; default 1, cables with a screen per core), ``I_L_max`` (largest current of the coils in A),
-        ``I_CE_max`` (end of the curve in A; default four times I_CE of today) and ``zero_sequence`` (``"coil"``:
-        the source of the zero-sequence orders grows with the current of the coils – default; ``"network"``: not).
-        Needs the equivalent sources and I_CE.
+        ``I_CE_max`` (end of the curve in A; default four times I_CE of today), ``zero_sequence`` (``"coil"``: the
+        source of the zero-sequence orders grows with the current of the coils – default; ``"network"``: not) and
+        ``U_n_kV`` (nominal voltage of the network in kV: U_LE = U_n/√3 of the network data; default the standard
+        voltage nearest to √3 times the zero-sequence voltage of the tests,
+        [`standard_voltage_kV`][groundfault.formulas.standard_voltage_kV]). Needs the equivalent sources and I_CE.
     reference_frequency_Hz : float, optional
         Frequency of Z_E of the earthing measurement in the cases 1 and 2 of the touch voltage (default: 50 Hz;
         interpolated if the earthing measurement has no value there, see
@@ -1852,6 +2073,7 @@ class ReportInfo:
     limit_A: Optional[float] = None
     limit_cases: Sequence[Mapping[str, Any]] = ()
     Z_E_basis: str = ""
+    specified_by: str = ""
     assessment: str = "auto"
     expansion: Union[bool, Mapping[str, Any]] = True
     reference_frequency_Hz: Optional[float] = None
@@ -1923,9 +2145,10 @@ def _es_scaling_text(rs: Mapping[str, Any]) -> Tuple[str, str]:
         thd = pd.Series(f, dtype=float)
         between = False
     f_thd = _n(float(thd.iloc[0])) if len(thd) else "–"
+    u = "k_[s]·U_[95,m]/√3" if str(rs.get("u95_reference", "seq")) == "LL" else "k_[s]·U_[95,m]"
     if own_rule in rules:
-        how = (tr("document.es_how_mixed", f=f_thd) if thd_rule in rules else
-               tr("document.es_how_own_unscaled") if none_rule in rules else tr("document.es_how_own"))
+        how = (tr("document.es_how_mixed", f=f_thd, u=u) if thd_rule in rules else
+               tr("document.es_how_own_unscaled", u=u) if none_rule in rules else tr("document.es_how_own", u=u))
     else:
         how = tr("document.es_how_thd", f=f_thd) if thd_rule in rules else tr("document.es_how_none")
     return how, tr("document.es_kept_between" if between else "document.es_kept_rest")
@@ -2117,6 +2340,81 @@ def _runs(text: str) -> List[Tuple[str, dict]]:
 def plain(text: str) -> str:
     """Text without the report mark-up and without its footnotes (e.g. for the document properties)."""
     return "".join(t for t, _ in _runs(_FOOTNOTE.sub("", str(text))))
+
+
+# ------------------------------------------------------------------------------------------- non-breaking spaces
+NBSP = " "
+#: units after a number: the space before them does not break a line (2,5 Ω, 60 A, 95 %, 30,0 Tage, 10:30 Uhr)
+_NB_UNIT = re.compile(r"(?<=\d) (?=(?:Ω|Ω|mΩ|kΩ|kA|mA|A|kV|mV|V|kW|MW|W|kvar|Mvar|var|kVA|MVA|VA|kHz|Hz|ms|s|min|h|"
+                      r"%|‰|°C|°|km|mm²|mm|cm|m|µF|mH|mS|S|Uhr|Tage|Tagen|Tag|Wochen|Woche|Jahre|Jahren|Jahr|"
+                      r"Perioden|Fenster|Werte|Intervalle|days|day|weeks|week|years|year|periods|windows|values|"
+                      r"intervals)(?![\w²]))")
+#: a label and its number or name: Messung 1, Tabelle 10, Abschnitt 3.1, Anhang B, Fall 4b, UW 2,5 Ω, SSt Nord
+_NB_LABEL = re.compile(r"(?<![\w.])((?:UW|SSt|ONS|ESp|Sp|Nr\.|Abb\.|Tab\.|Gl\.|Messung|Messungen|"
+                       r"Tabelle|Tabellen|Abbildung|Abschnitt|Abschnitten|Anhang|Gleichung|Fall|Fälle|Spule|"
+                       r"Kapitel|Test|test|tests|Table|table|Figure|figure|Section|section|Appendix|appendix|"
+                       r"Case|case|cases|Coil|coil|Equation|equation) )(?=[\dA-ZÄÖÜ])")
+#: an ordinal and its noun: 5. Ordnung, 95. Perzentil, 5th order
+_NB_ORDINAL = re.compile(r"(?<=\d\.) (?=(?:Ordnung|Ordnungen|Perzentil|Perzentils|Harmonische|Harmonischen)\b)|"
+                         r"(?<=\d(?:st|nd|rd|th)) (?=(?:order|orders|percentile|harmonic|harmonics)\b)")
+#: operators of a calculation in the text: ΔI_v = 1,8 × ΔI, I = 200 V/(1·2,5 Ω), 1,6 … 2,0, P5 … P95, a − b (not
+#: after a colon or semicolon: "Regel: ≥ 365 Tage" may break after the colon)
+_NB_OPERATOR = re.compile(r"(?<=[\w)\]ΩΩ%°²·]) ([=≈≤≥<>×±→…≙+−]) (?=[\w(−+±ΔφθΣ√|])")
+#: an operator that opens an expression – "Regel: ≥ 365 Tage", "(≈ 650 A)" – stays with its number
+_NB_OPERATOR_START = re.compile(r"(?<=[\s(])([≥≤<>≈±]) (?=[\d−+])")
+#: a symbol and its value: ΔIw 0,6 A, I_[F] 30,0 A
+_NB_SYMBOL = re.compile(r"(?<![\w\]])(Δ[A-Za-z]\w{0,3}|[A-Za-zΔ]{1,3}_\[[^\]\s]*\]) (?=[\d−+])")
+#: numbers separated by a slash (12,0 / 9,5 A)
+_NB_SLASH = re.compile(r"(?<=\d) / (?=[\d−+])")
+#: a parenthesis with a number after a symbol – ΔI (1,6 … 2,0), I_[CE] (650 A) – not after an ordinary word
+_NB_PAREN = re.compile(r"(\S+) (?=\([\d−+±≈<>][^()]*\))")
+
+
+def _nb_paren(m) -> str:
+    """A symbol or unit before a parenthesis with a number keeps it (ΔI (1,6 … 2,0), 668 A (−6,2 %)); a word does not
+    ("ab (3. Ordnung)")."""
+    token = m.group(1)
+    short = len(token) <= 3 and token.isalnum() and any(ch.isupper() or ch.isdigit() for ch in token)
+    symbol = token.endswith("]") or ("Δ" in token and token[-1].isalnum()) or short
+    return token + (NBSP if symbol else " ")
+
+
+#: a calculation longer than this (visible characters) may break after a relation sign (=, ≈, ≤ …) – otherwise a
+#: long unbreakable chain stretches the justified line before it
+_NB_MAX = 30
+_NB_RELATION = re.compile(r"([=≈≤≥<>])" + NBSP)
+_NB_MARKUP = re.compile(r"_\[|\]|\*\*|\^\[")
+
+
+def _nb_long(text: str) -> str:
+    """A break opportunity after the relation signs of a long calculation (I_CE = I_L/(1 + v) = 650 A/1,040 ≈ 625 A:
+    after "=" and "≈"; the sign stays at the end of the line, a short calculation stays in one piece)."""
+    parts = text.split(" ")
+    for i, part in enumerate(parts):
+        if NBSP in part and len(_NB_MARKUP.sub("", part)) > _NB_MAX:
+            parts[i] = _NB_RELATION.sub(r"\1 ", part)
+    return " ".join(parts)
+
+
+def nbsp(text: str) -> str:
+    """The spaces of a text that should not break a line, as non-breaking spaces (U+00A0): between a number and its
+    unit, a label and its number (Messung 1, UW 2,5 Ω, Tabelle 10), an ordinal and its noun (5. Ordnung) and around
+    the operators of a calculation (ΔI_v = 1,8 × ΔI (1,6 … 2,0)); a calculation of more than 30 characters may break
+    after a relation sign. Other spaces – between words, after a comma, around a dash – stay break opportunities; the
+    report mark-up (``I_[RES]``, ``**bold**``) is not touched."""
+    text = str(text)
+    if " " not in text:
+        return text
+    for _ in range(2):                          # twice: overlapping matches (1 + v), 2,5 Ω/1,037 …
+        text = _NB_OPERATOR.sub(NBSP + r"\1" + NBSP, text)
+    text = _NB_OPERATOR_START.sub(r"\1" + NBSP, text)
+    text = _NB_SYMBOL.sub(r"\1" + NBSP, text)
+    text = _NB_SLASH.sub(NBSP + "/" + NBSP, text)
+    text = _NB_UNIT.sub(NBSP, text)
+    text = _NB_LABEL.sub(lambda m: m.group(1)[:-1] + NBSP, text)
+    text = _NB_ORDINAL.sub(NBSP, text)
+    text = _NB_PAREN.sub(_nb_paren, text)
+    return _nb_long(text)
 
 
 # ----------------------------------------------------------------------------------------- order of the WordprocessingML
@@ -2796,7 +3094,7 @@ class _Doc:
     def _add_marked_runs(self, p, text: str, size, bold, color):
         from docx.enum.text import WD_COLOR_INDEX
         from docx.shared import RGBColor
-        for t, f in _runs(text):
+        for t, f in _runs(nbsp(text)):
             r = p.add_run(t)
             if f.get("bold") or bold:
                 r.bold = True
@@ -3056,7 +3354,7 @@ class _Doc:
         style = self.style("caption")
         p = self.doc.add_paragraph(style=style)
         size = None if style else self.body_pt
-        self._add_runs(p, label + " ", size=size)
+        self._add_runs(p, label + NBSP, size=size)            # "Tabelle 10" stays on one line
         self._field(p, "SEQ %s \\* ARABIC" % label, str(n))
         self._add_runs(p, ": " + text, size=size)
         pf = p.paragraph_format
@@ -3529,6 +3827,18 @@ def _assessed(e, quantity: str) -> float:
     return float(row["assessment"].iloc[0]) if len(row) else float("nan")
 
 
+def _measured(e, quantity: str) -> float:
+    """Measured value of a quantity of the table ``assessment_quantities`` (NaN if missing)."""
+    t = e.tables.get("assessment_quantities")
+    if t is None or t.empty or "quantity" not in t or "measured_value" not in t:
+        return float("nan")
+    row = t[t["quantity"] == quantity]
+    try:
+        return float(row["measured_value"].iloc[0]) if len(row) else float("nan")
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def _dc_method(meas: Mapping[str, Any]) -> str:
     """The DC removal of a result file: ``"highpass"`` (high-pass, then the mean per window) or
     ``"highpass_median"`` – a result of groundfault 3.4 with ``"highpass"`` (no ``dc_window`` stored) used the median
@@ -3572,9 +3882,9 @@ def _is_station(e) -> bool:
     return False
 
 
-_CONTROLLER_KEYS = ("ice_A", "coils_A", "detuning_pct", "active_A", "when")
-_LIMIT_CASE_KEYS = ("limit_A", "Z_E", "r", "condition")
-_EXPANSION_KEYS = ("I_CE", "damping_added", "c1_ratio", "I_L_max", "I_CE_max", "zero_sequence")
+_CONTROLLER_KEYS = ("ice_A", "coils_A", "detuning_pct", "active_A", "when", "rated_voltage_kV")
+_LIMIT_CASE_KEYS = ("limit_A", "Z_E", "r", "condition", "origin", "remark")
+_EXPANSION_KEYS = ("I_CE", "damping_added", "c1_ratio", "I_L_max", "I_CE_max", "zero_sequence", "U_n_kV")
 
 
 def _controller(value: Optional[Mapping[str, Any]]) -> dict:
@@ -3593,7 +3903,10 @@ def _controller(value: Optional[Mapping[str, Any]]) -> dict:
     if not _finite(ice) and coils and _finite(v) and 1.0 + v / 100.0 > 0:
         ice, how = total / (1.0 + v / 100.0), "derived"
     active = float(value["active_A"]) if _finite(value.get("active_A")) else float("nan")
-    return dict(coils=coils, sum=total, v=v, active=active, when=str(value.get("when") or ""), ice=ice, how=how)
+    ur = float(value["rated_voltage_kV"]) if _finite(value.get("rated_voltage_kV")) and \
+        float(value["rated_voltage_kV"]) > 0 else float("nan")
+    return dict(coils=coils, sum=total, v=v, active=active, when=str(value.get("when") or ""), ice=ice, how=how,
+                rated_kV=ur)
 
 
 def _expansion_settings(value) -> Optional[dict]:
@@ -3614,18 +3927,20 @@ def _expansion_settings(value) -> Optional[dict]:
         il_max = None if value.get("I_L_max") is None else float(value["I_L_max"])
         top = None if value.get("I_CE_max") is None else float(value["I_CE_max"])
         zs = str(value.get("zero_sequence", "coil"))
-        if any(not (math.isfinite(x) and x > 0) for x in targets + [c1] + [x for x in (il_max, top) if x is not None]) \
+        un = None if value.get("U_n_kV") is None else float(value["U_n_kV"])
+        if any(not (math.isfinite(x) and x > 0) for x in targets + [c1] + [x for x in (il_max, top, un)
+                                                                          if x is not None]) \
                 or (da is not None and not (math.isfinite(da) and da >= 0)) or zs not in ("coil", "network"):
             raise ValueError(", ".join("%s=%r" % (k, value.get(k)) for k in _EXPANSION_KEYS if k in value))
     except (KeyError, TypeError, ValueError) as ex:
         raise ValueError(tr("document.expansion_invalid", error=ex)) from None
     return dict(targets=sorted(set(targets)), damping_added=da, c1_ratio=c1, I_L_max=il_max, I_CE_max=top,
-                zero_sequence=zs)
+                zero_sequence=zs, U_n_kV=un)
 
 
 def _limit_cases(cases) -> List[dict]:
     """The limit cases of ``ReportInfo.limit_cases``, checked: ``limit_A``, ``Z_E`` (None: Z_E of the report), ``r``,
-    ``condition``."""
+    ``condition``, ``origin`` and ``remark`` (texts)."""
     out = []
     for k, case in enumerate(cases or (), start=1):
         try:
@@ -3642,7 +3957,8 @@ def _limit_cases(cases) -> List[dict]:
                 raise ValueError("limit_A=%r, Z_E=%r, r=%r" % (case.get("limit_A"), case.get("Z_E"), case.get("r", 1.0)))
         except (KeyError, TypeError, ValueError) as ex:
             raise ValueError(tr("document.limit_case_invalid", k=k, error=ex)) from None
-        out.append(dict(limit_A=lim, Z_E=z, r=r, condition=_markup_symbols(str(case.get("condition") or ""))))
+        out.append(dict(limit_A=lim, Z_E=z, r=r, condition=_markup_symbols(str(case.get("condition") or "")),
+                        origin=str(case.get("origin") or "").strip(), remark=str(case.get("remark") or "").strip()))
     return out
 
 
@@ -3722,6 +4038,7 @@ class _Campaign:
         self.pq_valid = bool(pq is not None and getattr(pq, "valid", False))
         self.scaled: Dict[str, dict] = {}
         self.thd95_used: Dict[str, Optional[float]] = {}               # THD quantile of the scaling per test
+        self.u95_reference: Dict[str, str] = {}                        # "seq" (line-to-earth) or "LL" per test
         self.stored_factors = sorted({float(_stored_settings(self.results[n]).get("pq_safety_factor") or 1.0)
                                       for n in self.names if _finite(self.results[n].values.get("IH_scaled"))})
         if self.pq_valid:
@@ -3736,6 +4053,7 @@ class _Campaign:
                         thd95_percent=thd95, safety_factor=pq.factor,
                         uncertainty_I=self.mI, uncertainty_U=self.mU)
                     self.thd95_used[n] = thd95
+                    self.u95_reference[n] = str(sc["u95_reference"])
                 except Exception as ex:                         # a test without voltages: not scaled
                     self.hints.append("%s: %s" % (n, ex))
         else:
@@ -3749,6 +4067,7 @@ class _Campaign:
                         thd95_percent=st.get("u_thd95_percent"), safety_factor=float(st.get("pq_safety_factor") or 1),
                         uncertainty_I=self.mI, uncertainty_U=self.mU)
                     self.thd95_used[n] = st.get("u_thd95_percent")
+                    self.u95_reference[n] = str(st.get("pq_u95_reference") or "seq")
         for n, sres in self.scaled.items():
             big = sres["table"][sres["table"]["factor"] > 20.0]
             if len(big):
@@ -3912,6 +4231,7 @@ class _Campaign:
             except (ValueError, TypeError):
                 start = None
         return dict(IRES=ires, IRES_a=ires_a, IG=float(v.get("IG", np.nan)), Iw=float(v.get("Iw", np.nan)),
+                    U0=_measured(e, "UH1n"),
                     Iv=float(v.get("Iv", np.nan)), IH=float(v.get("IH_total", np.nan)),
                     Ilf=float(v.get("ires_low_frequency_A", np.nan)), harmonics=_harmonics(e), coils=coils,
                     coil_sum=float(sum(c[1] for c in coils)) if coils else float("nan"),
@@ -4074,7 +4394,21 @@ class _Campaign:
         d = float(self.d) if _finite(self.d) else 0.0
         da = d if xp["damping_added"] is None else float(xp["damping_added"])
         targets = list(xp["targets"]) or [10.0 * round(f * ice / 10.0) for f in (1.25, 1.5, 2.0)]
-        kw = dict(I_L=il, damping=d, damping_added=da, c1_ratio=xp["c1_ratio"], zero_sequence=xp["zero_sequence"])
+        # the line-to-earth voltage of the network data: U_n/√3 with the nominal voltage – given, or the standard
+        # voltage nearest to the zero-sequence voltage of the tests (a measured value would carry its errors)
+        try:
+            u0 = float(es._expansion_ule(self.series))
+        except ValueError:
+            u0 = float("nan")
+        un = xp.get("U_n_kV")
+        un_given = un is not None
+        if not un_given:
+            if not _finite(u0):
+                raise ValueError(tr("document.expansion_no_un"))
+            un = fml.standard_voltage_kV(math.sqrt(3.0) * u0 / 1000.0)
+        ule = 1000.0 * float(un) / math.sqrt(3.0)
+        kw = dict(I_L=il, U_LE=ule, damping=d, damping_added=da, c1_ratio=xp["c1_ratio"],
+                  zero_sequence=xp["zero_sequence"])
         base = dict(IG=self.IG, uncertainty_I=self.mI, uncertainty_U=self.mU, **(self.scaling or {}))
         col = "IRES_scaled_assessed_A" if self.scaling else "IRES_assessed_A"
         ih_col = "IH_scaled_A" if self.scaling else "IH_A"
@@ -4132,7 +4466,8 @@ class _Campaign:
                     Z_E=abs(complex(z_rep)), curves=curves, rows=rows, first=first, negative=negative,
                     rejected=rejected, now=now,
                     cases=cases, column=col, ih_column=ih_col, end=end, top=float(grid[-1]), I_L_max=xp["I_L_max"],
-                    coil_end=coil_end, U_LE=float(first["sources"].U_LE), fu=fu)
+                    coil_end=coil_end, U_LE=float(first["sources"].U_LE), U_n_kV=float(un), U_n_given=un_given,
+                    U0_V=u0, fu=fu)
 
     def ok(self, value: float) -> str:
         """Status of a current against the limit of the network."""
@@ -4148,11 +4483,18 @@ cases 1 and 2 of the touch voltage; farther, Z_E is interpolated linearly betwee
 (outside the measured range: the nearest)."""
 
 
+def _probe_name(sv: pd.DataFrame, i) -> str:
+    """Channel of row ``i`` of a ``station_voltages`` table, with its distance ("U3 in 20 m") when it is known."""
+    name = str(sv.loc[i, "channel"])
+    d = pd.to_numeric(pd.Series([sv.loc[i, "distance_m"]]), errors="coerce").iloc[0] if "distance_m" in sv else None
+    return tr("document.probe_in", probe=name, d=_g(d)) if _finite(d) else name
+
+
 def touch_voltage_cases(station, currents: Optional[Mapping[int, float]] = None, limit_A: Optional[float] = None,
                         U_Tp: Optional[float] = None, F: Optional[float] = None, r_flat: Optional[float] = None,
                         reference_frequency_Hz: Optional[float] = None,
                         earthing: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-    """Touch voltage at a station by four approaches, U_T = r·I·Z_E/F = U_E/F.
+    """Prospective touch voltage at a station by four approaches, U_vT = r·I·Z_E/F = U_E/F.
 
     1. the limit current with r = 1 and Z_E of the earthing measurement at ``reference_frequency_Hz``,
     2. the same with the flat reduction factor ``r_flat``,
@@ -4174,7 +4516,7 @@ def touch_voltage_cases(station, currents: Optional[Mapping[int, float]] = None,
     U_Tp : float, optional
         Permissible touch voltage in V (column ``share_pct``).
     F : float, optional
-        Ratio of earth potential rise to touch voltage (without: U_T is not formed).
+        Ratio of earth potential rise to touch voltage (without: U_vT – column ``U_T_V`` – is not formed).
     r_flat : float, optional
         Flat reduction factor (case 2; None: left out).
     reference_frequency_Hz : float, optional
@@ -4192,7 +4534,9 @@ def touch_voltage_cases(station, currents: Optional[Mapping[int, float]] = None,
     pandas.DataFrame
         Columns ``case``, ``label``, ``description``, ``I_A``, ``r``, ``Z_E_Ohm``, ``U_E_V``, ``F``, ``U_T_V``,
         ``U_Tp_V``, ``share_pct``; ``attrs``: ``orders_measured`` (orders with r·Z_E of the test), ``covered_pct``
-        (share of Σ I² of the assessment currents at measured orders), ``probe``, ``reference_frequency_Hz`` (the
+        (share of Σ I² of the assessment currents at measured orders), ``probe`` and ``probe_distance_m`` (the
+        earth-potential probe of cases 3 and 4), ``probe_ut`` and ``probe_ut_distance_m`` (the touch-voltage probe of
+        the measured value ``ut``), ``reference_frequency_Hz`` (the
         frequency of Z_E in the cases 1 and 2), ``reference_frequency_requested_Hz``, ``reference_method``
         (``"measured"``, ``"interpolated"`` or ``"nearest"``) and ``reference_bracket_Hz`` (the neighbouring
         frequencies of an interpolation).
@@ -4278,16 +4622,40 @@ def touch_voltage_cases(station, currents: Optional[Mapping[int, float]] = None,
                              r=float("nan"), Z_E_Ohm=float("nan"), U_E_V=float("nan"), F=float("nan"),
                              U_T_V=float(ut_m), U_Tp_V=utp,
                              share_pct=100.0 * float(ut_m) / utp if _finite(utp) and utp > 0 else float("nan")))
+    # the measured cases are named after their probe and its distance – the probes are measuring points, the
+    # normative terms (earth potential rise, touch voltage) would not always fit them (a near probe above a far one)
+    def probe_of(role):
+        if sv is None or sv.empty or "role" not in sv or not (sv["role"] == role).any():
+            return None, None
+        g = sv[sv["role"] == role]
+        row = g.loc[pd.to_numeric(g["RMS_V"], errors="coerce").idxmax()] if g["RMS_V"].notna().any() else g.iloc[0]
+        dist = row.get("distance_m") if "distance_m" in g else None
+        return str(row["channel"]), (float(dist) if _finite(dist) else None)
+
+    ue_ch, ue_d = probe, None
+    if probe is not None and sv is not None and "distance_m" in sv:
+        dd = pd.to_numeric(sv.loc[sv["channel"] == probe, "distance_m"], errors="coerce")
+        ue_d = float(dd.iloc[0]) if len(dd) and _finite(dd.iloc[0]) else None
+    ut_ch, ut_d = probe_of("u_t")
     desc = {"1": tr("document.case_1", f=_n(f_ref, 3)), "2": tr("document.case_2", f=_n(f_ref, 3)),
-            "3": tr("document.case_3"), "4": tr("document.case_4"), "4b": tr("document.case_4b"),
-            "ut": tr("document.case_ut_measured")}
+            "3": tr("document.case_3"), "4b": tr("document.case_4b"),
+            "4": tr("document.case_4_probe", d=_g(ue_d), probe=ue_ch) if ue_d is not None else tr("document.case_4"),
+            "ut": (tr("document.case_ut_probe" if ut_d <= 1.0 else "document.case_ut_probe_far", d=_g(ut_d),
+                      probe=ut_ch) if ut_d is not None else tr("document.case_ut_measured"))}
+    short = {"4": tr("document.case_short_4_probe", d=_g(ue_d)) if ue_d is not None else None,
+             "ut": tr("document.case_short_ut_probe", d=_g(ut_d)) if ut_d is not None else None}
     for r in rows:
         r["description"] = desc[r["case"]]
+        if short.get(r["case"]):
+            r["label"] = short[r["case"]]
     out = pd.DataFrame(rows, columns=["case", "label", "description", "I_A", "r", "Z_E_Ohm", "U_E_V", "F", "U_T_V",
                                       "U_Tp_V", "share_pct"])
     out.attrs["orders_measured"] = sorted(rze)
     out.attrs["covered_pct"] = covered
     out.attrs["probe"] = probe
+    out.attrs["probe_distance_m"] = ue_d
+    out.attrs["probe_ut"] = ut_ch
+    out.attrs["probe_ut_distance_m"] = ut_d
     out.attrs["reference_frequency_Hz"] = f_ref
     out.attrs["reference_frequency_requested_Hz"] = f_req
     out.attrs["reference_method"] = how
@@ -4307,8 +4675,8 @@ _ROLE_GROUPS = (
     ("i_l", ("i_l1", "i_l2", "i_l3"), "line currents of the transformer", "Leiterströme des Transformators"),
     ("i_shield", ("i_shield",), "shield current", "Schirmstrom"),
     ("i_pen", ("i_pen",), "PEN currents", "PEN-Ströme"),
-    ("u_e", ("u_e",), "earth potential rise (probe)", "Erdungsspannung (Sonde)"),
-    ("u_t", ("u_t",), "touch voltage (probe)", "Berührungsspannung (Sonde)"),
+    ("u_e", ("u_e",), "voltage against the remote probe (U_[E])", "Spannung gegen die ferne Sonde (U_[E])"),
+    ("u_t", ("u_t",), "voltage against the near probe (U_[vT])", "Spannung gegen die nahe Sonde (U_[vT])"),
     ("other", ("u_gen", "i_gen"), "further channels", "weitere Kanäle"),
 )
 
@@ -4598,8 +4966,6 @@ class _Writer:
             return ""
         g = pc[(pd.to_numeric(pc["order"], errors="coerce") == dom) & pc["test"].astype(str).isin(c.subs)]
         p_all = self.percentile_range(pd.to_numeric(g.get("percentile_all", pd.Series(dtype=float)), errors="coerce"))
-        p_win = self.percentile_range(pd.to_numeric(g.get("percentile_window", pd.Series(dtype=float)),
-                                                    errors="coerce"))
         if not p_all:
             return ""
         ser = pq.largest(dom)
@@ -4619,9 +4985,8 @@ class _Writer:
         own = tab[tab["rule"] == "own voltage"].sort_values("I_scaled_A", ascending=False).head(3)
         ks = "; ".join(tr("document.k_item", m=int(r["order"]), k=_n(r["factor"])) for _, r in
                        own.sort_values("order").iterrows())
-        window = tr("document.scaling_context_window", p=p_win, t=self.tables["pq_tests"]) \
-            if p_win and "pq_tests" in self.tables else ""
-        text = tr("document.scaling_context", order=dom, p_all=p_all, window=window, u_day=_n(med[wd]),
+        table = tr("document.scaling_context_table", t=self.tables["pq_tests"]) if "pq_tests" in self.tables else ""
+        text = tr("document.scaling_context", order=dom, p_all=p_all, table=table, u_day=_n(med[wd]),
                   day=days[wd], u_lo=_n(med.min()), u_hi=_n(med.max()), q=_n(pq.u95().get(dom)), ks=ks or "–")
         # an order whose test level lay below (almost) every value of the PQ measurement: a large factor that
         # rests on an untypical test – the reader should check the network state
@@ -4710,7 +5075,19 @@ class _Writer:
         if _finite(c.v) and _finite(ctl["v"]):
             cmp.append(tr("document.ctrl_cmp_detuning", x=_fixed(100 * c.v, 1)))
         if cmp:
-            text += " " + tr("document.ctrl_compare", items=", ".join(cmp))
+            u0s = [c.tests[n]["U0"] for n in c.subs if _finite(c.tests[n].get("U0"))]
+            u0 = float(np.median(u0s)) if u0s else float("nan")
+            ur = ctl.get("rated_kV", float("nan"))
+            if _finite(ur) and _finite(u0):
+                up = 1000.0 * float(ur) / math.sqrt(3.0)
+                causes = [tr("document.ctrl_cause_voltage_rated", ur=_g(ur), up=_n(up / 1000.0), u0=_n(u0 / 1000.0),
+                             dev=pct(100 * (u0 / up - 1)))]
+            else:
+                causes = [tr("document.ctrl_cause_voltage")]
+            if ctl["coils"]:
+                causes.append(tr("document.ctrl_cause_reading"))
+            causes.append(tr("document.ctrl_cause_measuring"))
+            text += " " + tr("document.ctrl_compare", items=", ".join(cmp), causes="; ".join(causes))
         return text
 
     def detuning_text(self) -> str:
@@ -4747,14 +5124,21 @@ class _Writer:
             if lc["applies"]:
                 u_text = ""
                 if lc["ok_U"] is not None:
+                    iu = lc["FU_V"] / (lc["r"] * lc["Z_E"]) if _finite(lc["Z_E"]) and lc["Z_E"] > 0 else float("nan")
+                    iu_text = tr("document.lc_u_current", z=_n(lc["Z_E"]), u=_n(lc["FU_V"]), r=_g(lc["r"]),
+                                 i=_n(iu)) if _finite(iu) else ""
                     u_text = (tr("document.lc_u_ok", ue=_n(lc["U_E_V"]), share=_share(100 * lc["U_E_V"] / lc["FU_V"]),
-                                 u=_n(lc["FU_V"])) if lc["ok_U"] else
-                              tr("document.lc_u_exceeded", ue=_n(lc["U_E_V"]), u=_n(lc["FU_V"])))
+                                 u=_n(lc["FU_V"]), iu=iu_text) if lc["ok_U"] else
+                              tr("document.lc_u_exceeded", ue=_n(lc["U_E_V"]), u=_n(lc["FU_V"]), iu=iu_text))
                 if lc["ok_I"]:
-                    out.append(tr("document.lc_result_ok", limit=_g(lc["limit_A"]), i=_n(lc["I_A"]), u_text=u_text))
+                    text = tr("document.lc_result_ok", limit=_g(lc["limit_A"]), i=_n(lc["I_A"]), u_text=u_text)
                 else:
-                    out.append(tr("document.lc_result_exceeded", limit=_g(lc["limit_A"]), i=_n(lc["I_A"]),
-                                  pct=_n(100 * (lc["I_A"] / lc["limit_A"] - 1), 2), u_text=u_text))
+                    text = tr("document.lc_result_exceeded", limit=_g(lc["limit_A"]), i=_n(lc["I_A"]),
+                              pct=_n(100 * (lc["I_A"] / lc["limit_A"] - 1), 2), u_text=u_text)
+                for extra in (lc.get("origin"), lc.get("remark")):
+                    if extra:
+                        text += " " + _sentence(extra)
+                out.append(text)
             else:
                 others.append(tr("document.lc_item", limit=_g(lc["limit_A"]),
                                  condition=lc["condition"] or tr("document.lc_standard"), i=_n(lc["I_A"]),
@@ -4792,7 +5176,7 @@ class _Writer:
     def key_results(self):
         c, d = self.c, self.d
         d.heading(tr("document.key_results"), 1, numbered=False)
-        d.para(tr("document.key_results_intro"))
+        d.para(tr("document.key_results_intro", by=self.specified_by()))
         rows, keys = [], []
 
         def add(row, key):
@@ -4859,7 +5243,7 @@ class _Writer:
                 top = cases.loc[ut_all.idxmax()]
                 ut = float(ut_all.max())
                 utp = float(c.u_tp) if _finite(c.u_tp) else float("nan")
-                case = tr("document.probe") if top["case"] == "ut" else str(top["label"])
+                case = str(top["label"])
                 add((tr("document.kr_ut", station=c.place(n), case=case), "%s V" % _n(ut),
                      ("%s V" % _n(utp)) if _finite(utp) else "–",
                      (tr("document.met") if ut <= utp else tr("document.exceeded")) if _finite(utp) else "–"),
@@ -5218,15 +5602,18 @@ class _Writer:
                     if str(x.get("uncertain")).lower() in ("true", "1", "yes"):
                         unsure.add(int(x["order"]))
             star = lambda m: " *" if m in unsure else ""
-            rows = [(tr("document.row_rms_plain"), _n(r["RMS_V"]), _n(r.get("V_per_100A_RMS")), "–",
-                     _n(c.tests[n]["IRES"]))]
+            z_rms = r.get("V_per_100A_RMS", np.nan)
+            z_rms = float(z_rms) / 100.0 if _finite(z_rms) else float("nan")
+            k, unit = report.per_current_unit([z_rms] + [r.get("rZE_H%d_Ohm" % m, np.nan) for m in ords] +
+                                              list(fault.values()), reference=z_rms)
+            rows = [(tr("document.row_rms_plain"), _n(r["RMS_V"]), _n(k * z_rms), "–", _n(c.tests[n]["IRES"]))]
             for m in ords:
                 rows.append((tr("document.row_order", f=_hz(m * self._f_nominal()), m=m), _n(r.get("H%d_V" % m)),
-                             _n(100 * r.get("rZE_H%d_Ohm" % m, np.nan)),
-                             (_n(100 * fault[m]) + star(m)) if m in fault else "–", _n(hz.get(m))))
-            d.table(["", tr("document.col_ue_max"), tr("document.col_per_100"), tr("document.col_per_100_fault"),
-                     tr("document.col_if")], rows, caption=tr("document.tab_epr", probe=r["channel"]),
-                    widths_cm=[3.4, 3.2, 3.4, 3.6, 2.4])
+                             _n(k * r.get("rZE_H%d_Ohm" % m, np.nan)),
+                             (_n(k * fault[m]) + star(m)) if m in fault else "–", _n(hz.get(m))))
+            d.table(["", tr("document.col_ue_max"), tr("document.col_per_a", unit=unit),
+                     tr("document.col_per_a_fault", unit=unit), tr("document.col_if")], rows,
+                    caption=tr("document.tab_epr", probe=r["channel"]), widths_cm=[3.4, 3.2, 3.4, 3.6, 2.4])
             d.para(tr("document.epr_note", uncertain=tr("document.epr_uncertain")
                       if any(m in unsure for m in ords if m in fault) else ""))
             inv = self.probe_inversion(n) if not compact else ""
@@ -5317,7 +5704,7 @@ class _Writer:
         return tr("document.station_probes_compact", probes=self.join(items), umax=_n(umax), limit=limit, diff=diff)
 
     def probe_inversion(self, n: str) -> str:
-        """The sentence on a touch-voltage probe above the earth potential rise (U_T > U_E), or ""."""
+        """The sentence on a nearer (touch-voltage) probe above the farther (earth-potential) probe, or ""."""
         sv = self.c.results[n].tables.get("station_voltages")
         if sv is None or sv.empty or not (sv["role"] == "u_e").any() or not (sv["role"] == "u_t").any():
             return ""
@@ -5325,8 +5712,8 @@ class _Writer:
         ie, it = v[sv["role"] == "u_e"].idxmax(), v[sv["role"] == "u_t"].idxmax()
         if not (_finite(v[ie]) and _finite(v[it])) or v[it] <= v[ie]:
             return ""
-        return tr("document.probe_inverted", ut_probe=str(sv.loc[it, "channel"]), ut=_n(v[it]),
-                  ue_probe=str(sv.loc[ie, "channel"]), ue=_n(v[ie]))
+        return tr("document.probe_inverted", ut_probe=_probe_name(sv, it), ut=_n(v[it]),
+                  ue_probe=_probe_name(sv, ie), ue=_n(v[ie]))
 
     def given_quantiles(self) -> Optional[Tuple[str, str]]:
         """The quantiles of a scaling without a file of the PQ measurement – those of the campaign (``scaling``),
@@ -5379,15 +5766,27 @@ class _Writer:
             nx = cov.get("n_excluded")
             excluded = (tr("document.pq_excluded", n=int(nx)) if _finite(nx) and int(nx) > 0 else
                         tr("document.pq_excluded_none") if _finite(nx) else "")
-            d.para(tr("document.pq_method", q=_g(100 * pq.quantile), excluded=excluded))
+            ll = pq.reference == "LL"
+            d.para(tr("document.pq_method_ll" if ll else "document.pq_method", q=_g(100 * pq.quantile),
+                      excluded=excluded))
+            if not ll:                                 # line-to-earth values: not the usual reference (EN 50160)
+                has_ll = getattr(pq.data, "has_harmonics", None)
+                d.para(tr("document.pq_le_chosen" if has_ll is not None and has_ll("LL") else "document.pq_le_only"))
             rule = getattr(pq, "factor_rule", None) or {}
-            if rule:
+            q_text = _g(100 * pq.quantile)
+            if rule and pq.valid:
                 items = "; ".join(tr("document.pq_rule_item", days=_g(dd), k=_g(kk))
                                   for dd, kk in sorted(rule.items(), key=lambda x: -float(x[0])))
-                hint = tr("document.pq_factor_rule", days=_fixed(cov.get("gapless_days"), 1), rule=items)
-            else:
-                hint = plain(pq.factor_hint).rstrip(".")
-            d.para(tr("document.pq_factor", k=_n(pq.factor), hint=hint))
+                target = max(float(x) for x in rule)
+                span = tr("document.pq_span_year") if target >= 364.0 else tr("document.pq_span_days", days=_g(target))
+                key = "document.pq_factor_one" if _finite(pq.factor) and abs(float(pq.factor) - 1.0) < 1e-9 else \
+                    "document.pq_factor"
+                d.para(tr(key, days=_fixed(cov.get("gapless_days"), 1), q=q_text, span=span, k=_g(pq.factor),
+                          rule=items))
+            elif pq.valid:
+                none = _finite(pq.factor) and abs(float(pq.factor) - 1.0) < 1e-9
+                d.para(tr("document.pq_factor_none" if none else "document.pq_factor_given", k=_g(pq.factor),
+                          q=q_text, days=_fixed(cov.get("gapless_days"), 1)))
             if not pq.valid:
                 d.para(tr("document.pq_invalid"))
             dom = pq.dominant_order
@@ -5405,7 +5804,7 @@ class _Writer:
                              _n(r["U_max_V"])))
             d.table([tr("document.col_order"), tr("document.col_f"), tr("document.col_category"),
                      tr("document.col_u_quantile"), tr("document.col_u_factored"), tr("document.col_u_median"),
-                     tr("document.col_u_max")], rows, caption=tr("document.tab_pq"),
+                     tr("document.col_u_max")], rows, caption=tr("document.tab_pq_ll" if ll else "document.tab_pq"),
                     widths_cm=[1.9, 1.6, 2.3, 2.6, 2.6, 2.6, 2.4], font_size=8.5)
             if _finite(pq.thd95()):
                 d.para(tr("document.pq_thd", q=_n(pq.thd95()), k=_n(pq.thd95() * pq.factor)))
@@ -5418,18 +5817,16 @@ class _Writer:
             if pc is not None and len(pc):
                 d.para(tr("document.pq_comparability"))
                 rows = [(str(r["test"]), str(int(r["order"])), _n(r["U_test_V"]), _fixed(r["percentile_all"], 0),
-                         str(r.get("window", "")), _fixed(r.get("percentile_window"), 0), _n(r.get("factor_to_test")))
-                        for _, r in pc.iterrows()]
+                         _n(r.get("factor_to_test"))) for _, r in pc.iterrows()]
                 d.table([tr("document.col_test"), tr("document.col_order"), tr("document.col_u_test"),
-                         tr("document.col_percentile"), tr("document.col_window"), tr("document.col_percentile_window"),
-                         tr("document.col_factor_test")], rows, caption=tr("document.tab_pq_tests"),
-                        widths_cm=[3.6, 1.8, 2.0, 2.0, 2.8, 2.0, 2.0], align=["left"] + ["right"] * 3 + ["left"]
-                        + ["right"] * 2, font_size=8)
+                         tr("document.col_percentile"), tr("document.col_factor_test")], rows,
+                        caption=tr("document.tab_pq_tests"), widths_cm=[5.2, 2.0, 3.0, 2.6, 3.0],
+                        align=["left"] + ["right"] * 4, font_size=8.5)
                 self.tables["pq_tests"] = self.table_number()
                 listed = set(str(x) for x in pc["test"])
                 missing = [n for n in c.stations if n not in listed]       # a station: not the busbar voltage
-                d.para(tr("document.pq_tests_note", others=tr("document.pq_tests_others", names=self.join(missing))
-                          if missing else ""))
+                d.para(tr("document.pq_tests_note_ll" if ll else "document.pq_tests_note",
+                          others=tr("document.pq_tests_others", names=self.join(missing)) if missing else ""))
         # ---- voltages of the tests
         d.heading(tr("document.sec_test_voltages"), 3)
         d.para(tr("document.test_voltages_intro"))
@@ -5511,14 +5908,16 @@ class _Writer:
             d.para(tr("document.step2_none"))
             d.para(tr("document.step3_unscaled", ires=_n(t["IRES_a"])))
         else:
+            ll = c.u95_reference.get(n) == "LL"
             u_ref = tr("document.ref_table", n=self.tables["voltages"]) if "voltages" in self.tables else ""
-            safe = tr("document.step2_safe", n=self.tables["pq_tests"]) if "pq_tests" in self.tables else ""
+            safe = tr("document.step2_safe_ll" if ll else "document.step2_safe", n=self.tables["pq_tests"]) \
+                if "pq_tests" in self.tables else ""
             tab = s["table"]
             thd_rows = bool((tab["rule"] == "THD").any())
             if thd_rows and not (tab["rule"] == "own voltage").any():      # a PQ measurement with the THD only
                 d.para(tr("document.step2_thd_only", k=_n(k)))
             else:
-                d.para(tr("document.step2", k=_n(k), u_ref=u_ref, safe=safe))
+                d.para(tr("document.step2_ll" if ll else "document.step2", k=_n(k), u_ref=u_ref, safe=safe))
             f_thd, u_meas, thd95 = s.get("f_thd"), s.get("UTHD_meas"), c.thd95_used.get(n)
             if thd_rows and _finite(f_thd) and _finite(u_meas) and _finite(thd95):
                 ref = tr("document.ref_table_paren", n=self.tables["voltages"]) if "voltages" in self.tables else ""
@@ -5631,8 +6030,8 @@ class _Writer:
                 d.para(tr("document.es_scaled", how=how, kept=kept, ih=_n(rs["IH_scaled"]),
                           ires=_n(rs["IRES_scaled"]), a=_n(rs["IRES_scaled_assessed"])))
                 ref = tr("document.es_decomposition_ref", sec=self.sections["ires"]) if "ires" in self.sections else ""
-                d.para(tr("document.es_decomposition", ires=_n(r0["IRES"]), ih=_n(r0["IH"]), ihs=_n(rs["IH_scaled"]),
-                          ig=_n(r0["IG"]), ref=ref))
+                d.para(tr("document.es_decomposition", Z=_n(c.Z_E), ires=_n(r0["IRES"]), ih=_n(r0["IH"]),
+                          ihs=_n(rs["IH_scaled"]), ig=_n(r0["IG"]), iress=_n(rs["IRES_scaled"]), ref=ref))
             if c.mc_band and 5 in c.mc_band and 95 in c.mc_band:
                 cfg = dict(sigma_magnitude=0.01, sigma_phase_deg=0.5, sigma_Z=0.02, sigma_level=0.0, model_error=True)
                 cfg.update((c.mc or {}).get("settings") or {})          # a result of an older version: defaults
@@ -5643,15 +6042,16 @@ class _Writer:
                           if cfg["sigma_level"] else "",
                           model=tr("document.es_mc_model") if cfg["model_error"] else "",
                           n=int((c.mc or {}).get("n") or 0) or "–"))
-        if loo_max:
-            o = max(loo_max, key=loo_max.get)
-            lim = ""
-            if c.loo is not None and "within_limit" in c.loo:
-                w = c.loo["within_limit"]
-                bad = int(w.eq(False).sum())
-                if bad:
-                    lim = tr("document.es_loo_limit", bad=bad, n=int(w.notna().sum()), lim=self.loo_limit_text())
-            d.para(tr("document.es_loo", dev=_n(loo_max[o], 2), order=o, limit=lim))
+        for group, g in self.loo_groups().items():
+            if group == "pos_neg":
+                lim = (tr("document.es_loo_limit", bad=g["bad"], n=g["n"], lim=self.loo_limit_text()) if g["bad"] else
+                       tr("document.es_loo_ok", n=g["n"], lim=self.loo_limit_text()) if g["n"] else "")
+                d.para(tr("document.es_loo", dev=_n(g["dev"], 2), order=g["order"], limit=lim))
+            elif group == "zero":
+                lim = tr("document.es_loo_zero_limit", bad=g["bad"], n=g["n"], lim=self.loo_limit_text()) \
+                    if g["bad"] else ""
+                d.para(tr("document.es_loo_zero_one" if len(g["orders"]) == 1 else "document.es_loo_zero",
+                          orders=", ".join(map(str, g["orders"])), dev=_n(g["dev"], 2), order=g["order"], limit=lim))
         fig_ze = 0
         if c.Z_E is not None or c.limits:
             zmax_plot = max(10.0, 2 * (c.series.Z_range[1] or 0), 1.5 * abs(c.Z_E or 0))
@@ -5707,8 +6107,12 @@ class _Writer:
         d.formula(tr("document.eq_expansion_ig"))
         two = len(x["splits"]) > 1
         d.para(tr("document.expansion_split" if two else "document.expansion_split_one"), keep_next=True)
+        ule = (tr("document.expansion_ule", un=_g(x["U_n_kV"]), ule=_n(x["U_LE"], 5)) if x["U_n_given"] or
+               not _finite(x["U0_V"]) else
+               tr("document.expansion_ule_std", un=_g(x["U_n_kV"]), ule=_n(x["U_LE"], 5),
+                  ull=_n(math.sqrt(3.0) * x["U0_V"] / 1000.0, 3)))
         items = [tr("document.expansion_split_sources", ice=_n(x["ice"]), il=_n(x["il"]), d=_fixed(100 * x["d"], 1),
-                    ule=_n(x["U_LE"], 4))]
+                    ule=ule)]
         if two:
             items.append(tr("document.expansion_split_busbar"))
         d.bullets(items)
@@ -5751,7 +6155,8 @@ class _Writer:
             table.append((tr("document.xrow_status", limit=_g(c.limit)),) + tuple(c.ok(v) for v in dec))
         head = ["", tr("document.col_today")] + [tr("document.col_planned", ice=_g(t)) for t in x["targets"]]
         w0 = 6.6 if n_t <= 3 else 5.4
-        d.table(head, table, caption=tr("document.tab_expansion", Z=_n(x["Z_E"])),
+        d.table(head, table, caption=tr("document.tab_expansion", Z=_n(x["Z_E"]),
+                                        splits=tr("document.tab_expansion_splits") if len(x["splits"]) > 1 else ""),
                 widths_cm=[w0] + [(16.2 - w0) / (n_t + 1)] * (n_t + 1), align=["left"] + ["right"] * (n_t + 1),
                 font_size=8.5)
         # ---- the orders at the first planned value
@@ -5771,7 +6176,7 @@ class _Writer:
         t_orders = 0
         if orows:
             head = [tr("document.col_order"), tr("document.col_i_today")]
-            head += [tr("document.col_i_split", split=_sentence(name[sp]).rstrip(".")) for sp in x["splits"]]
+            head += [tr("document.col_i_split", split=name[sp]) for sp in x["splits"]]
             head += [tr("document.col_u_split", split=name[sp]) for sp in x["splits"]]
             k = len(x["splits"])
             d.table(head, orows, caption=tr("document.tab_expansion_orders", Z=_n(x["Z_E"]), ice=_g(t1)),
@@ -5841,19 +6246,12 @@ class _Writer:
         if _finite(x["coil_end"]) and x["coil_end"] < max(x["targets"] + [lc["reach"]["I_C_A"] for lc in x["cases"]
                                                                           if lc["reach"]["status"] == "reached"]):
             d.para(tr("document.expansion_coils_short", ice=_fixed(round(x["coil_end"], -1), 0)))
-        rej = x.get("rejected") or []
-        neg = [m for m in x["negative"] if m not in rej]       # orders with a negative real part in network data too
-        still = [m for m in x["negative"] if m in rej]
-        if neg:
-            d.para(tr("document.expansion_negative_one", orders=neg[0]) if len(neg) == 1 else
-                   tr("document.expansion_negative", orders=self.join([str(m) for m in neg])))
-        if rej:
-            text = (tr("document.expansion_rejected_one", orders=rej[0]) if len(rej) == 1 else
-                    tr("document.expansion_rejected", orders=self.join([str(m) for m in rej])))
-            if still:
-                text += (tr("document.expansion_rejected_still_one") if len(rej) == 1 else
-                         tr("document.expansion_rejected_still", orders=self.join([str(m) for m in still])))
-            d.para(text)
+        rej = x.get("rejected") or []                         # split B with a negative real part: split A instead
+        unsure = sorted(set(x["negative"]) | set(rej))          # a negative real part in a split used
+        if unsure:
+            action = tr("document.expansion_uncertain_b", orders=self.join([str(m) for m in rej])) if rej else ""
+            d.para(tr("document.expansion_uncertain_one", orders=unsure[0], action=action) if len(unsure) == 1 else
+                   tr("document.expansion_uncertain", orders=self.join([str(m) for m in unsure]), action=action))
         d.para(tr("document.expansion_validity"))
 
     @staticmethod
@@ -5889,6 +6287,11 @@ class _Writer:
                               margin=_fixed(round(r["margin_A"], -1), 0), split=split, **kw))
         return out
 
+    def specified_by(self) -> str:
+        """" of <name>" of the one who specifies limits and parameters (``ReportInfo.specified_by``), or ""."""
+        name = str(self.c.info.specified_by or "").strip()
+        return tr("document.specified_by", name=name) if name else ""
+
     def limit_cases_table(self):
         """The limits with their conditions: I_RES,ass at the Z_E of every case and U_E = r·I_RES,ass·Z_E."""
         c, d = self.c, self.d
@@ -5896,7 +6299,8 @@ class _Writer:
         if not cases:
             return
         fu = cases[0]["FU_V"]
-        d.para(tr("document.lc_intro", u=_n(fu)) if _finite(fu) else tr("document.lc_intro_no_u"))
+        d.para(tr("document.lc_intro", u=_n(fu), by=self.specified_by()) if _finite(fu) else
+               tr("document.lc_intro_no_u", by=self.specified_by()))
         if any(lc["basis"] == "busbar" for lc in cases):
             d.para(tr("document.lc_busbar"))
         rows = []
@@ -5911,6 +6315,31 @@ class _Writer:
                 align=["right", "left", "right", "right", "right", "center", "right", "center"])
         for text in self.limit_case_sentences():
             d.para(text)
+        for lc in cases:                                   # where the other limits come from (the applying: above)
+            if not lc["applies"] and lc.get("origin"):
+                d.para(tr("document.lc_origin", limit=_g(lc["limit_A"]), origin=_sentence(lc["origin"])))
+
+    def loo_groups(self) -> Dict[str, dict]:
+        """The leave-one-out check per group of orders – ``"pos_neg"`` (positive and negative sequence: the sources
+        are the voltages before the fault, the measure of the model), ``"zero"`` (zero sequence: a source in the
+        fault, for information) and ``"even"`` –, each with ``orders``, ``dev`` (largest |deviation| in %),
+        ``order`` (its order), ``n`` (values with an assessment) and ``bad`` (outside the limit)."""
+        loo = self.c.loo
+        if loo is None or not len(loo) or "deviation_pct" not in loo or "order" not in loo:
+            return {}
+        dv = pd.to_numeric(loo["deviation_pct"], errors="coerce").abs()
+        w = loo["within_limit"] if "within_limit" in loo else pd.Series([None] * len(loo), index=loo.index)
+        cat = loo["order"].map(lambda m: fml.harmonic_category(int(m)))
+        out = {}
+        for group in ("pos_neg", "zero", "even"):
+            sel = (cat == group) & dv.notna()
+            if not sel.any():
+                continue
+            j = dv[sel].idxmax()
+            ww = w[sel]
+            out[group] = dict(orders=sorted({int(m) for m in loo.loc[sel, "order"]}), dev=float(dv[j]),
+                              order=int(loo.loc[j, "order"]), n=int(ww.notna().sum()), bad=int(ww.eq(False).sum()))
+        return out
 
     def loo_limit_text(self) -> str:
         """The permissible deviation of the leave-one-out check: ±15 % (or ±0,5 A)."""
@@ -5932,7 +6361,7 @@ class _Writer:
         if not (_finite(c.u_tp) and _finite(c.f_factor)):
             d.para(tr("document.ut_missing"))
             return
-        d.para(tr("document.ut_parameters", utp=_n(c.u_tp), f=_n(c.f_factor),
+        d.para(tr("document.ut_parameters", utp=_n(c.u_tp), f=_n(c.f_factor), by=self.specified_by(),
                   r=tr("document.ut_r_flat", r=_g(c.info.r_flat)) if _finite(c.info.r_flat) else ""))
         cases = c.cases.get(n)
         if cases is None or not len(cases):
@@ -5966,8 +6395,11 @@ class _Writer:
         inv = self.probe_inversion(n) if c.info.station_detail != "compact" else ""
         if inv:
             d.para(inv)
+        ut_d = cases.attrs.get("probe_ut_distance_m")
+        far = tr("document.fig_ut_far", d=_g(ut_d)) if (cases["case"] == "ut").any() and _finite(ut_d) and \
+            float(ut_d) > 1.0 else ""
         self.fig(lambda: report.touch_voltage_cases(cases, c.u_tp), "touch_voltage_" + report.slug(n),
-                 tr("document.fig_ut", station=place))
+                 tr("document.fig_ut", station=place, note=far))
         i_max = self.decisive_current()
         if _finite(i_max) and i_max > 0:
             z1 = float(c.f_factor) * float(c.u_tp) / i_max
@@ -6038,10 +6470,11 @@ class _Writer:
                                                     span=_n(span, 2)), tr("document.u_tests_treat", choice=choice)))
         if c.mc_band and 5 in c.mc_band and 95 in c.mc_band:
             loo = ""
-            if c.loo is not None and "deviation_pct" in c.loo:
-                vals = pd.to_numeric(c.loo["deviation_pct"], errors="coerce").abs().dropna()
-                if len(vals):
-                    loo = "; " + tr("document.u_loo_value", dev=_n(vals.max(), 2))
+            groups = self.loo_groups()
+            if "pos_neg" in groups:
+                loo = "; " + tr("document.u_loo_value", dev=_n(groups["pos_neg"]["dev"], 2))
+                if "zero" in groups:
+                    loo += tr("document.u_loo_zero", dev=_n(groups["zero"]["dev"], 2))
             rows.append((tr("document.u_model"), tr("document.u_model_value", p5=_n(c.mc_band[5]),
                                                     p95=_n(c.mc_band[95])) + loo, tr("document.informative")))
         if c.boot:
@@ -6108,7 +6541,7 @@ class _Writer:
         if _finite(t["IRES"]):
             share = 100 * t["IRES"] / c.ice if _finite(c.ice) and c.ice > 0 else float("nan")
             d.para(tr("document.sum_ires", ires=_n(t["IRES"]), name=c.largest, a=_n(t["IRES_a"]), share=_fixed(share, 1),
-                      d=_fixed(100 * c.d, 1)))
+                      d=_fixed(100 * c.d, 1), mi=_g(100 * c.mI)))
             tb = c.tests[c.basis]
             if _finite(tb["IG"]) and _finite(tb["IH"]):
                 hz = {m: i for m, i in tb["harmonics"].items() if m >= 2 and _finite(i)}
@@ -6127,7 +6560,7 @@ class _Writer:
         lim = _n(c.limit) if c.limit else "–"
         if s is not None:
             d.para(tr("document.sum_scaled", k=_n(c.factor), ires=_n(s["IRES_scaled_assessed"]), limit=lim,
-                      status=c.ok(s["IRES_scaled_assessed"])))
+                      status=c.ok(s["IRES_scaled_assessed"]), name=c.basis))
         if c.es is not None:
             v = c.es_scaled["IRES_scaled_assessed"] if c.es_scaled is not None else c.es["IRES_assessed"]
             # with limits and their conditions the verdict follows in the limit sentences – stated once
@@ -6158,8 +6591,15 @@ class _Writer:
             d.para(tr("document.sum_forecast", limit=_n(c.limit), ice=_n(c.ice_limit, 2), ig=ig))
         i_max = self.decisive_current()
         if _finite(c.u_tp) and _finite(c.f_factor) and _finite(i_max) and i_max > 0:
-            d.para(tr("document.sum_ze", z=_n(float(c.f_factor) * float(c.u_tp) / i_max),
-                      u=_n(float(c.f_factor) * float(c.u_tp)), i=_n(i_max)))
+            z_perm = float(c.f_factor) * float(c.u_tp) / i_max
+            text = tr("document.sum_ze", z=_n(z_perm), u=_n(float(c.f_factor) * float(c.u_tp)), i=_n(i_max))
+            za = abs(complex(c.Z_E)) if c.Z_E is not None and c.assessment == "Z_E" else float("nan")
+            if _finite(za) and za > 0 and _n(za) != _n(z_perm):
+                basis = tr("document.sum_ze_basis", basis=str(c.info.Z_E_basis).strip().rstrip(".")) \
+                    if c.info.Z_E_basis else ""
+                text += tr("document.sum_ze_below" if za < z_perm else "document.sum_ze_above", ze=_n(za),
+                           z=_n(z_perm), basis=basis)
+            d.para(text)
         d.para("**%s**" % tr("document.recommendation"), keep_next=True)
         if c.info.recommendation:
             for part in str(c.info.recommendation).split("\n\n"):
@@ -6206,7 +6646,7 @@ class _Writer:
         ut = pd.to_numeric(cases["U_T_V"], errors="coerce")
         utp = float(c.u_tp)
         labels = dict(zip(cases["case"], cases["label"]))
-        label = lambda case: tr("document.probe") if case == "ut" else str(labels.get(case, case))
+        label = lambda case: str(labels.get(case, case))
         top = cases.loc[ut.idxmax()]
         measured = cases[cases["case"].isin(["3", "4", "ut"]) & ut.notna()]
         m_text = ""
@@ -6393,19 +6833,18 @@ class _Writer:
                                  tr("document.chk_residual_value", dev=_n(rp.max(), 2), order=int(stab.loc[j, "order"]))))
             except Exception:
                 pass
-            if c.loo is not None and len(c.loo) and "deviation_pct" in c.loo:
-                dv = pd.to_numeric(c.loo["deviation_pct"], errors="coerce").abs()
-                if dv.notna().any():
-                    j = dv.idxmax()
-                    order = int(c.loo.loc[j, "order"]) if "order" in c.loo else "–"
-                    w = c.loo["within_limit"] if "within_limit" in c.loo else None
-                    bad = int(w.eq(False).sum()) if w is not None else 0
-                    if w is not None and w.notna().any():
-                        value = (tr("document.chk_loo_value", bad=bad, n=int(w.notna().sum()),
-                                    lim=self.loo_limit_text(), dev=_n(dv.max(), 2), order=order) if bad else
-                                 tr("document.chk_loo_value_ok", lim=self.loo_limit_text(), dev=_n(dv.max(), 2),
-                                    order=order))
-                        rows.append((tr("document.chk_loo"), "WARN" if bad else "OK", value))
+            groups = self.loo_groups()
+            g = groups.get("pos_neg")
+            if g is not None and g["n"]:
+                value = (tr("document.chk_loo_value", bad=g["bad"], n=g["n"], lim=self.loo_limit_text(),
+                            dev=_n(g["dev"], 2), order=g["order"]) if g["bad"] else
+                         tr("document.chk_loo_value_ok", lim=self.loo_limit_text(), dev=_n(g["dev"], 2),
+                            order=g["order"]))
+                z = groups.get("zero")
+                if z is not None and z["n"]:
+                    value += "; " + tr("document.chk_loo_zero", bad=z["bad"], n=z["n"], dev=_n(z["dev"], 2),
+                                       order=z["order"])
+                rows.append((tr("document.chk_loo"), "WARN" if g["bad"] else "OK", value))
         for n in c.stations:
             sv = c.results[n].tables.get("station_voltages")
             if sv is None or sv.empty or not (sv["role"] == "u_e").any() or not (sv["role"] == "u_t").any():
@@ -6415,8 +6854,13 @@ class _Writer:
             if _finite(ue) and _finite(ut):
                 fu = float(c.f_factor) * float(c.u_tp) if _finite(c.u_tp) and _finite(c.f_factor) else float("nan")
                 small = c.info.station_detail == "compact" and _finite(fu) and max(ue, ut) < 0.05 * fu
-                rows.append((tr("document.chk_probe"), "OK" if ut <= ue else ("NOTE" if small else "WARN"),
-                             tr("document.chk_probe_value", station=c.place(n), ut=_n(ut), ue=_n(ue))))
+                dist = pd.to_numeric(sv["distance_m"], errors="coerce") if "distance_m" in sv else None
+                de = dist[v[sv["role"] == "u_e"].idxmax()] if dist is not None else float("nan")
+                dt = dist[v[sv["role"] == "u_t"].idxmax()] if dist is not None else float("nan")
+                value = (tr("document.chk_probe_value_d", station=c.place(n), ut=_n(ut), ue=_n(ue), dt=_g(dt),
+                            de=_g(de)) if _finite(de) and _finite(dt) else
+                         tr("document.chk_probe_value", station=c.place(n), ut=_n(ut), ue=_n(ue)))
+                rows.append((tr("document.chk_probe"), "OK" if ut <= ue else ("NOTE" if small else "WARN"), value))
         if c.pq is not None:
             rows.append((tr("document.chk_pq"), "OK" if c.pq.valid else "WARN",
                          tr("document.valid") if c.pq.valid else tr("document.not_valid")))

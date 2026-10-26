@@ -141,12 +141,13 @@ footnote `[^text of the note^]`:
 | `purpose`, `normal_state`, `coil_unchanged`, `auto_tuning`, `procedure`, `notes` | texts of chapter 1 |
 | `instrument`, `transducers`, `uncertainty_components` | recorder, transducer per channel role (without: the table of measured quantities has no column for them), accuracy of every device of the measuring chain in % |
 | `quantity_labels` | own name of a measured quantity per key of that table (`"u_le"`, `"i_res"`, `"i_coil"`, `"i_shield"`, `"i_pen"`, `"u_e"`, `"u_t"` …), e.g. `{"i_shield": "shield current of a parallel feeder"}` |
-| `coil_controller` | display of the coil controller read before the tests: `ice_A` (I_CE), `coils_A` (current per coil), `detuning_pct` (v in %, v > 0: overcompensation), `active_A`, `when` – I_CE is `ice_A` or I_L/(1 + v); it replaces the sum of the measured coil currents as I_CE of damping and detuning, and the report compares the measured values with the display |
+| `coil_controller` | display of the coil controller read before the tests: `ice_A` (I_CE), `coils_A` (current per coil), `detuning_pct` (v in %, v > 0: overcompensation), `active_A`, `when`, `rated_voltage_kV` (rated voltage of the coils to which their scales refer, line-to-line, e.g. `21` for 21 kV/√3) – I_CE is `ice_A` or I_L/(1 + v); it replaces the sum of the measured coil currents as I_CE of damping and detuning, and the report compares the measured values with the display and names the possible causes of a deviation: the displacement voltage of the tests against the rated voltage of the coils (with `rated_voltage_kV`: the expected deviation in %), the reading accuracy of the scales at the coils, the measurement uncertainty |
 | `limit_A` | limit of the residual current of the network (default: the first of `limit_cases`, else the smallest of `limits`) |
-| `limit_cases` | limits with their conditions on the earthing systems, `[{"limit_A": 60, "Z_E": 2.5}, {"limit_A": 90, "Z_E": 1.7, "condition": "all Z_E < 1.7 Ω"}, {"limit_A": 120, "Z_E": 2.5, "r": 0.5, "condition": "fully cabled, r ≥ 0.5 everywhere"}]` – see below |
-| `Z_E_basis` | where Z_E of the assessment comes from, e.g. “design value of the earthing systems of the network” (a footnote to the result at Z_E) |
+| `limit_cases` | limits with their conditions on the earthing systems, `[{"limit_A": 60, "Z_E": 2.5}, {"limit_A": 90, "Z_E": 1.7, "condition": "all Z_E < 1.7 Ω"}, {"limit_A": 120, "Z_E": 2.5, "r": 0.5, "condition": "fully cabled, r ≥ 0.5 everywhere"}]`; optional texts `origin` (where the limit comes from, e.g. the standard behind it) and `remark` (your remark on it) follow the result of the limit that applies – see below |
+| `Z_E_basis` | where Z_E of the assessment comes from, e.g. “design value of the earthing systems of the network” (a footnote to the result at Z_E; the summary compares Z_E with the permissible earthing impedance and names it) |
+| `specified_by` | who specifies the limits and the parameters (U_Tp, F, limits), e.g. the name of the network operator or of a guideline: the texts say “specifications of …”; without: “specifications” |
 | `assessment` | decisive value: `"Z_E"` (at the earthing impedance, with the equivalent sources), `"busbar"` (the largest test) or `"auto"` (Z_E if given) |
-| `expansion` | network expansion (3.3): `True` (default; planned values 1.25, 1.5 and 2 times I_CE of today), `False` (left out) or a dict – `I_CE` (planned capacitive earth-fault current in A, one value or a list, e.g. `800`), `damping_added` (damping I_w/I_C of the new cables; default that of the network), `c1_ratio` (C_1/C_E of the new cables; default 1, cables with a screen per core), `I_L_max` (largest current of the coils in A: the report says where their range ends), `I_CE_max` (end of the curve in A; default four times today), `zero_sequence` (`"coil"`: the source of the zero-sequence orders grows with the current of the coils – default; `"network"`: not) – see below |
+| `expansion` | network expansion (3.3): `True` (default; planned values 1.25, 1.5 and 2 times I_CE of today), `False` (left out) or a dict – `I_CE` (planned capacitive earth-fault current in A, one value or a list, e.g. `800`), `damping_added` (damping I_w/I_C of the new cables; default that of the network), `c1_ratio` (C_1/C_E of the new cables; default 1, cables with a screen per core), `I_L_max` (largest current of the coils in A: the report says where their range ends), `I_CE_max` (end of the curve in A; default four times today), `zero_sequence` (`"coil"`: the source of the zero-sequence orders grows with the current of the coils – default; `"network"`: not), `U_n_kV` (nominal voltage of the network: U_LE = U_n/√3 in the network data; default the standard voltage nearest to √3·U_0 of the tests, [`formulas.standard_voltage_kV`](../reference/formulas.md#groundfault.formulas.standard_voltage_kV) – give it for an 11-, 22- or 33-kV network) – see below |
 | `reference_frequency_Hz`, `r_flat` | frequency of Z_E of the earthing measurement in the cases 1 and 2 of the touch voltage (default 50 Hz; not measured there: interpolated linearly between the neighbouring frequencies), flat reduction factor of case 2 (without: case 2 is left out) |
 | `station_detail` | `"full"` (default) or `"compact"`: a station shown for information only – waveforms, earth potential rise per order, the probes in one sentence, Z_E at 50 Hz and the approaches to the touch voltage, without the comparison with the earthing measurement, the reduction factor, the LV network and their notes |
 | `recommendation` | your recommendation (paragraphs separated by a blank line; without: a highlighted placeholder) |
@@ -189,6 +190,12 @@ The report is set as a scientific report – in the neutral layout and on top of
 * **Captions** centred, in the size of the body text (style `caption`): the title of a table above it, the caption of
   a figure below it, each with a blank line to the text.
 * **Displayed formulas** centred, with a blank line to the text above and below (one between two formulas).
+* **Non-breaking spaces** in the text and in the tables keep together what belongs together: a number and its unit
+  (2,5 Ω), a label and its number (test 1, table 10, Z_E 2,5 Ω), an ordinal and its noun (5th order) and the operators
+  of a calculation (ΔI_v = 1,8 × ΔI (1,6 … 2,0)) – a line never breaks between them
+  ([`document.nbsp`](../reference/document.md#groundfault.document.nbsp)).
+* **Voltage per ampere** of the fault current (r·Z_E of a station) in V/A, or in V/kA when every value is below
+  0.1 V/A (a station far from the fault).
 * **Footnotes** for sources and side remarks: the formats and standards (COMTRADE, the 10-min values of the PQ
   measurement), the software, where the accuracies of the measuring chain come from, the earthing measurement of a
   station, the errors of the Monte Carlo simulation, the leave-one-out and where Z_E comes from (`Z_E_basis`). Your
@@ -218,11 +225,14 @@ findings of the plausibility checks, hints – keep the language of the evaluati
   appendix B says whether they agree with those of the single evaluations. The symbols keep the values apart:
   I_RES,max is the residual current with the scaled harmonic content without the margins, I_RES,ass (German
   I_RES,Bew) the assessment value – of a test or at Z_E.
-* **Voltages of the scaling**: U_95,m is the quantile of the largest phase of the PQ measurement; U_m in k_m is the
-  positive- or negative-sequence component of the order in the test (mean of before and after the fault) – never
-  larger than the largest phase, so k_m is on the safe side of the ratio of the largest phases that the table of the
-  tests in the PQ distribution shows. The source voltage U_q,m of the measured source is the same component at the
-  faulted phase (median of the tests).
+* **Voltages of the scaling**: U_95,m is the quantile of the largest line-to-line voltage of the PQ measurement – in
+  a medium-voltage network (three-wire system) the usual reference of the voltage quality –, or of the largest phase
+  when the export has the line-to-earth values only (they contain the zero sequence as well and lie above: on the
+  safe side; the report says so and recommends the line-to-line export). U_m in k_m is the positive- or
+  negative-sequence component of the order in the test (mean of before and after the fault), with line-to-line data
+  as √3·U_m – never larger than the largest phase or loop, so k_m is on the safe side of the ratio of the largest
+  values that the table of the tests in the PQ distribution shows. The source voltage U_q,m of the measured source is
+  the same component at the faulted phase (median of the tests).
 * **THD factor**: an order of the positive or negative sequence without its own quantile is scaled with
   k_THD = k_s·THD_95/THD_test – THD_95 the quantile of the largest line-to-line loop of the PQ measurement, THD_test
   the largest line-to-line THD of the test; step 2 gives its value. With the THD only (a quantile of the THD and
@@ -239,18 +249,24 @@ findings of the plausibility checks, hints – keep the language of the evaluati
   systems – the earth potential rise U_E = r·I_RES·Z_E may not exceed F·U_Tp. The residual current falls with Z_E,
   U_E rises with it, so every case is assessed at its largest earthing impedance: I_RES,ass(Z_E) from the equivalent
   sources (without them: the busbar value, an upper bound) against the limit, and U_E = r·I_RES,ass·Z_E against
-  F·U_Tp. The case with `limit_A` applies; the other cases hold only if their condition is met. The figure of I_RES over
-  Z_E marks on the line of a limit the Z_E of its condition and adds the assessment value (with the margins).
+  F·U_Tp, with the residual current F·U_Tp/(r·Z_E) that keeps it (e.g. 200 V/(1·2,5 Ω) = 80 A). The case with
+  `limit_A` applies – its sentence ends with your `origin` and `remark`; the other cases hold only if their condition
+  is met. The figure of I_RES over Z_E marks on the line of a limit the Z_E of its condition and adds the assessment
+  value (with the margins).
 * **Network expansion** (3.3): can further cables be connected at the substation? The equivalent sources are
   converted to a network with more cable and the coils retuned to the same detuning
   ([Network expansion](../methods/equivalent-source.md#network-expansion)): per order the added earth and operating
   capacitance in parallel with Z_0 and Z_1, the source voltage of the busbar with the busbar impedance, the
   fundamental with the damping of the new cables. I_CE of today and the coil current are those of the coil controller
-  (`coil_controller`) or the measured coil currents, the damping that of the tests. The split of Z_q into Z_0 and
-  Z_1 is taken from network data and from the busbar voltages of the tests; the larger residual current of the two
-  decides (the table of uncertainties gives both). An order at which the split from the busbar voltages gives an
-  impedance with a negative real part – no passive network – takes the split from network data, and the section
-  names it. For every limit case – at its Z_E, with the smaller of the limit
+  (`coil_controller`) or the measured coil currents, the damping that of the tests. The conversion needs Z_0 and Z_1
+  apart – the new earth capacitance acts in the zero sequence, the operating capacitance in the positive and negative
+  sequence –, the equivalent sources give only Z_q = (Z_0 + 2·Z_1)/3; the section explains this first and then
+  takes the split in two independent ways: split 1 from the network data (Z_0 of the earth capacitance, the coils
+  and the losses, with U_LE = U_n/√3 of the nominal voltage) and split 2 from the busbar voltages of the tests; the
+  larger residual current of the two decides (the table of uncertainties gives both). An order with a negative
+  resistance of Z_0 or Z_1 – no passive network: the small resistance next to the large reactance is only roughly
+  known – is named as an uncertainty; where split 2 gives it, both splits take split 1. For every limit case – at
+  its Z_E, with the smaller of the limit
   and F·U_Tp/(r·Z_E) – the report gives the I_CE at which the residual current reaches it, and at the planned I_CE
   the fundamental, the harmonic content, the proportional estimate (every part growing like I_CE) and per order the
   factor of the source voltage. It assumes no new harmonic sources with the cables and the scaling of 3.1 unchanged.
@@ -262,19 +278,25 @@ findings of the plausibility checks, hints – keep the language of the evaluati
   coil current balance of every single evaluation gives ΔIv/ΔΣI_L ≈ 1 (the coil currents change by the same amount at
   a constant U0), the coils were adjusted during the fault and the network stayed the same; the uncertainty table
   names the orders that change by more than 20 % over the windows of the steady state.
-* **Touch voltage** per station, U_T = r·I·Z_E/F = U_E/F, by four approaches
-  ([`document.touch_voltage_cases`](../reference/document.md#groundfault.document.touch_voltage_cases)): 1 the limit
-  current with r = 1 and Z_E of the earthing measurement, 2 the same with a flat r, 3 per frequency with r·Z_E of the
-  earth-fault test and the assessment current per order of the decisive test, 4 the measured earth potential rise and
-  4b the same extrapolated to the limit current – and the measured touch voltage of a probe. The permissible earthing
-  impedance follows as F·U_Tp/(r·I_RES,ass). The cases 3 and 4 use the earth-potential probe (role `u_e`), the
-  reduction factor of the earthing comparison the probe maximum (all probes); a touch-voltage probe that reads more than
-  the earth-potential probe – U_T > U_E, physically inconsistent – is named in the text and flagged in appendix B, as
+* **Touch voltage** per station – the prospective (open-circuit) touch voltage U_vT = r·I·Z_E/F = U_E/F – by four
+  approaches ([`document.touch_voltage_cases`](../reference/document.md#groundfault.document.touch_voltage_cases)):
+  1 the limit current with r = 1 and Z_E of the earthing measurement, 2 the same with a flat r, 3 per frequency with
+  r·Z_E of the earth-fault test and the assessment current per order of the decisive test, 4 the voltage measured at
+  the earth-potential probe and 4b the same extrapolated to the limit current – and the voltage of the touch-voltage
+  probe. The measured cases are named after their probe and its distance (“4 measured at the probe at 20 m”, “probe
+  1 m”), not with the normative terms, which a measuring point does not always fit; a touch-voltage probe farther
+  than 1 m gives U_vT “estimated from the nearest possible measuring point” (table and figure). The permissible
+  earthing impedance follows as F·U_Tp/(r·I_RES,ass). The cases 3 and 4 use the earth-potential probe (role `u_e`),
+  the reduction factor of the earthing comparison the probe maximum (all probes); a nearer probe that reads more than
+  the farther one – physically inconsistent – is named in the text with both distances and flagged in appendix B, as
   are the notes of the earthing comparison (r outside the expected range, shield current nearly zero, Z_E of the LV
   network below the earthing impedance).
 * **Checks of the equivalent sources** (appendix B): I_RES at the impedances of the tests (dominated by the
   fundamental), the residual of the currents per order and the leave-one-out per order – the last two show how well the
-  harmonic model itself fits.
+  harmonic model itself fits. The leave-one-out is assessed with the orders of the positive and negative sequence,
+  whose sources are the harmonic voltages of the network; the orders of the zero sequence follow for information –
+  their source presumably arises only in the earth fault and depends on the operating point of the coils, which may
+  differ between the tests.
 * **Uncertainties** (3.4): the measuring chain, the steady state of the fault (spread of I_RES over the windows), the
   differences between the tests, the model of the equivalent sources (Monte Carlo band with the fundamental of the
   report, leave-one-out), the sample of the PQ measurement (bootstrap over days,

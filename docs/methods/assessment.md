@@ -221,9 +221,9 @@ to IEC 61000-4-30) of the same network and switching state. Each order is treate
 
   where U_meas is the THD (or harmonic voltage) of the largest of the three line-to-line loops, averaged over the
   pre-fault and post-fault intervals. Without a THD such an order stays as measured (with a hint).
-* **Zero sequence** (odd multiples of 3: 3, 9, 15 …): not scaled. The zero sequence arises in the earth fault – the
-  displaced neutral and the non-linear loads on the healthy phases drive it –, not the harmonic voltage of undisturbed
-  operation that the PQ measurement records.
+* **Zero sequence** (odd multiples of 3: 3, 9, 15 …): not scaled. The zero sequence is assumed to arise in the earth
+  fault – the measurements suggest it: the displaced neutral and the nonlinear elements of the zero sequence (e.g. the
+  coils) drive it –, not the harmonic voltage of undisturbed operation that the PQ measurement records.
 * **Even orders** (2, 4, 6, 8 …, the even multiples of 3 included): not scaled, and listed separately. They are
   unusual for the voltage of a network and may point to another cause (a DC component or saturation at the fault
   inception, current clamps); a hint names them when they carry 5 % of the harmonic content or more.

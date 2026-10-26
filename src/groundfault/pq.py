@@ -36,8 +36,8 @@ Scaling of the harmonic currents of a fault test
 * Orders of the positive and negative sequence (odd, not a multiple of 3: 5, 7, 11, 13, 17, 19 …): each with its own
   voltage, U_95,m/U_level,m – the 250-Hz current with the 250-Hz voltage; an order without its own value (no quantile,
   no usable level) with the THD, THD_95/THD_test.
-* Orders of the zero sequence (odd multiples of 3: 3, 9, 15 …): not scaled – the zero sequence arises in the earth
-  fault.
+* Orders of the zero sequence (odd multiples of 3: 3, 9, 15 …): not scaled – the zero sequence is assumed to arise in
+  the earth fault.
 * Even orders (2, 4, 6, 8 …): not scaled, listed separately – atypical in the network, they may point to another
   cause (e.g. a DC component or saturation at the fault inception).
 
@@ -267,6 +267,29 @@ i18n.register({
     "pq.no_intervals": {
         "en": "No complete 10-min interval – no quantile.",
         "de": "Kein vollständiges 10-min-Intervall – kein Quantil."},
+    "pq.ll_chosen": {
+        "en": "Line-to-line harmonic voltages used – the usual reference in a three-wire network (EN 50160); the "
+              "line-to-earth values of the export are not used (assess(…, reference='LE') uses them).",
+        "de": "Leiter-Leiter-Oberschwingungsspannungen verwendet – die übliche Bezugsgröße im Dreileiternetz "
+              "(EN 50160); die Leiter-Erde-Werte des Exports bleiben unberücksichtigt (assess(…, reference='LE') "
+              "verwendet sie)."},
+    "pq.le_chosen": {
+        "en": "Line-to-earth harmonic voltages used (reference='LE'), although the export also has line-to-line "
+              "values; they contain the zero sequence and lie above the line-to-line reference – on the safe side.",
+        "de": "Leiter-Erde-Oberschwingungsspannungen verwendet (reference='LE'), obwohl der Export auch "
+              "Leiter-Leiter-Werte enthält; sie enthalten das Nullsystem und liegen über der Leiter-Leiter-Bezugsgröße "
+              "– auf der sicheren Seite."},
+    "pq.le_only": {
+        "en": "Only line-to-earth harmonic voltages: in a three-wire network the line-to-line voltages are the usual "
+              "reference (EN 50160); the line-to-earth values also contain the zero sequence and lie above them – the "
+              "scaling with them is on the safe side. Export the line-to-line harmonic voltages per order as well.",
+        "de": "Nur Leiter-Erde-Oberschwingungsspannungen: im Dreileiternetz sind die Leiter-Leiter-Spannungen die "
+              "übliche Bezugsgröße (EN 50160); die Leiter-Erde-Werte enthalten zusätzlich das Nullsystem und liegen "
+              "darüber – die Skalierung mit ihnen liegt auf der sicheren Seite. Die Leiter-Leiter-"
+              "Oberschwingungsspannungen je Ordnung mit exportieren."},
+    "pq.reference_invalid": {
+        "en": "reference must be 'LL' or 'LE', not {value!r}.",
+        "de": "reference muss 'LL' oder 'LE' sein, nicht {value!r}."},
     "pq.ll_only": {
         "en": "Only line-to-line harmonic voltages: the orders of the zero sequence (3, 9, 15 …) are not contained; "
               "the quantiles are line-to-line values (reference 'LL' in the scaling and the forecast, test levels "
@@ -403,10 +426,27 @@ class PQData:
         have = set(self.harmonics.columns.get_level_values(1)) if len(self.harmonics.columns) else set()
         return [p for p in PHASES_LE + PHASES_LL if p in have]
 
+    def has_harmonics(self, reference: str) -> bool:
+        """True if harmonic voltages (orders ≥ 2) of ``reference`` (``"LE"`` or ``"LL"``) have values."""
+        phases = PHASES_LE if str(reference).upper() == "LE" else PHASES_LL
+        cols = [c for c in self.harmonics.columns if int(c[0]) >= 2 and c[1] in phases] if len(self.harmonics.columns) \
+            else []
+        return bool(cols) and bool(self.harmonics[cols].notna().any().any())
+
     @property
     def reference(self) -> str:
-        """``"LE"`` if line-to-earth harmonic voltages are contained, otherwise ``"LL"``."""
-        return "LE" if any(p in PHASES_LE for p in self.phases) else "LL"
+        """``"LL"`` if line-to-line harmonic voltages (orders ≥ 2) are contained – the usual reference of the voltage
+        quality in a three-wire (medium-voltage) network –, otherwise ``"LE"``. ``meta["reference"]`` (``"LE"`` or
+        ``"LL"``, set by [`assess`][groundfault.pq.assess]) chooses one of the two when the export has both."""
+        ll, le = self.has_harmonics("LL"), self.has_harmonics("LE")
+        chosen = str(self.meta.get("reference") or "").upper()
+        if chosen == "LE" and le:
+            return "LE"
+        if chosen == "LL" and ll:
+            return "LL"
+        if ll:
+            return "LL"
+        return "LE" if le or any(p in PHASES_LE for p in self.phases) else "LL"
 
     @property
     def start(self) -> pd.Timestamp:
@@ -1979,12 +2019,16 @@ class PQAssessment:
 def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
            factors: Optional[Mapping[float, float]] = None, minutes: float = 10.0, how: str = "rms",
            min_share: float = 1.0, f1: float = 50.0, fault_threshold: Optional[float] = 0.8,
-           max_gap_minutes: float = 0.0) -> PQAssessment:
+           max_gap_minutes: float = 0.0, reference: Optional[str] = None) -> PQAssessment:
     """Quantiles of a PQ measurement per order and of the THD for the assessment.
 
     Per interval of ``minutes`` (10-min values – formed with [`ten_minute_values`][groundfault.pq.ten_minute_values]
-    if the export has a shorter interval) the largest of the three phases (line-to-earth harmonic voltage per
-    order) or loops (line-to-line THD) is taken, and of these values the quantile over the whole measurement.
+    if the export has a shorter interval) the largest of the three loops (line-to-line harmonic voltage per order,
+    THD line-to-line) or phases (line-to-earth harmonic voltage, if the export has no line-to-line values) is taken,
+    and of these values the quantile over the whole measurement. In a three-wire (medium-voltage) network the
+    line-to-line voltages are the usual reference of the voltage quality (EN 50160); line-to-earth values also
+    contain the zero sequence (the displacement of the neutral) and lie above them – an assessment with them is on
+    the safe side.
 
     The duration of the measurement for the rule ``factors`` is its longest stretch of **gapless** values: an interval
     without a value (also an incomplete 10-min interval) interrupts it. Shorter than every duration of the rule, the
@@ -2014,6 +2058,9 @@ def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
     max_gap_minutes : float, optional
         Gaps up to this length do not interrupt the gapless stretch (their time does not count); 0 (default): every
         missing interval interrupts it.
+    reference : {"LL", "LE"}, optional
+        The harmonic voltages of an export with both: line-to-line (``"LL"``) or line-to-earth (``"LE"``). Default:
+        line-to-line if contained ([`PQData.reference`][groundfault.pq.PQData.reference]).
 
     Returns
     -------
@@ -2034,7 +2081,11 @@ def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
         raise ValueError(tr("pq.max_gap_invalid", value=max_gap_minutes)) from None
     if not (math.isfinite(max_gap) and max_gap >= 0) or isinstance(max_gap_minutes, bool):
         raise ValueError(tr("pq.max_gap_invalid", value=max_gap_minutes))
+    if reference is not None and str(reference).upper() not in ("LE", "LL"):
+        raise ValueError(tr("pq.reference_invalid", value=reference))
     d10 = ten_minute_values(data, minutes=minutes, how=how, min_share=min_share)
+    if reference is not None:                  # a copy: the measurement of the caller stays as it is
+        d10 = replace(d10, meta={**d10.meta, "reference": str(reference).upper()})
     if len(d10.harmonics) == 0 or not d10.harmonics[[c for c in d10.harmonics.columns if c[0] >= 2]].notna().any().any():
         raise ValueError(tr("pq.no_intervals"))
     hints = list(d10.hints)
@@ -2103,8 +2154,14 @@ def assess(data: PQData, quantile: float = 0.95, factor: Optional[float] = None,
         k, fh = 1.0, tr("pq.factor_none", days=days)
     hints.append(fh)
     ref = d10.reference
-    if ref == "LL":
+    if ref == "LL" and not d10.has_harmonics("LE"):
         hints.append(tr("pq.ll_only"))
+    elif ref == "LL":
+        hints.append(tr("pq.ll_chosen"))
+    elif d10.has_harmonics("LL"):
+        hints.append(tr("pq.le_chosen"))
+    else:
+        hints.append(tr("pq.le_only"))
     phases = [p for p in (PHASES_LE if ref == "LE" else PHASES_LL) if p in d10.phases]
     if len(phases) < 3:
         hints.append(tr("pq.phases_missing", phases=", ".join(phases)))
